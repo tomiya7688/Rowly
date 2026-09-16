@@ -4,12 +4,17 @@ use thiserror::Error;
 
 use crate::data::{SourceEncoding, Table, read_csv, write_csv_utf8};
 
+use super::{
+    CellRange, CellRef, ReferenceError,
+    history::{CellChange, EditCommand, EditHistory},
+};
+
 #[derive(Debug)]
 pub struct CsvDocument {
     path: PathBuf,
     source_encoding: SourceEncoding,
     table: Table,
-    dirty: bool,
+    history: EditHistory,
 }
 
 impl CsvDocument {
@@ -24,7 +29,7 @@ impl CsvDocument {
             path,
             source_encoding: loaded.encoding,
             table: loaded.table,
-            dirty: false,
+            history: EditHistory::default(),
         })
     }
 
@@ -37,7 +42,15 @@ impl CsvDocument {
     }
 
     pub fn is_dirty(&self) -> bool {
-        self.dirty
+        self.history.is_dirty()
+    }
+
+    pub fn can_undo(&self) -> bool {
+        self.history.can_undo()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        self.history.can_redo()
     }
 
     pub fn row_count(&self) -> usize {
@@ -52,19 +65,81 @@ impl CsvDocument {
         self.table.cell(row, column)
     }
 
+    pub fn cell_ref(&self, reference: CellRef) -> Option<&str> {
+        self.cell(reference.row(), reference.column())
+    }
+
+    pub fn cell_a1(&self, reference: &str) -> Result<Option<&str>, DocumentError> {
+        Ok(self.cell_ref(reference.parse()?))
+    }
+
     pub fn set_cell(
         &mut self,
         row: usize,
         column: usize,
         value: impl Into<String>,
     ) -> Result<(), DocumentError> {
-        let changed = self
-            .table
-            .set_cell(row, column, value)
-            .map_err(|error| DocumentError::Edit(error.to_string()))?;
+        self.set_cell_ref(CellRef::new(row, column), value)
+    }
 
-        self.dirty |= changed;
-        Ok(())
+    pub fn set_cell_ref(
+        &mut self,
+        reference: CellRef,
+        value: impl Into<String>,
+    ) -> Result<(), DocumentError> {
+        self.set_references_value([reference], value.into())
+    }
+
+    pub fn set_cell_a1(
+        &mut self,
+        reference: &str,
+        value: impl Into<String>,
+    ) -> Result<(), DocumentError> {
+        self.set_cell_ref(reference.parse()?, value)
+    }
+
+    pub fn set_range_value(
+        &mut self,
+        range: CellRange,
+        value: impl Into<String>,
+    ) -> Result<(), DocumentError> {
+        self.set_references_value(range.iter(), value.into())
+    }
+
+    pub fn set_range_a1(
+        &mut self,
+        range: &str,
+        value: impl Into<String>,
+    ) -> Result<(), DocumentError> {
+        self.set_range_value(range.parse()?, value)
+    }
+
+    pub fn undo(&mut self) -> Result<bool, DocumentError> {
+        let Some(command) = self.history.take_undo() else {
+            return Ok(false);
+        };
+
+        if let Err(error) = self.apply_command(&command, CommandDirection::Undo) {
+            self.history.restore_undo(command);
+            return Err(error);
+        }
+
+        self.history.commit_undo(command);
+        Ok(true)
+    }
+
+    pub fn redo(&mut self) -> Result<bool, DocumentError> {
+        let Some(command) = self.history.take_redo() else {
+            return Ok(false);
+        };
+
+        if let Err(error) = self.apply_command(&command, CommandDirection::Redo) {
+            self.history.restore_redo(command);
+            return Err(error);
+        }
+
+        self.history.commit_redo(command);
+        Ok(true)
     }
 
     pub fn save(&mut self) -> Result<(), DocumentError> {
@@ -74,7 +149,7 @@ impl CsvDocument {
         })?;
 
         self.source_encoding = SourceEncoding::Utf8;
-        self.dirty = false;
+        self.history.mark_saved();
         Ok(())
     }
 
@@ -87,15 +162,88 @@ impl CsvDocument {
 
         self.path = path;
         self.source_encoding = SourceEncoding::Utf8;
-        self.dirty = false;
+        self.history.mark_saved();
         Ok(())
     }
+
+    fn set_references_value(
+        &mut self,
+        references: impl IntoIterator<Item = CellRef>,
+        value: String,
+    ) -> Result<(), DocumentError> {
+        let mut changes = Vec::new();
+
+        for reference in references {
+            let before = self.cell_ref(reference).ok_or_else(|| {
+                DocumentError::Edit(format!(
+                    "cell `{reference}` is outside the existing CSV table"
+                ))
+            })?;
+
+            if before != value {
+                changes.push(CellChange {
+                    reference,
+                    before: before.to_owned(),
+                    after: value.clone(),
+                });
+            }
+        }
+
+        for change in &changes {
+            self.table
+                .set_cell(
+                    change.reference.row(),
+                    change.reference.column(),
+                    change.after.clone(),
+                )
+                .map_err(|error| DocumentError::Edit(error.to_string()))?;
+        }
+
+        self.history.record(changes);
+        Ok(())
+    }
+
+    fn apply_command(
+        &mut self,
+        command: &EditCommand,
+        direction: CommandDirection,
+    ) -> Result<(), DocumentError> {
+        for change in &command.changes {
+            let value = match direction {
+                CommandDirection::Undo => &change.before,
+                CommandDirection::Redo => &change.after,
+            };
+
+            self.table
+                .set_cell(
+                    change.reference.row(),
+                    change.reference.column(),
+                    value.clone(),
+                )
+                .map_err(|error| {
+                    DocumentError::Edit(format!(
+                        "edit history no longer matches the table: {error}"
+                    ))
+                })?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum CommandDirection {
+    Undo,
+    Redo,
 }
 
 #[derive(Debug, Error)]
 pub enum DocumentError {
     #[error("failed to open CSV `{path}`: {message}")]
     Open { path: String, message: String },
+
+    #[error(transparent)]
+    Reference(#[from] ReferenceError),
 
     #[error("failed to edit CSV: {0}")]
     Edit(String),
@@ -129,6 +277,90 @@ mod tests {
         document.save().unwrap();
         assert!(!document.is_dirty());
         assert_eq!(document.source_encoding(), SourceEncoding::Utf8);
+    }
+
+    #[test]
+    fn a1_range_edit_is_one_undoable_command() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("data.csv");
+        fs::write(&path, "value\n1\n2\n3\n4\n5\n6\n7\n").unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        document.set_range_a1("A1:A8", "8").unwrap();
+
+        for row in 0..8 {
+            assert_eq!(document.cell(row, 0), Some("8"));
+        }
+        assert!(document.can_undo());
+        assert!(!document.can_redo());
+
+        assert!(document.undo().unwrap());
+        assert_eq!(document.cell_a1("A1").unwrap(), Some("value"));
+        assert_eq!(document.cell_a1("A2").unwrap(), Some("1"));
+        assert_eq!(document.cell_a1("A8").unwrap(), Some("7"));
+        assert!(document.can_redo());
+
+        assert!(document.redo().unwrap());
+        for row in 0..8 {
+            assert_eq!(document.cell(row, 0), Some("8"));
+        }
+    }
+
+    #[test]
+    fn range_edit_validates_every_cell_before_writing() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("ragged.csv");
+        fs::write(&path, "a,b\nc\n").unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        let error = document.set_range_a1("A1:B2", "x").unwrap_err();
+
+        assert!(error.to_string().contains("B2"));
+        assert_eq!(document.cell_a1("A1").unwrap(), Some("a"));
+        assert_eq!(document.cell_a1("B1").unwrap(), Some("b"));
+        assert_eq!(document.cell_a1("A2").unwrap(), Some("c"));
+        assert!(!document.can_undo());
+        assert!(!document.is_dirty());
+    }
+
+    #[test]
+    fn dirty_state_tracks_saved_state_through_undo_and_redo() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("data.csv");
+        fs::write(&path, "name,value\nAlice,1\n").unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        document.set_cell_a1("B2", "2").unwrap();
+        assert!(document.is_dirty());
+
+        assert!(document.undo().unwrap());
+        assert!(!document.is_dirty());
+
+        assert!(document.redo().unwrap());
+        assert!(document.is_dirty());
+        document.save().unwrap();
+        assert!(!document.is_dirty());
+
+        assert!(document.undo().unwrap());
+        assert!(document.is_dirty());
+        assert!(document.redo().unwrap());
+        assert!(!document.is_dirty());
+    }
+
+    #[test]
+    fn new_edit_after_undo_discards_redo_branch() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("data.csv");
+        fs::write(&path, "a,b\n1,2\n").unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        document.set_cell_a1("A2", "x").unwrap();
+        document.set_cell_a1("B2", "y").unwrap();
+        assert!(document.undo().unwrap());
+        assert!(document.can_redo());
+
+        document.set_cell_a1("A1", "header").unwrap();
+        assert!(!document.can_redo());
     }
 
     #[test]

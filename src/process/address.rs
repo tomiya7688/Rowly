@@ -92,14 +92,8 @@ pub struct CellRange {
 impl CellRange {
     pub fn new(first: CellRef, second: CellRef) -> Self {
         Self {
-            start: CellRef::new(
-                first.row.min(second.row),
-                first.column.min(second.column),
-            ),
-            end: CellRef::new(
-                first.row.max(second.row),
-                first.column.max(second.column),
-            ),
+            start: CellRef::new(first.row.min(second.row), first.column.min(second.column)),
+            end: CellRef::new(first.row.max(second.row), first.column.max(second.column)),
         }
     }
 

@@ -7,7 +7,7 @@ use std::{
 use csv::{ReaderBuilder, Terminator, WriterBuilder};
 use thiserror::Error;
 
-use super::{encoding::decode_to_utf8, SourceEncoding, Table};
+use super::{SourceEncoding, Table, encoding::decode_to_utf8};
 
 pub(crate) struct LoadedCsv {
     pub(crate) table: Table,
@@ -75,7 +75,11 @@ mod tests {
         let directory = tempdir().unwrap();
         let source_path = directory.path().join("source.csv");
         let output_path = directory.path().join("output.csv");
-        fs::write(&source_path, "name,note\nAlice,\"hello, world\"\nBob,plain\n").unwrap();
+        fs::write(
+            &source_path,
+            "name,note\nAlice,\"hello, world\"\nBob,plain\n",
+        )
+        .unwrap();
 
         let loaded = read_csv(&source_path).unwrap();
         write_csv_utf8(&output_path, &loaded.table).unwrap();

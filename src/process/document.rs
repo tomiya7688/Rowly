@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::data::{read_csv, write_csv_utf8, SourceEncoding, Table};
+use crate::data::{SourceEncoding, Table, read_csv, write_csv_utf8};
 
 #[derive(Debug)]
 pub struct CsvDocument {

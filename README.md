@@ -38,3 +38,18 @@ may visually group the consecutive `Sales` and `Development` values.
 However, the underlying CSV remains completely unchanged: every row still contains its own value.
 
 > **Never change the data structure just to improve presentation.**
+
+## Current implementation
+
+The repository now contains the first Rust bootstrap for the CSV/data and process boundaries:
+
+- UTF-8 CSV open/save
+- Shift_JIS detection and decode on open
+- UTF-8 conversion on save
+- textual row/cell model
+- process-level open/edit/save API
+- headless CLI smoke entry point
+
+The GUI, Rowly DSL, Luau integration, Python/Excel bridge, type inference, and visual grouping are intentionally not implemented yet.
+
+For the current architecture and dependency rules, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).

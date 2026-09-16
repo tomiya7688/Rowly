@@ -41,15 +41,20 @@ However, the underlying CSV remains completely unchanged: every row still contai
 
 ## Current implementation
 
-The repository now contains the first Rust bootstrap for the CSV/data and process boundaries:
+The Rust core currently provides:
 
 - UTF-8 CSV open/save
 - Shift_JIS detection and decode on open
 - UTF-8 conversion on save
 - textual row/cell model
+- A1 cell references such as `A1`, `AA10`
+- rectangular ranges such as `A1:A8` and `A1:B4`
+- atomic range value edits
+- undo/redo edit history
+- saved-state-aware dirty tracking
 - process-level open/edit/save API
 - headless CLI smoke entry point
 
-The GUI, Rowly DSL, Luau integration, Python/Excel bridge, type inference, and visual grouping are intentionally not implemented yet.
+The GUI, Rowly DSL, Luau integration, Python/Excel bridge, type inference, structural row/column operations, and visual grouping are intentionally not implemented yet.
 
 For the current architecture and dependency rules, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).

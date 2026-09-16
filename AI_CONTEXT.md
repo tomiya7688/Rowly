@@ -40,6 +40,8 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Core cell storage is textual CSV data. Type inference/formatting belongs above the canonical data layer unless the user explicitly edits data.
 - Internal text is UTF-8. Shift_JIS input may be decoded on open; saves are UTF-8.
 - UI, DSL, Luau, and Python adapters must enter through the process/application boundary rather than reaching into CSV I/O internals.
+- A1/range addressing is process-layer behavior; the canonical data layer remains zero-based textual rows/cells.
+- Multi-cell edits must validate before mutation so a failed edit cannot partially modify the CSV table.
 
 ## Validation
 Use the smallest sufficient validation for the change:
@@ -54,10 +56,13 @@ Multiple AI sessions may work on the repository.
 Before writing remote changes, compare the current base branch head with the task base. If it moved, inspect changed files/diff scope before editing; do not overwrite unrelated remote work.
 
 ## Current State
-Bootstrap implementation only:
+Implemented:
 - CSV text table model
 - UTF-8 / Shift_JIS open path
 - UTF-8 save path
+- A1 cell and rectangular range references
+- atomic range value edits
+- undo/redo history with saved-state-aware dirty tracking
 - headless CLI smoke entry point
 
 Not implemented yet:
@@ -66,6 +71,7 @@ Not implemented yet:
 - Luau
 - Python/Excel bridge
 - type inference/column metadata
+- structural row/column operations
 - visual grouping
 
 ## Context Priority

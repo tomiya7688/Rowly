@@ -15,10 +15,10 @@ impl ColumnType {
         match self {
             Self::String => true,
             Self::Integer => value.parse::<i64>().is_ok(),
-            Self::Decimal => value
-                .parse::<f64>()
-                .is_ok_and(|parsed| parsed.is_finite()),
-            Self::Boolean => value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false"),
+            Self::Decimal => value.parse::<f64>().is_ok_and(|parsed| parsed.is_finite()),
+            Self::Boolean => {
+                value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false")
+            }
         }
     }
 }
@@ -157,10 +157,7 @@ impl CsvDocument {
         self.validate_column_type(column, column_type)
     }
 
-    pub fn check_column_japanese(
-        &self,
-        column: usize,
-    ) -> Result<JapaneseCheckReport, ColumnError> {
+    pub fn check_column_japanese(&self, column: usize) -> Result<JapaneseCheckReport, ColumnError> {
         self.ensure_column_exists(column)?;
 
         let mut checked_cells = 0;
@@ -317,7 +314,8 @@ mod tests {
 
     #[test]
     fn japanese_character_detection_covers_common_scripts() {
-        for value in ["ひらがな", "カタカナ", "ﾊﾝｶｸ", "日本語", "山田 Taro", "々"] {
+        for value in ["ひらがな", "カタカナ", "ﾊﾝｶｸ", "日本語", "山田 Taro", "々"]
+        {
             assert!(contains_japanese(value), "{value}");
         }
         for value in ["Alice", "123", "", "hello-world"] {

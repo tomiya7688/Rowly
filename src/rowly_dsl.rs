@@ -44,3 +44,5 @@ mod tests;
 mod tests_classes;
 #[cfg(test)]
 mod tests_conditions;
+#[cfg(test)]
+mod tests_typed_values;

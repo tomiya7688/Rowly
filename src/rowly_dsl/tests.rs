@@ -29,7 +29,12 @@ fn parses_basic_style_if_column_checks_and_range_set() {
 
     assert!(program.functions().is_empty());
     assert_eq!(program.statements().len(), 2);
-    let Statement::If { condition, body } = &program.statements()[0] else {
+    let Statement::If {
+        condition,
+        body,
+        else_body,
+    } = &program.statements()[0]
+    else {
         panic!("expected if statement");
     };
     assert_eq!(
@@ -40,6 +45,7 @@ fn parses_basic_style_if_column_checks_and_range_set() {
         }
     );
     assert_eq!(body.len(), 2);
+    assert!(else_body.is_empty());
     assert_eq!(
         program.statements()[1],
         Statement::SetRangeValue {

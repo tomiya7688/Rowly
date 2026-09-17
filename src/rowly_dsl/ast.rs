@@ -86,6 +86,7 @@ pub enum Statement {
     If {
         condition: Condition,
         body: Vec<Statement>,
+        else_body: Vec<Statement>,
     },
     Let {
         name: String,
@@ -143,6 +144,16 @@ pub enum Expression {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComparisonOperator {
+    Equal,
+    NotEqual,
+    Less,
+    LessOrEqual,
+    Greater,
+    GreaterOrEqual,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Condition {
     ColumnExists {
@@ -152,10 +163,14 @@ pub enum Condition {
         selector: ColumnSelector,
         expected: Expression,
     },
-    ValueEquals {
+    Compare {
         left: Expression,
+        operator: ComparisonOperator,
         right: Expression,
     },
+    Not(Box<Condition>),
+    And(Box<Condition>, Box<Condition>),
+    Or(Box<Condition>, Box<Condition>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use thiserror::Error;
@@ -5,12 +6,11 @@ use thiserror::Error;
 use crate::process::{ColumnError, CsvDocument, DocumentError};
 
 use super::ast::{
-    ColumnSelector, Condition, ExecutionEvent, ExecutionReport, Expression, Program, Statement,
-    normalize_identifier,
+    ColumnSelector, ComparisonOperator, Condition, ExecutionEvent, ExecutionReport, Expression,
+    Program, Statement, normalize_identifier,
 };
 
 const MAX_CALL_DEPTH: usize = 64;
-
 type ObjectId = usize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,38 +36,28 @@ pub fn execute(
 pub enum ExecutionError {
     #[error(transparent)]
     Column(#[from] ColumnError),
-
     #[error(transparent)]
     Document(#[from] DocumentError),
-
     #[error("unknown Rowly DSL variable `{0}`")]
     UnknownVariable(String),
-
     #[error("unknown Rowly DSL function `{0}`")]
     UnknownFunction(String),
-
     #[error("unknown Rowly DSL class `{0}`")]
     UnknownClass(String),
-
     #[error("unknown field `{field}` on class `{class_name}`")]
     UnknownField { class_name: String, field: String },
-
     #[error("unknown method `{method}` on class `{class_name}`")]
     UnknownMethod { class_name: String, method: String },
-
     #[error("`{0}` is not an object")]
     ExpectedObject(String),
-
     #[error("{context} requires a text value, not an object")]
     ExpectedText { context: String },
-
     #[error("function `{name}` expects {expected} arguments but received {actual}")]
     ArgumentCount {
         name: String,
         expected: usize,
         actual: usize,
     },
-
     #[error("method `{class_name}.{name}` expects {expected} arguments but received {actual}")]
     MethodArgumentCount {
         class_name: String,
@@ -75,13 +65,10 @@ pub enum ExecutionError {
         expected: usize,
         actual: usize,
     },
-
     #[error("call `{0}` was used as a value but did not return one")]
     MissingReturnValue(String),
-
     #[error("`Return` can only be used inside a function or method")]
     ReturnOutsideFunction,
-
     #[error("Rowly DSL call depth exceeded the limit of {limit}")]
     CallDepthExceeded { limit: usize },
 }
@@ -157,17 +144,20 @@ impl<'a> Runtime<'a> {
     fn execute_statements(&mut self, statements: &[Statement]) -> Result<Flow, ExecutionError> {
         for statement in statements {
             match statement {
-                Statement::If { condition, body } => {
+                Statement::If {
+                    condition,
+                    body,
+                    else_body,
+                } => {
                     let result = self.evaluate_condition(condition)?;
                     self.events.push(ExecutionEvent::ConditionEvaluated {
                         condition: condition.clone(),
                         result,
                     });
-                    if result {
-                        let flow = self.execute_statements(body)?;
-                        if !matches!(flow, Flow::Continue) {
-                            return Ok(flow);
-                        }
+                    let branch = if result { body } else { else_body };
+                    let flow = self.execute_statements(branch)?;
+                    if !matches!(flow, Flow::Continue) {
+                        return Ok(flow);
                     }
                 }
                 Statement::Let { name, value } => {
@@ -259,8 +249,54 @@ impl<'a> Runtime<'a> {
                 let expected = self.expect_text(expected, "column title comparison")?;
                 Ok(self.document.cell(0, column) == Some(expected.as_str()))
             }
-            Condition::ValueEquals { left, right } => {
-                Ok(self.evaluate_expression(left)? == self.evaluate_expression(right)?)
+            Condition::Compare {
+                left,
+                operator,
+                right,
+            } => {
+                let left = self.evaluate_expression(left)?;
+                let right = self.evaluate_expression(right)?;
+                self.compare_values(left, *operator, right)
+            }
+            Condition::Not(inner) => Ok(!self.evaluate_condition(inner)?),
+            Condition::And(left, right) => {
+                if !self.evaluate_condition(left)? {
+                    return Ok(false);
+                }
+                self.evaluate_condition(right)
+            }
+            Condition::Or(left, right) => {
+                if self.evaluate_condition(left)? {
+                    return Ok(true);
+                }
+                self.evaluate_condition(right)
+            }
+        }
+    }
+
+    fn compare_values(
+        &self,
+        left: Value,
+        operator: ComparisonOperator,
+        right: Value,
+    ) -> Result<bool, ExecutionError> {
+        match operator {
+            ComparisonOperator::Equal => Ok(left == right),
+            ComparisonOperator::NotEqual => Ok(left != right),
+            ComparisonOperator::Less
+            | ComparisonOperator::LessOrEqual
+            | ComparisonOperator::Greater
+            | ComparisonOperator::GreaterOrEqual => {
+                let left = self.expect_text(left, "ordered comparison")?;
+                let right = self.expect_text(right, "ordered comparison")?;
+                let ordering = left.cmp(&right);
+                Ok(match operator {
+                    ComparisonOperator::Less => ordering == Ordering::Less,
+                    ComparisonOperator::LessOrEqual => ordering != Ordering::Greater,
+                    ComparisonOperator::Greater => ordering == Ordering::Greater,
+                    ComparisonOperator::GreaterOrEqual => ordering != Ordering::Less,
+                    _ => unreachable!(),
+                })
             }
         }
     }
@@ -300,7 +336,6 @@ impl<'a> Runtime<'a> {
             .find(|class| class.name.eq_ignore_ascii_case(class_name))
             .cloned()
             .ok_or_else(|| ExecutionError::UnknownClass(class_name.to_owned()))?;
-
         let mut fields = HashMap::new();
         for field in &class.fields {
             let value = self.evaluate_expression(&field.default)?;

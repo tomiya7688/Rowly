@@ -50,11 +50,13 @@ The Rust core currently provides:
 - A1 cell references such as `A1`, `AA10`
 - rectangular ranges such as `A1:A8` and `A1:B4`
 - atomic range value edits
-- undo/redo edit history
+- row insertion/deletion
+- column insertion/deletion with ragged-row preservation
+- undo/redo for cell and structural edits
 - saved-state-aware dirty tracking
 - process-level open/edit/save API
 - headless CLI smoke entry point
 
-The GUI, Rowly DSL, Luau integration, Python/Excel bridge, type inference, structural row/column operations, and visual grouping are intentionally not implemented yet.
+The GUI, Rowly DSL, Luau integration, Python/Excel bridge, type inference, and visual grouping are intentionally not implemented yet.
 
 For the current architecture and dependency rules, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).

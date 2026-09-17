@@ -2,9 +2,7 @@ use thiserror::Error;
 
 use crate::process::{CellRange, ColumnType};
 
-use super::ast::{
-    ColumnSelector, Condition, Expression, FunctionDefinition, Program, Statement,
-};
+use super::ast::{ColumnSelector, Condition, Expression, FunctionDefinition, Program, Statement};
 
 pub fn parse(source: &str) -> Result<Program, ParseError> {
     Parser::new(source).parse_program()
@@ -71,12 +69,9 @@ impl Parser {
         while let Some(line) = self.lines.get(self.position).cloned() {
             if starts_with_ci(&line.text, "def ") {
                 let function = self.parse_function(&line)?;
-                if functions
-                    .iter()
-                    .any(|existing: &FunctionDefinition| {
-                        existing.name.eq_ignore_ascii_case(&function.name)
-                    })
-                {
+                if functions.iter().any(|existing: &FunctionDefinition| {
+                    existing.name.eq_ignore_ascii_case(&function.name)
+                }) {
                     return Err(parse_error(
                         line.number,
                         format!("duplicate function `{}`", function.name),
@@ -247,7 +242,8 @@ fn parse_statement(line: &SourceLine) -> Result<Statement, ParseError> {
         return parse_cell_statement(line);
     }
     if looks_like_named_call(&line.text) {
-        let Expression::Call { name, arguments } = parse_expression(&line.text, line.number)? else {
+        let Expression::Call { name, arguments } = parse_expression(&line.text, line.number)?
+        else {
             return Err(parse_error(line.number, "expected a function call"));
         };
         return Ok(Statement::Call { name, arguments });

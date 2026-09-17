@@ -13,9 +13,12 @@ use super::ast::{
 const MAX_CALL_DEPTH: usize = 64;
 type ObjectId = usize;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 enum Value {
     Text(String),
+    Integer(i64),
+    Decimal(f64),
+    Boolean(bool),
     Object(ObjectId),
 }
 
@@ -50,8 +53,20 @@ pub enum ExecutionError {
     UnknownMethod { class_name: String, method: String },
     #[error("`{0}` is not an object")]
     ExpectedObject(String),
-    #[error("{context} requires a text value, not an object")]
+    #[error("{context} requires a text value")]
     ExpectedText { context: String },
+    #[error("cannot convert {value_type} value `{value}` to {target}")]
+    Conversion {
+        value_type: &'static str,
+        value: String,
+        target: &'static str,
+    },
+    #[error("cannot compare {left_type} and {right_type} with `{operator}`")]
+    IncomparableValues {
+        left_type: &'static str,
+        right_type: &'static str,
+        operator: &'static str,
+    },
     #[error("function `{name}` expects {expected} arguments but received {actual}")]
     ArgumentCount {
         name: String,
@@ -73,7 +88,7 @@ pub enum ExecutionError {
     CallDepthExceeded { limit: usize },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 enum Flow {
     Continue,
     Return(Option<Value>),
@@ -111,9 +126,6 @@ impl<'a> Runtime<'a> {
         let mut object_fields = HashMap::new();
         for (name, value) in global {
             match value {
-                Value::Text(value) => {
-                    variables.insert(name, value);
-                }
                 Value::Object(object_id) => {
                     let fields = self
                         .objects
@@ -122,14 +134,18 @@ impl<'a> Runtime<'a> {
                             object
                                 .fields
                                 .iter()
-                                .filter_map(|(field, value)| match value {
-                                    Value::Text(value) => Some((field.clone(), value.clone())),
-                                    Value::Object(_) => None,
+                                .filter_map(|(field, value)| {
+                                    self.scalar_text(value).map(|value| (field.clone(), value))
                                 })
                                 .collect::<HashMap<_, _>>()
                         })
                         .unwrap_or_default();
                     object_fields.insert(name, fields);
+                }
+                value => {
+                    if let Some(value) = self.scalar_text(&value) {
+                        variables.insert(name, value);
+                    }
                 }
             }
         }
@@ -204,7 +220,7 @@ impl<'a> Runtime<'a> {
                 }
                 Statement::SetRangeValue { range, value } => {
                     let value = self.evaluate_expression(value)?;
-                    let value = self.expect_text(value, "cell assignment")?;
+                    let value = self.into_cell_text(value)?;
                     self.document.set_range_value(*range, value.clone())?;
                     self.events.push(ExecutionEvent::RangeValueSet {
                         range: *range,
@@ -280,25 +296,44 @@ impl<'a> Runtime<'a> {
         operator: ComparisonOperator,
         right: Value,
     ) -> Result<bool, ExecutionError> {
-        match operator {
-            ComparisonOperator::Equal => Ok(left == right),
-            ComparisonOperator::NotEqual => Ok(left != right),
-            ComparisonOperator::Less
-            | ComparisonOperator::LessOrEqual
-            | ComparisonOperator::Greater
-            | ComparisonOperator::GreaterOrEqual => {
-                let left = self.expect_text(left, "ordered comparison")?;
-                let right = self.expect_text(right, "ordered comparison")?;
-                let ordering = left.cmp(&right);
-                Ok(match operator {
-                    ComparisonOperator::Less => ordering == Ordering::Less,
-                    ComparisonOperator::LessOrEqual => ordering != Ordering::Greater,
-                    ComparisonOperator::Greater => ordering == Ordering::Greater,
-                    ComparisonOperator::GreaterOrEqual => ordering != Ordering::Less,
-                    _ => unreachable!(),
-                })
-            }
+        use ComparisonOperator::{Equal, Greater, GreaterOrEqual, Less, LessOrEqual, NotEqual};
+
+        if matches!(operator, Equal | NotEqual) {
+            let equal = match (&left, &right) {
+                (Value::Text(left), Value::Text(right)) => left == right,
+                (Value::Integer(left), Value::Integer(right)) => left == right,
+                (Value::Decimal(left), Value::Decimal(right)) => left == right,
+                (Value::Integer(left), Value::Decimal(right)) => (*left as f64) == *right,
+                (Value::Decimal(left), Value::Integer(right)) => *left == (*right as f64),
+                (Value::Boolean(left), Value::Boolean(right)) => left == right,
+                (Value::Object(left), Value::Object(right)) => left == right,
+                _ => false,
+            };
+            return Ok(if matches!(operator, Equal) { equal } else { !equal });
         }
+
+        let ordering = match (&left, &right) {
+            (Value::Text(left), Value::Text(right)) => left.cmp(right),
+            (Value::Integer(left), Value::Integer(right)) => left.cmp(right),
+            (Value::Integer(left), Value::Decimal(right)) => compare_f64(*left as f64, *right),
+            (Value::Decimal(left), Value::Integer(right)) => compare_f64(*left, *right as f64),
+            (Value::Decimal(left), Value::Decimal(right)) => compare_f64(*left, *right),
+            _ => {
+                return Err(ExecutionError::IncomparableValues {
+                    left_type: value_type(&left),
+                    right_type: value_type(&right),
+                    operator: comparison_operator_text(operator),
+                });
+            }
+        };
+
+        Ok(match operator {
+            Less => ordering == Ordering::Less,
+            LessOrEqual => ordering != Ordering::Greater,
+            Greater => ordering == Ordering::Greater,
+            GreaterOrEqual => ordering != Ordering::Less,
+            Equal | NotEqual => unreachable!(),
+        })
     }
 
     fn evaluate_expression(&mut self, expression: &Expression) -> Result<Value, ExecutionError> {
@@ -308,9 +343,13 @@ impl<'a> Runtime<'a> {
                 .lookup_variable(name)
                 .cloned()
                 .ok_or_else(|| ExecutionError::UnknownVariable(name.clone())),
-            Expression::Call { name, arguments } => self
-                .call_function(name, arguments)?
-                .ok_or_else(|| ExecutionError::MissingReturnValue(name.clone())),
+            Expression::Call { name, arguments } => {
+                if let Some(value) = self.call_builtin(name, arguments)? {
+                    return Ok(value);
+                }
+                self.call_function(name, arguments)?
+                    .ok_or_else(|| ExecutionError::MissingReturnValue(name.clone()))
+            }
             Expression::New { class_name } => self.instantiate_class(class_name),
             Expression::Field { target, field } => {
                 let object_id = self.resolve_object(target)?;
@@ -325,6 +364,99 @@ impl<'a> Runtime<'a> {
                 self.call_method(object_id, name, arguments)?
                     .ok_or_else(|| ExecutionError::MissingReturnValue(format!("{target}.{name}")))
             }
+        }
+    }
+
+    fn call_builtin(
+        &mut self,
+        name: &str,
+        arguments: &[Expression],
+    ) -> Result<Option<Value>, ExecutionError> {
+        let target = if name.eq_ignore_ascii_case("integer") {
+            Some("Integer")
+        } else if name.eq_ignore_ascii_case("decimal") {
+            Some("Decimal")
+        } else if name.eq_ignore_ascii_case("boolean") {
+            Some("Boolean")
+        } else if name.eq_ignore_ascii_case("string") {
+            Some("String")
+        } else {
+            None
+        };
+
+        let Some(target) = target else {
+            return Ok(None);
+        };
+        if arguments.len() != 1 {
+            return Err(ExecutionError::ArgumentCount {
+                name: target.to_owned(),
+                expected: 1,
+                actual: arguments.len(),
+            });
+        }
+        let value = self.evaluate_expression(&arguments[0])?;
+        Ok(Some(match target {
+            "Integer" => self.convert_integer(value)?,
+            "Decimal" => self.convert_decimal(value)?,
+            "Boolean" => self.convert_boolean(value)?,
+            "String" => self.convert_string(value)?,
+            _ => unreachable!(),
+        }))
+    }
+
+    fn convert_integer(&self, value: Value) -> Result<Value, ExecutionError> {
+        match value {
+            Value::Integer(value) => Ok(Value::Integer(value)),
+            Value::Text(value) => value
+                .parse::<i64>()
+                .map(Value::Integer)
+                .map_err(|_| conversion_error("String", value, "Integer")),
+            other => Err(conversion_error(
+                value_type(&other),
+                self.describe_value(&other),
+                "Integer",
+            )),
+        }
+    }
+
+    fn convert_decimal(&self, value: Value) -> Result<Value, ExecutionError> {
+        match value {
+            Value::Decimal(value) => Ok(Value::Decimal(value)),
+            Value::Integer(value) => Ok(Value::Decimal(value as f64)),
+            Value::Text(value) => value
+                .parse::<f64>()
+                .ok()
+                .filter(|value| value.is_finite())
+                .map(Value::Decimal)
+                .ok_or_else(|| conversion_error("String", value, "Decimal")),
+            other => Err(conversion_error(
+                value_type(&other),
+                self.describe_value(&other),
+                "Decimal",
+            )),
+        }
+    }
+
+    fn convert_boolean(&self, value: Value) -> Result<Value, ExecutionError> {
+        match value {
+            Value::Boolean(value) => Ok(Value::Boolean(value)),
+            Value::Text(value) if value.eq_ignore_ascii_case("true") => Ok(Value::Boolean(true)),
+            Value::Text(value) if value.eq_ignore_ascii_case("false") => Ok(Value::Boolean(false)),
+            Value::Text(value) => Err(conversion_error("String", value, "Boolean")),
+            other => Err(conversion_error(
+                value_type(&other),
+                self.describe_value(&other),
+                "Boolean",
+            )),
+        }
+    }
+
+    fn convert_string(&self, value: Value) -> Result<Value, ExecutionError> {
+        match value {
+            Value::Object(_) => Err(ExecutionError::ExpectedText {
+                context: "String conversion".to_owned(),
+            }),
+            value => Ok(Value::Text(self.describe_value(&value))),
         }
     }
 
@@ -487,7 +619,7 @@ impl<'a> Runtime<'a> {
     fn resolve_object(&self, variable: &str) -> Result<ObjectId, ExecutionError> {
         match self.lookup_variable(variable) {
             Some(Value::Object(object_id)) => Ok(*object_id),
-            Some(Value::Text(_)) => Err(ExecutionError::ExpectedObject(variable.to_owned())),
+            Some(_) => Err(ExecutionError::ExpectedObject(variable.to_owned())),
             None => Err(ExecutionError::UnknownVariable(variable.to_owned())),
         }
     }
@@ -537,15 +669,40 @@ impl<'a> Runtime<'a> {
     fn expect_text(&self, value: Value, context: &str) -> Result<String, ExecutionError> {
         match value {
             Value::Text(value) => Ok(value),
-            Value::Object(_) => Err(ExecutionError::ExpectedText {
+            _ => Err(ExecutionError::ExpectedText {
                 context: context.to_owned(),
             }),
+        }
+    }
+
+    fn into_cell_text(&self, value: Value) -> Result<String, ExecutionError> {
+        match value {
+            Value::Text(value) => Ok(value),
+            Value::Integer(value) => Ok(value.to_string()),
+            Value::Decimal(value) => Ok(value.to_string()),
+            Value::Boolean(value) => Ok(value.to_string()),
+            Value::Object(_) => Err(ExecutionError::ExpectedText {
+                context: "cell assignment".to_owned(),
+            }),
+        }
+    }
+
+    fn scalar_text(&self, value: &Value) -> Option<String> {
+        match value {
+            Value::Text(value) => Some(value.clone()),
+            Value::Integer(value) => Some(value.to_string()),
+            Value::Decimal(value) => Some(value.to_string()),
+            Value::Boolean(value) => Some(value.to_string()),
+            Value::Object(_) => None,
         }
     }
 
     fn describe_value(&self, value: &Value) -> String {
         match value {
             Value::Text(value) => value.clone(),
+            Value::Integer(value) => value.to_string(),
+            Value::Decimal(value) => value.to_string(),
+            Value::Boolean(value) => value.to_string(),
             Value::Object(object_id) => self
                 .objects
                 .get(*object_id)
@@ -563,6 +720,44 @@ impl<'a> Runtime<'a> {
         self.scopes
             .last_mut()
             .expect("runtime always has at least the global scope")
+    }
+}
+
+fn compare_f64(left: f64, right: f64) -> Ordering {
+    left.partial_cmp(&right)
+        .expect("Rowly DSL decimal values are always finite")
+}
+
+fn value_type(value: &Value) -> &'static str {
+    match value {
+        Value::Text(_) => "String",
+        Value::Integer(_) => "Integer",
+        Value::Decimal(_) => "Decimal",
+        Value::Boolean(_) => "Boolean",
+        Value::Object(_) => "Object",
+    }
+}
+
+fn comparison_operator_text(operator: ComparisonOperator) -> &'static str {
+    match operator {
+        ComparisonOperator::Equal => "=",
+        ComparisonOperator::NotEqual => "!=",
+        ComparisonOperator::Less => "<",
+        ComparisonOperator::LessOrEqual => "<=",
+        ComparisonOperator::Greater => ">",
+        ComparisonOperator::GreaterOrEqual => ">=",
+    }
+}
+
+fn conversion_error(
+    value_type: &'static str,
+    value: String,
+    target: &'static str,
+) -> ExecutionError {
+    ExecutionError::Conversion {
+        value_type,
+        value,
+        target,
     }
 }
 

@@ -2,7 +2,10 @@ use thiserror::Error;
 
 use crate::process::{CellRange, ColumnType};
 
-use super::ast::{ColumnSelector, Condition, Expression, FunctionDefinition, Program, Statement};
+use super::ast::{
+    ClassDefinition, ColumnSelector, Condition, Expression, FieldDefinition, FunctionDefinition,
+    Program, Statement,
+};
 
 pub fn parse(source: &str) -> Result<Program, ParseError> {
     Parser::new(source).parse_program()
@@ -58,15 +61,28 @@ impl Parser {
                 })
             })
             .collect();
-
         Self { lines, position: 0 }
     }
 
     fn parse_program(mut self) -> Result<Program, ParseError> {
+        let mut classes = Vec::new();
         let mut functions = Vec::new();
         let mut statements = Vec::new();
 
         while let Some(line) = self.lines.get(self.position).cloned() {
+            if starts_with_ci(&line.text, "class ") {
+                let class = self.parse_class(&line)?;
+                if classes.iter().any(|existing: &ClassDefinition| {
+                    existing.name.eq_ignore_ascii_case(&class.name)
+                }) {
+                    return Err(parse_error(
+                        line.number,
+                        format!("duplicate class `{}`", class.name),
+                    ));
+                }
+                classes.push(class);
+                continue;
+            }
             if starts_with_ci(&line.text, "def ") {
                 let function = self.parse_function(&line)?;
                 if functions.iter().any(|existing: &FunctionDefinition| {
@@ -86,13 +102,72 @@ impl Parser {
             if is_end_def(&line.text) {
                 return Err(parse_error(line.number, "unexpected `End Def`"));
             }
+            if is_end_class(&line.text) {
+                return Err(parse_error(line.number, "unexpected `End Class`"));
+            }
             statements.push(self.parse_statement_or_if()?);
         }
 
         Ok(Program {
+            classes,
             functions,
             statements,
         })
+    }
+
+    fn parse_class(&mut self, line: &SourceLine) -> Result<ClassDefinition, ParseError> {
+        let name = strip_prefix_ci(&line.text, "class ")
+            .map(str::trim)
+            .ok_or_else(|| parse_error(line.number, "expected `Class name`"))?;
+        validate_identifier(name, line.number)?;
+        let name = name.to_owned();
+        self.position += 1;
+
+        let mut fields = Vec::new();
+        let mut methods = Vec::new();
+        while let Some(current) = self.lines.get(self.position).cloned() {
+            if is_end_class(&current.text) {
+                self.position += 1;
+                return Ok(ClassDefinition {
+                    name,
+                    fields,
+                    methods,
+                });
+            }
+            if starts_with_ci(&current.text, "field ") {
+                let field = parse_field_definition(&current)?;
+                if fields.iter().any(|existing: &FieldDefinition| {
+                    existing.name.eq_ignore_ascii_case(&field.name)
+                }) {
+                    return Err(parse_error(
+                        current.number,
+                        format!("duplicate field `{}`", field.name),
+                    ));
+                }
+                fields.push(field);
+                self.position += 1;
+                continue;
+            }
+            if starts_with_ci(&current.text, "def ") {
+                let method = self.parse_function(&current)?;
+                if methods.iter().any(|existing: &FunctionDefinition| {
+                    existing.name.eq_ignore_ascii_case(&method.name)
+                }) {
+                    return Err(parse_error(
+                        current.number,
+                        format!("duplicate method `{}`", method.name),
+                    ));
+                }
+                methods.push(method);
+                continue;
+            }
+            return Err(parse_error(
+                current.number,
+                "class bodies only support `Field` and `Def` declarations",
+            ));
+        }
+
+        Err(parse_error(line.number, "missing `End Class`"))
     }
 
     fn parse_function(&mut self, line: &SourceLine) -> Result<FunctionDefinition, ParseError> {
@@ -111,7 +186,7 @@ impl Parser {
             .lines
             .get(self.position)
             .cloned()
-            .expect("parser position is within the source");
+            .expect("parser position is within source");
 
         if starts_with_ci(&line.text, "if ") {
             let condition = parse_if_condition(&line)?;
@@ -119,11 +194,10 @@ impl Parser {
             let body = self.parse_block(BlockEnd::If, line.number)?;
             return Ok(Statement::If { condition, body });
         }
-
-        if starts_with_ci(&line.text, "def ") {
+        if starts_with_ci(&line.text, "def ") || starts_with_ci(&line.text, "class ") {
             return Err(parse_error(
                 line.number,
-                "function definitions are only allowed at the top level",
+                "definitions are only allowed at the top level or as class methods",
             ));
         }
 
@@ -138,7 +212,6 @@ impl Parser {
         opened_at: usize,
     ) -> Result<Vec<Statement>, ParseError> {
         let mut statements = Vec::new();
-
         while let Some(line) = self.lines.get(self.position).cloned() {
             if is_end_if(&line.text) {
                 if expected_end != BlockEnd::If {
@@ -154,9 +227,11 @@ impl Parser {
                 self.position += 1;
                 return Ok(statements);
             }
+            if is_end_class(&line.text) {
+                return Err(parse_error(line.number, "unexpected `End Class`"));
+            }
             statements.push(self.parse_statement_or_if()?);
         }
-
         let expected = match expected_end {
             BlockEnd::If => "End If",
             BlockEnd::Function => "End Def",
@@ -166,9 +241,8 @@ impl Parser {
 }
 
 fn parse_function_signature(line: &SourceLine) -> Result<(String, Vec<String>), ParseError> {
-    let Some(signature) = strip_prefix_ci(&line.text, "def ") else {
-        return Err(parse_error(line.number, "expected `Def name(...)`"));
-    };
+    let signature = strip_prefix_ci(&line.text, "def ")
+        .ok_or_else(|| parse_error(line.number, "expected `Def name(...)`"))?;
     let (name, arguments) = parse_named_call(signature.trim(), line.number)?;
     let parameters = split_arguments(arguments, line.number)?
         .into_iter()
@@ -178,7 +252,6 @@ fn parse_function_signature(line: &SourceLine) -> Result<(String, Vec<String>), 
             Ok(parameter.to_owned())
         })
         .collect::<Result<Vec<_>, ParseError>>()?;
-
     for (index, parameter) in parameters.iter().enumerate() {
         if parameters[..index]
             .iter()
@@ -190,8 +263,21 @@ fn parse_function_signature(line: &SourceLine) -> Result<(String, Vec<String>), 
             ));
         }
     }
-
     Ok((name, parameters))
+}
+
+fn parse_field_definition(line: &SourceLine) -> Result<FieldDefinition, ParseError> {
+    let rest = strip_prefix_ci(&line.text, "field ")
+        .ok_or_else(|| parse_error(line.number, "expected `Field name = value`"))?;
+    let Some((name, value)) = split_top_level_once(rest, '=') else {
+        return Err(parse_error(line.number, "expected `Field name = value`"));
+    };
+    let name = name.trim();
+    validate_identifier(name, line.number)?;
+    Ok(FieldDefinition {
+        name: name.to_owned(),
+        default: parse_expression(value.trim(), line.number)?,
+    })
 }
 
 fn parse_if_condition(line: &SourceLine) -> Result<Condition, ParseError> {
@@ -199,29 +285,25 @@ fn parse_if_condition(line: &SourceLine) -> Result<Condition, ParseError> {
     if !lower.starts_with("if ") || !lower.ends_with(" then") {
         return Err(parse_error(line.number, "expected `If <condition> Then`"));
     }
-
     let condition = line.text[3..line.text.len() - 5].trim();
-
     if starts_with_ci(condition, "this.worksheet.column(") {
         let (selector, remainder) = parse_column_target(condition, line.number)?;
-
         if eq_ci(remainder, ".exists") {
             return Ok(Condition::ColumnExists { selector });
         }
-
         if let Some(rest) = strip_prefix_ci(remainder, ".title") {
-            let expected = parse_assignment_expression(rest, line.number)?;
-            return Ok(Condition::ColumnTitleEquals { selector, expected });
+            return Ok(Condition::ColumnTitleEquals {
+                selector,
+                expected: parse_assignment_expression(rest, line.number)?,
+            });
         }
     }
-
     let Some((left, right)) = split_top_level_once(condition, '=') else {
         return Err(parse_error(
             line.number,
             "supported conditions are column `.Exists`, column `.Title = ...`, and value equality",
         ));
     };
-
     Ok(Condition::ValueEquals {
         left: parse_expression(left.trim(), line.number)?,
         right: parse_expression(right.trim(), line.number)?,
@@ -241,15 +323,23 @@ fn parse_statement(line: &SourceLine) -> Result<Statement, ParseError> {
     if starts_with_ci(&line.text, "this.worksheet.editor.cell(") {
         return parse_cell_statement(line);
     }
-    if looks_like_named_call(&line.text) {
-        let Expression::Call { name, arguments } = parse_expression(&line.text, line.number)?
-        else {
-            return Err(parse_error(line.number, "expected a function call"));
-        };
-        return Ok(Statement::Call { name, arguments });
+    if let Some(statement) = parse_field_assignment(line)? {
+        return Ok(statement);
     }
-
-    Err(parse_error(line.number, "unsupported statement"))
+    let expression = parse_expression(&line.text, line.number)?;
+    match expression {
+        Expression::Call { name, arguments } => Ok(Statement::Call { name, arguments }),
+        Expression::MethodCall {
+            target,
+            name,
+            arguments,
+        } => Ok(Statement::MethodCall {
+            target,
+            name,
+            arguments,
+        }),
+        _ => Err(parse_error(line.number, "unsupported statement")),
+    }
 }
 
 fn parse_let_statement(line: &SourceLine) -> Result<Statement, ParseError> {
@@ -277,9 +367,24 @@ fn parse_return_statement(line: &SourceLine) -> Result<Statement, ParseError> {
     })
 }
 
+fn parse_field_assignment(line: &SourceLine) -> Result<Option<Statement>, ParseError> {
+    let Some((left, right)) = split_top_level_once(&line.text, '=') else {
+        return Ok(None);
+    };
+    let Some((target, field)) = split_member(left.trim()) else {
+        return Ok(None);
+    };
+    validate_identifier(target, line.number)?;
+    validate_identifier(field, line.number)?;
+    Ok(Some(Statement::SetField {
+        target: target.to_owned(),
+        field: field.to_owned(),
+        value: parse_expression(right.trim(), line.number)?,
+    }))
+}
+
 fn parse_column_statement(line: &SourceLine) -> Result<Statement, ParseError> {
     let (selector, remainder) = parse_column_target(&line.text, line.number)?;
-
     if let Some(rest) = strip_prefix_ci(remainder, ".type") {
         let value = parse_assignment_scalar(rest, line.number)?;
         let column_type = parse_column_type(&value).ok_or_else(|| {
@@ -293,11 +398,9 @@ fn parse_column_statement(line: &SourceLine) -> Result<Statement, ParseError> {
             column_type,
         });
     }
-
     if eq_ci(remainder, ".check.japanese") {
         return Ok(Statement::CheckJapanese { selector });
     }
-
     Err(parse_error(
         line.number,
         "supported column statements are `.Type = ...` and `.Check.Japanese`",
@@ -313,22 +416,19 @@ fn parse_cell_statement(line: &SourceLine) -> Result<Statement, ParseError> {
             "expected `.Value.Set = <value>` after Cell(...) ",
         ));
     }
-
     let rest = &remainder[".value.set".len()..];
     let value = parse_assignment_expression(rest, line.number)?;
     let range_text = parse_range_argument(argument, line.number)?;
     let range = range_text
         .parse::<CellRange>()
         .map_err(|error| parse_error(line.number, error.to_string()))?;
-
     Ok(Statement::SetRangeValue { range, value })
 }
 
 fn parse_column_target(text: &str, line: usize) -> Result<(ColumnSelector, &str), ParseError> {
     let prefix = "this.worksheet.column(";
     let (argument, remainder) = parse_call(text, prefix, line)?;
-    let selector = parse_column_selector(argument, line)?;
-    Ok((selector, remainder))
+    Ok((parse_column_selector(argument, line)?, remainder))
 }
 
 fn parse_call<'a>(
@@ -339,7 +439,6 @@ fn parse_call<'a>(
     if !starts_with_ci(text, prefix) {
         return Err(parse_error(line, format!("expected `{prefix}...`")));
     }
-
     let start = prefix.len();
     let close = find_closing_parenthesis(text, start)
         .ok_or_else(|| parse_error(line, "missing closing `)`"))?;
@@ -348,23 +447,110 @@ fn parse_call<'a>(
 
 fn parse_named_call(text: &str, line: usize) -> Result<(String, &str), ParseError> {
     let Some(open) = text.find('(') else {
-        return Err(parse_error(line, "expected function call parentheses"));
+        return Err(parse_error(line, "expected call parentheses"));
     };
     let name = text[..open].trim();
     validate_identifier(name, line)?;
     let close = find_closing_parenthesis(text, open + 1)
         .ok_or_else(|| parse_error(line, "missing closing `)`"))?;
     if !text[close + 1..].trim().is_empty() {
-        return Err(parse_error(line, "unexpected text after function call"));
+        return Err(parse_error(line, "unexpected text after call"));
     }
     Ok((name.to_owned(), &text[open + 1..close]))
+}
+
+fn parse_expression(text: &str, line: usize) -> Result<Expression, ParseError> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err(parse_error(line, "expected a value"));
+    }
+    if text.starts_with('"') {
+        return Ok(Expression::Literal(parse_scalar(text, line)?));
+    }
+    if let Some(rest) = strip_prefix_ci(text, "new ") {
+        let (class_name, arguments) = parse_named_call(rest.trim(), line)?;
+        if !split_arguments(arguments, line)?.is_empty() {
+            return Err(parse_error(
+                line,
+                "class construction does not accept arguments yet",
+            ));
+        }
+        return Ok(Expression::New { class_name });
+    }
+    if let Some((target, member)) = split_member(text) {
+        validate_identifier(target, line)?;
+        if looks_like_named_call(member) {
+            let (name, arguments) = parse_named_call(member, line)?;
+            let arguments = parse_argument_expressions(arguments, line)?;
+            return Ok(Expression::MethodCall {
+                target: target.to_owned(),
+                name,
+                arguments,
+            });
+        }
+        validate_identifier(member, line)?;
+        return Ok(Expression::Field {
+            target: target.to_owned(),
+            field: member.to_owned(),
+        });
+    }
+    if looks_like_named_call(text) {
+        let (name, arguments) = parse_named_call(text, line)?;
+        return Ok(Expression::Call {
+            name,
+            arguments: parse_argument_expressions(arguments, line)?,
+        });
+    }
+    if eq_ci(text, "true") || eq_ci(text, "false") {
+        return Ok(Expression::Literal(text.to_ascii_lowercase()));
+    }
+    if is_identifier(text) {
+        return Ok(Expression::Variable(text.to_owned()));
+    }
+    Ok(Expression::Literal(text.to_owned()))
+}
+
+fn parse_argument_expressions(text: &str, line: usize) -> Result<Vec<Expression>, ParseError> {
+    split_arguments(text, line)?
+        .into_iter()
+        .map(|argument| parse_expression(argument.trim(), line))
+        .collect()
+}
+
+fn split_member(text: &str) -> Option<(&str, &str)> {
+    let mut depth = 0usize;
+    let mut quoted = false;
+    let mut escaped = false;
+    for (index, character) in text.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if character == '\\' && quoted {
+            escaped = true;
+            continue;
+        }
+        if character == '"' {
+            quoted = !quoted;
+            continue;
+        }
+        if quoted {
+            continue;
+        }
+        match character {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            '.' if depth == 0 => return Some((text[..index].trim(), text[index + 1..].trim())),
+            _ => {}
+        }
+    }
+    None
 }
 
 fn find_closing_parenthesis(text: &str, start: usize) -> Option<usize> {
     let mut quoted = false;
     let mut escaped = false;
     let mut depth = 0usize;
-
     for (offset, character) in text[start..].char_indices() {
         if escaped {
             escaped = false;
@@ -381,7 +567,6 @@ fn find_closing_parenthesis(text: &str, start: usize) -> Option<usize> {
         if quoted {
             continue;
         }
-
         match character {
             '(' => depth += 1,
             ')' if depth == 0 => return Some(start + offset),
@@ -389,7 +574,6 @@ fn find_closing_parenthesis(text: &str, start: usize) -> Option<usize> {
             _ => {}
         }
     }
-
     None
 }
 
@@ -398,7 +582,6 @@ fn parse_column_selector(argument: &str, line: usize) -> Result<ColumnSelector, 
     if argument.starts_with('"') {
         return Ok(ColumnSelector::Header(parse_scalar(argument, line)?));
     }
-
     let one_based = argument.parse::<usize>().map_err(|_| {
         parse_error(
             line,
@@ -416,11 +599,9 @@ fn parse_range_argument(argument: &str, line: usize) -> Result<String, ParseErro
     if argument.starts_with('"') {
         return parse_scalar(argument, line);
     }
-
     if let Some((start, end)) = split_once_ci(argument, " to ") {
         return Ok(format!("{}:{}", start.trim(), end.trim()));
     }
-
     if argument.is_empty() {
         return Err(parse_error(line, "Cell(...) requires an A1 cell or range"));
     }
@@ -429,43 +610,18 @@ fn parse_range_argument(argument: &str, line: usize) -> Result<String, ParseErro
 
 fn parse_assignment_scalar(text: &str, line: usize) -> Result<String, ParseError> {
     let text = text.trim();
-    let Some(value) = text.strip_prefix('=') else {
-        return Err(parse_error(line, "expected `=`"));
-    };
+    let value = text
+        .strip_prefix('=')
+        .ok_or_else(|| parse_error(line, "expected `=`"))?;
     parse_scalar(value.trim(), line)
 }
 
 fn parse_assignment_expression(text: &str, line: usize) -> Result<Expression, ParseError> {
     let text = text.trim();
-    let Some(value) = text.strip_prefix('=') else {
-        return Err(parse_error(line, "expected `=`"));
-    };
+    let value = text
+        .strip_prefix('=')
+        .ok_or_else(|| parse_error(line, "expected `=`"))?;
     parse_expression(value.trim(), line)
-}
-
-fn parse_expression(text: &str, line: usize) -> Result<Expression, ParseError> {
-    let text = text.trim();
-    if text.is_empty() {
-        return Err(parse_error(line, "expected a value"));
-    }
-    if text.starts_with('"') {
-        return Ok(Expression::Literal(parse_scalar(text, line)?));
-    }
-    if looks_like_named_call(text) {
-        let (name, arguments) = parse_named_call(text, line)?;
-        let arguments = split_arguments(arguments, line)?
-            .into_iter()
-            .map(|argument| parse_expression(argument.trim(), line))
-            .collect::<Result<Vec<_>, _>>()?;
-        return Ok(Expression::Call { name, arguments });
-    }
-    if eq_ci(text, "true") || eq_ci(text, "false") {
-        return Ok(Expression::Literal(text.to_ascii_lowercase()));
-    }
-    if is_identifier(text) {
-        return Ok(Expression::Variable(text.to_owned()));
-    }
-    Ok(Expression::Literal(text.to_owned()))
 }
 
 fn parse_scalar(text: &str, line: usize) -> Result<String, ParseError> {
@@ -476,14 +632,12 @@ fn parse_scalar(text: &str, line: usize) -> Result<String, ParseError> {
     if !text.starts_with('"') {
         return Ok(text.to_owned());
     }
-
     let mut characters = text.chars();
     let _ = characters.next();
     let mut value = String::new();
     let mut escaped = false;
     let mut closed = false;
     let mut trailing = String::new();
-
     for character in characters {
         if closed {
             trailing.push(character);
@@ -510,7 +664,6 @@ fn parse_scalar(text: &str, line: usize) -> Result<String, ParseError> {
         }
         value.push(character);
     }
-
     if escaped || !closed || !trailing.trim().is_empty() {
         return Err(parse_error(line, "invalid quoted string"));
     }
@@ -521,13 +674,11 @@ fn split_arguments(text: &str, line: usize) -> Result<Vec<&str>, ParseError> {
     if text.trim().is_empty() {
         return Ok(Vec::new());
     }
-
     let mut arguments = Vec::new();
     let mut start = 0usize;
     let mut depth = 0usize;
     let mut quoted = false;
     let mut escaped = false;
-
     for (index, character) in text.char_indices() {
         if escaped {
             escaped = false;
@@ -544,17 +695,14 @@ fn split_arguments(text: &str, line: usize) -> Result<Vec<&str>, ParseError> {
         if quoted {
             continue;
         }
-
         match character {
             '(' => depth += 1,
-            ')' if depth == 0 => {
-                return Err(parse_error(line, "unexpected `)` in argument list"));
-            }
+            ')' if depth == 0 => return Err(parse_error(line, "unexpected `)` in argument list")),
             ')' => depth -= 1,
             ',' if depth == 0 => {
                 let argument = text[start..index].trim();
                 if argument.is_empty() {
-                    return Err(parse_error(line, "empty function argument"));
+                    return Err(parse_error(line, "empty argument"));
                 }
                 arguments.push(argument);
                 start = index + character.len_utf8();
@@ -562,17 +710,15 @@ fn split_arguments(text: &str, line: usize) -> Result<Vec<&str>, ParseError> {
             _ => {}
         }
     }
-
     if quoted {
         return Err(parse_error(line, "unterminated quoted string"));
     }
     if depth != 0 {
         return Err(parse_error(line, "unbalanced parentheses in argument list"));
     }
-
     let argument = text[start..].trim();
     if argument.is_empty() {
-        return Err(parse_error(line, "empty function argument"));
+        return Err(parse_error(line, "empty argument"));
     }
     arguments.push(argument);
     Ok(arguments)
@@ -582,7 +728,6 @@ fn split_top_level_once(text: &str, target: char) -> Option<(&str, &str)> {
     let mut depth = 0usize;
     let mut quoted = false;
     let mut escaped = false;
-
     for (index, character) in text.char_indices() {
         if escaped {
             escaped = false;
@@ -599,7 +744,6 @@ fn split_top_level_once(text: &str, target: char) -> Option<(&str, &str)> {
         if quoted {
             continue;
         }
-
         match character {
             '(' => depth += 1,
             ')' => depth = depth.saturating_sub(1),
@@ -609,7 +753,6 @@ fn split_top_level_once(text: &str, target: char) -> Option<(&str, &str)> {
             _ => {}
         }
     }
-
     None
 }
 
@@ -632,12 +775,13 @@ fn looks_like_named_call(text: &str) -> bool {
 
 fn validate_identifier(identifier: &str, line: usize) -> Result<(), ParseError> {
     if is_identifier(identifier) {
-        return Ok(());
+        Ok(())
+    } else {
+        Err(parse_error(
+            line,
+            format!("invalid identifier `{identifier}`"),
+        ))
     }
-    Err(parse_error(
-        line,
-        format!("invalid identifier `{identifier}`"),
-    ))
 }
 
 fn is_identifier(identifier: &str) -> bool {
@@ -657,6 +801,10 @@ fn is_end_if(text: &str) -> bool {
 
 fn is_end_def(text: &str) -> bool {
     eq_ci(text, "end def") || eq_ci(text, "enddef")
+}
+
+fn is_end_class(text: &str) -> bool {
+    eq_ci(text, "end class") || eq_ci(text, "endclass")
 }
 
 fn is_rem_comment(text: &str) -> bool {

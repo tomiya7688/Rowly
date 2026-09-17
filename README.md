@@ -59,26 +59,31 @@ The Rust core currently provides:
 - Japanese-character checks that report matching/non-matching cells by A1 reference
 - a BASIC-style Rowly DSL parser/executor over the process API
 - Rowly DSL variables, functions, arguments, return values, local call scopes, and equality conditions
+- Rowly DSL classes, instances, fields, methods, `Self`, and `New ClassName()` construction
 - process-level open/edit/save API
 - headless CLI smoke entry point
 
 Column type checks are semantic validation only. They never rewrite canonical CSV cell text.
 
-The Rowly DSL supports `If ... Then` / `End If`, `Let`, `Def ...` / `End Def`, `Return`, function calls, column selection by 1-based index or header name, column type validation, Japanese checks, and range value assignment. For example:
+The Rowly DSL supports `If ... Then` / `End If`, `Let`, `Def ...` / `End Def`, `Return`, functions, classes, fields, methods, column checks, and range value assignment. For example:
 
 ```text
-Def Fill(value)
-    If This.Worksheet.Column(1).Title = "名前" Then
-        This.Worksheet.Editor.Cell(A2 To A8).Value.Set = value
-    End If
-    Return value
-End Def
+Class Formatter
+    Field replacement = "佐藤"
 
-Let result = Fill("佐藤")
+    Def Value()
+        Return Self.replacement
+    End Def
+End Class
+
+Let formatter = New Formatter()
+This.Worksheet.Editor.Cell(A2 To A8).Value.Set = formatter.Value()
 ```
 
-Function calls use local scopes for parameters and `Let` bindings while retaining read access to outer/global variables. `Cell("A2:A8")` is also accepted. DSL actions route through the same process APIs as future GUI and scripting adapters; the DSL does not access CSV codecs directly.
+Object variables hold runtime-only references; class instances never become an alternative source of truth for CSV data. Methods can mutate their own fields through `Self.field`, and aliases share the same instance identity. Object values cannot be written directly into CSV cells: cell edits still require textual values and route through the process API.
 
-The GUI, Rowly DSL class support and richer expressions, Luau integration, Python/Excel bridge, persistent column metadata/type declarations, broader type inference, and visual grouping are intentionally not implemented yet.
+Function and method calls use local scopes for parameters and `Let` bindings while retaining read access to outer/global variables. `Cell("A2:A8")` is also accepted. DSL actions route through the same process APIs as future GUI and scripting adapters; the DSL does not access CSV codecs directly.
+
+The GUI, richer Rowly DSL operators/expressions, Luau integration, Python/Excel bridge, persistent column metadata/type declarations, broader type inference, and visual grouping are intentionally not implemented yet.
 
 For the current architecture and dependency rules, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).

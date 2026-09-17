@@ -34,7 +34,7 @@ Responsibilities:
 Non-responsibilities:
 - UI state
 - visual grouping
-- scripting syntax
+- scripting syntax or runtime objects
 - Excel-specific concepts
 - inferred display types
 
@@ -53,7 +53,7 @@ Responsibilities:
 Non-responsibilities:
 - CSV byte parsing/encoding details
 - rendering
-- DSL parsing/evaluation
+- DSL parsing/evaluation or object lifetime
 - Excel implementation details
 
 As the application grows, large operations should be decomposed into small processing modules. Orchestrators should coordinate operations rather than absorb their implementation.
@@ -64,16 +64,21 @@ As the application grows, large operations should be decomposed into small proce
 
 Current responsibilities:
 - parse line-oriented BASIC-style control flow (`If ... Then` / `End If`)
-- parse `Let`, top-level `Def ...` / `End Def`, function calls, arguments, and `Return`
-- evaluate literal, variable, and function-call expressions plus equality conditions
+- parse `Let`, top-level `Def ...` / `End Def`, calls, arguments, and `Return`
+- parse `Class ...` / `End Class`, `Field`, methods, `New ClassName()`, member reads/writes, and method calls
+- evaluate literal, variable, call, object, field, and method expressions plus equality conditions
 - maintain a global scope and per-call local scopes; parameters and local `Let` bindings do not overwrite outer variables
-- propagate `Return` through nested control flow and require a value when a function call is used as an expression
-- cap function call depth to prevent runaway recursion
+- inject `Self` into method scope only while a method is executing
+- keep class instances and object identity entirely inside the DSL runtime
+- propagate `Return` through nested control flow and require a value when a call is used as an expression
+- cap function/method call depth to prevent runaway recursion
 - map object-path commands such as `This.Worksheet.Column(...)` and `This.Worksheet.Editor.Cell(...)` to process APIs
-- expose execution reports for semantic checks, variable assignments, and function calls
+- expose execution reports for semantic checks, assignments, calls, and object field state
 - preserve top-to-bottom macro execution semantics
 
-Future class support and richer expressions should extend the DSL AST/runtime rather than embedding CSV/data-layer knowledge into the parser.
+Runtime objects are not part of the canonical CSV model. Object aliases may share runtime instance identity, but any effect on CSV must still go through process APIs. CSV cell assignments require text, so object references cannot be silently serialized into canonical data.
+
+Constructors with arguments, inheritance, and richer operators remain deferred language features.
 
 DSL column indices are 1-based because they are user-facing. Process/data indices remain zero-based.
 

@@ -7,7 +7,7 @@ Rowly is a CSV-first editor. The architecture must make it difficult for present
 ## Dependency direction
 
 ```text
-future UI / DSL / Luau / Python adapters
+UI / Rowly DSL / future Luau / Python adapters
                 |
                 v
         process/application
@@ -17,8 +17,9 @@ future UI / DSL / Luau / Python adapters
 ```
 
 The `data` module owns canonical table storage and CSV/encoding mechanics.
-The `process` module orchestrates user-visible operations such as open, edit, and save.
-Future UI and scripting adapters call the process boundary; they do not call CSV codecs directly.
+The `process` module orchestrates user-visible operations such as open, edit, save, addressing, and column interpretation checks.
+The `rowly_dsl` module parses/evaluates Rowly commands by calling the process boundary; it does not call CSV codecs directly.
+Future UI, Luau, and Python adapters follow the same dependency rule.
 
 This borrows the responsibility and dependency-direction principles from UPD Commander Base Design without mechanically reproducing its class-oriented Commander/Messenger structure in Rust. Rust modules, visibility, and narrow APIs are used to enforce the same intent with less ceremony.
 
@@ -45,6 +46,8 @@ Responsibilities:
 - coordinate open/edit/save flows
 - expose stable operations to UI and scripting adapters
 - track transient session state such as dirty state and source path
+- provide A1/range editing and structural row/column operations
+- provide explicit header lookup and non-mutating column semantic checks
 - translate low-level data errors into application-facing errors
 
 Non-responsibilities:
@@ -54,6 +57,20 @@ Non-responsibilities:
 - Excel implementation details
 
 As the application grows, large operations should be decomposed into small processing modules. Orchestrators should coordinate operations rather than absorb their implementation.
+
+## Rowly DSL adapter
+
+`rowly_dsl` is a user-facing macro language adapter over `process`.
+
+Initial responsibilities:
+- parse line-oriented BASIC-style control flow (`If ... Then` / `End If`)
+- map object-path commands such as `This.Worksheet.Column(...)` and `This.Worksheet.Editor.Cell(...)` to process APIs
+- expose execution reports for semantic checks
+- preserve top-to-bottom macro execution semantics
+
+The DSL AST is the extension point for later `def`, class, return, variables, and richer expressions. Those features should not be implemented by embedding CSV/data-layer knowledge into the parser.
+
+DSL column indices are 1-based because they are user-facing. Process/data indices remain zero-based.
 
 ## Encoding policy
 
@@ -74,7 +91,6 @@ Exact byte-for-byte round-tripping is not an architectural requirement. If futur
 ## Future boundaries
 
 - `ui`: concrete viewer/editor toolkit and rendering; depends on process only.
-- `rowly_dsl`: parser/evaluator that maps commands to process operations.
 - `luau`: embedded general-purpose scripting adapter over the same process API.
 - `excel_python`: Python-backed Excel import/export adapter. Excel is an interchange path, not a replacement source of truth for an opened CSV.
 

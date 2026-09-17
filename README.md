@@ -57,11 +57,25 @@ The Rust core currently provides:
 - first-row header lookup with duplicate-header detection
 - non-mutating column interpretation checks for `String`, `Integer`, `Decimal`, and `Boolean`
 - Japanese-character checks that report matching/non-matching cells by A1 reference
+- an initial BASIC-style Rowly DSL parser/executor over the process API
 - process-level open/edit/save API
 - headless CLI smoke entry point
 
 Column type checks are semantic validation only. They never rewrite canonical CSV cell text.
 
-The GUI, Rowly DSL, Luau integration, Python/Excel bridge, persistent column metadata/type declarations, broader type inference, and visual grouping are intentionally not implemented yet.
+The first Rowly DSL slice supports `If ... Then` / `End If`, column selection by 1-based index or header name, column type validation, Japanese checks, and range value assignment. For example:
+
+```text
+If This.Worksheet.Column(1).Title = "名前" Then
+    This.Worksheet.Column(1).Type = String
+    This.Worksheet.Column(1).Check.Japanese
+End If
+
+This.Worksheet.Editor.Cell(A2 To A8).Value.Set = 8
+```
+
+`Cell("A2:A8")` is also accepted. DSL actions route through the same process APIs as future GUI and scripting adapters; the DSL does not access CSV codecs directly.
+
+The GUI, `def`/class/return support in Rowly DSL, Luau integration, Python/Excel bridge, persistent column metadata/type declarations, broader type inference, and visual grouping are intentionally not implemented yet.
 
 For the current architecture and dependency rules, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).

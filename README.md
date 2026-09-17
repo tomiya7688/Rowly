@@ -54,9 +54,14 @@ The Rust core currently provides:
 - column insertion/deletion with ragged-row preservation
 - undo/redo for cell and structural edits
 - saved-state-aware dirty tracking
+- first-row header lookup with duplicate-header detection
+- non-mutating column interpretation checks for `String`, `Integer`, `Decimal`, and `Boolean`
+- Japanese-character checks that report matching/non-matching cells by A1 reference
 - process-level open/edit/save API
 - headless CLI smoke entry point
 
-The GUI, Rowly DSL, Luau integration, Python/Excel bridge, type inference, and visual grouping are intentionally not implemented yet.
+Column type checks are semantic validation only. They never rewrite canonical CSV cell text.
+
+The GUI, Rowly DSL, Luau integration, Python/Excel bridge, persistent column metadata/type declarations, broader type inference, and visual grouping are intentionally not implemented yet.
 
 For the current architecture and dependency rules, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).

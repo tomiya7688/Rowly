@@ -6,7 +6,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Name: Rowly
 - Purpose: CSV-first table viewer/editor. CSV remains the canonical data source.
 - Main language/runtime: Rust.
-- Adapters: Rowly DSL is being implemented in Rust; Luau scripting is planned; Python is planned for Excel I/O.
+- Adapters: Rowly DSL is implemented in Rust; Luau scripting is planned; Python is planned for Excel I/O.
 
 ## Source of Truth
 - Product invariants: `README.md`
@@ -48,7 +48,9 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Column type checks are non-mutating interpretation/validation. `String`, numeric, and boolean checks must not rewrite canonical CSV text.
 - Duplicate header names are ambiguous for singular lookup and must be reported instead of silently selecting one.
 - Rowly DSL is an adapter over `process`; it must not call `data` or CSV codecs directly.
-- The DSL is top-to-bottom macro execution. Initial syntax is intentionally small and line-oriented; add `def`, class, return, and richer expressions by extending the AST rather than bypassing it.
+- The DSL is top-to-bottom macro execution. Functions and variables extend the AST/runtime; future class/richer-expression work must continue through that same boundary.
+- Function calls use local scopes for parameters and local `Let` bindings while variable lookup may read outer scopes.
+- `Return` exits the current function, including from nested `If` blocks. A function used as a value must return a value.
 - DSL column numbers are 1-based user-facing indices; process/data indices remain zero-based.
 
 ## Validation
@@ -76,12 +78,13 @@ Implemented:
 - process-layer first-row header lookup with duplicate detection
 - non-mutating `String` / `Integer` / `Decimal` / `Boolean` column validation
 - Japanese-character column checks with A1 result references
-- initial Rowly DSL AST/parser/executor for `If`, column checks, and range value assignment
+- Rowly DSL AST/parser/runtime for `If`, `Let`, `Def`, arguments, function calls, `Return`, equality conditions, column checks, and range value assignment
+- local function scopes with global/outer reads and execution event reporting
 - headless CLI smoke entry point
 
 Not implemented yet:
 - GUI
-- Rowly DSL `def` / class / return / variables / general expressions
+- Rowly DSL class support and richer/general expressions
 - Luau
 - Python/Excel bridge
 - persistent column metadata/type declarations

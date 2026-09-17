@@ -60,15 +60,20 @@ As the application grows, large operations should be decomposed into small proce
 
 ## Rowly DSL adapter
 
-`rowly_dsl` is a user-facing macro language adapter over `process`.
+`rowly_dsl` is a user-facing macro language adapter over `process`. Its implementation is split into AST, parser, and runtime responsibilities so language growth does not leak into the data layer.
 
-Initial responsibilities:
+Current responsibilities:
 - parse line-oriented BASIC-style control flow (`If ... Then` / `End If`)
+- parse `Let`, top-level `Def ...` / `End Def`, function calls, arguments, and `Return`
+- evaluate literal, variable, and function-call expressions plus equality conditions
+- maintain a global scope and per-call local scopes; parameters and local `Let` bindings do not overwrite outer variables
+- propagate `Return` through nested control flow and require a value when a function call is used as an expression
+- cap function call depth to prevent runaway recursion
 - map object-path commands such as `This.Worksheet.Column(...)` and `This.Worksheet.Editor.Cell(...)` to process APIs
-- expose execution reports for semantic checks
+- expose execution reports for semantic checks, variable assignments, and function calls
 - preserve top-to-bottom macro execution semantics
 
-The DSL AST is the extension point for later `def`, class, return, variables, and richer expressions. Those features should not be implemented by embedding CSV/data-layer knowledge into the parser.
+Future class support and richer expressions should extend the DSL AST/runtime rather than embedding CSV/data-layer knowledge into the parser.
 
 DSL column indices are 1-based because they are user-facing. Process/data indices remain zero-based.
 

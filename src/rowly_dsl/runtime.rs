@@ -53,10 +53,7 @@ pub enum ExecutionError {
     UnknownField { class_name: String, field: String },
 
     #[error("unknown method `{method}` on class `{class_name}`")]
-    UnknownMethod {
-        class_name: String,
-        method: String,
-    },
+    UnknownMethod { class_name: String, method: String },
 
     #[error("`{0}` is not an object")]
     ExpectedObject(String),
@@ -289,9 +286,8 @@ impl<'a> Runtime<'a> {
                 arguments,
             } => {
                 let object_id = self.resolve_object(target)?;
-                self.call_method(object_id, name, arguments)?.ok_or_else(|| {
-                    ExecutionError::MissingReturnValue(format!("{target}.{name}"))
-                })
+                self.call_method(object_id, name, arguments)?
+                    .ok_or_else(|| ExecutionError::MissingReturnValue(format!("{target}.{name}")))
             }
         }
     }
@@ -359,7 +355,10 @@ impl<'a> Runtime<'a> {
         };
         self.events.push(ExecutionEvent::FunctionCalled {
             name: function.name,
-            arguments: values.iter().map(|value| self.describe_value(value)).collect(),
+            arguments: values
+                .iter()
+                .map(|value| self.describe_value(value))
+                .collect(),
             return_value: return_value
                 .as_ref()
                 .map(|value| self.describe_value(value)),
@@ -419,7 +418,10 @@ impl<'a> Runtime<'a> {
         self.events.push(ExecutionEvent::MethodCalled {
             class_name,
             name: method.name,
-            arguments: values.iter().map(|value| self.describe_value(value)).collect(),
+            arguments: values
+                .iter()
+                .map(|value| self.describe_value(value))
+                .collect(),
             return_value: return_value
                 .as_ref()
                 .map(|value| self.describe_value(value)),

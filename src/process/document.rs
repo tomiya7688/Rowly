@@ -6,9 +6,7 @@ use crate::data::{SourceEncoding, Table, read_csv, write_csv_utf8};
 
 use super::{
     CellRange, CellRef, ReferenceError,
-    history::{
-        CellChange, ColumnChange, EditCommand, EditHistory, EditOperation, RowEdit,
-    },
+    history::{CellChange, ColumnChange, EditCommand, EditHistory, EditOperation, RowEdit},
 };
 
 #[derive(Debug)]
@@ -371,7 +369,7 @@ impl CsvDocument {
         }
 
         self.table
-            .replace_rows(edit.index, expected.len(), replacement.clone())
+            .replace_rows(edit.index, expected.len(), replacement.to_vec())
             .map_err(|error| {
                 DocumentError::Edit(format!("edit history no longer matches the table: {error}"))
             })?;
@@ -408,12 +406,7 @@ impl CsvDocument {
                 CommandDirection::Redo => (&change.removed, &change.inserted),
             };
             self.table
-                .replace_row_segment(
-                    change.row,
-                    change.index,
-                    expected.len(),
-                    replacement,
-                )
+                .replace_row_segment(change.row, change.index, expected.len(), replacement)
                 .map_err(|error| {
                     DocumentError::Edit(format!(
                         "edit history no longer matches the table: {error}"

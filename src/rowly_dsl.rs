@@ -367,10 +367,10 @@ fn parse_cell_statement(line: &SourceLine) -> Result<Statement, ParseError> {
     Ok(Statement::SetRangeValue { range, value })
 }
 
-fn parse_column_target<'a>(
-    text: &'a str,
+fn parse_column_target(
+    text: &str,
     line: usize,
-) -> Result<(ColumnSelector, &'a str), ParseError> {
+) -> Result<(ColumnSelector, &str), ParseError> {
     let prefix = "this.worksheet.column(";
     let (argument, remainder) = parse_call(text, prefix, line)?;
     let selector = parse_column_selector(argument, line)?;
@@ -607,7 +607,7 @@ mod tests {
     #[test]
     fn executes_column_type_and_japanese_checks() {
         let (_directory, mut document) = open("名前,年齢\n田中太郎,20\nAlice,21\n");
-        let report = run(
+        let execution = run(
             r#"
                 If This.Worksheet.Column(1).Title = "名前" Then
                     This.Worksheet.Column(1).Type = String
@@ -618,23 +618,34 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(report.events().len(), 3);
+        assert_eq!(execution.events().len(), 3);
         assert!(matches!(
-            &report.events()[0],
+            &execution.events()[0],
             ExecutionEvent::ConditionEvaluated { result: true, .. }
         ));
-        let ExecutionEvent::ColumnTypeChecked { report, .. } = &report.events()[1] else {
+        let ExecutionEvent::ColumnTypeChecked {
+            report: type_report,
+            ..
+        } = &execution.events()[1]
+        else {
             panic!("expected type report");
         };
-        assert!(report.is_valid());
-        assert_eq!(report.checked_cells(), 2);
+        assert!(type_report.is_valid());
+        assert_eq!(type_report.checked_cells(), 2);
 
-        let ExecutionEvent::JapaneseChecked { report, .. } = &report.events()[2] else {
+        let ExecutionEvent::JapaneseChecked {
+            report: japanese_report,
+            ..
+        } = &execution.events()[2]
+        else {
             panic!("expected Japanese report");
         };
-        assert_eq!(report.matches().len(), 1);
-        assert_eq!(report.mismatches().len(), 1);
-        assert_eq!(report.mismatches()[0].reference().to_string(), "A3");
+        assert_eq!(japanese_report.matches().len(), 1);
+        assert_eq!(japanese_report.mismatches().len(), 1);
+        assert_eq!(
+            japanese_report.mismatches()[0].reference().to_string(),
+            "A3"
+        );
     }
 
     #[test]

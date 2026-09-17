@@ -1,74 +1,67 @@
 # Rowly
 
-Rowly is a table viewer and editor built around a simple principle:
+Rowly は、次の原則を中心に設計する表ビューア／エディタです。
 
-> **CSV is the source of truth.**
+> **CSV を正本とする。**
 
-## Core philosophy
+## 基本方針
 
-### CSV is the source of truth
+### CSV を正本とする
 
-Rowly does not import CSV into a proprietary document model and make that model authoritative.
-The CSV itself is always the canonical data.
+Rowly は CSV を独自ドキュメント形式へ取り込み、その独自形式を正本にはしません。
+CSV 自体を常に正本データとして扱います。
 
-Features that exist only for presentation or convenience must not change the meaning or structure of the underlying CSV.
-Rowly-specific metadata, if introduced, is auxiliary and must never be required to recover the actual table data.
+表示や利便性のためだけの機能が、元の CSV の意味や構造を変更してはなりません。
+Rowly 固有のメタデータを導入する場合も補助情報に限定し、実データの復元に必須としてはなりません。
 
-### No merged cells
+### 結合セルを持たない
 
-Rowly does not have merged cells.
-A table remains a flat collection of rows and columns, matching the structure of CSV.
+Rowly のデータモデルには結合セルを持ちません。
+表は CSV と同じく、行と列からなる平坦な構造を維持します。
 
-### Group repeated values visually, not structurally
+### 重複値のグループ化は表示だけで行う
 
-When consecutive rows contain the same value in a column, Rowly may display those values as a single visual group.
+同じ列で同じ値が連続する場合、表示上は一つのグループとして見せても構いません。
+ただし CSV 自体は一切変更せず、各行が元の値を保持します。
 
-For example, data like this:
+> **見た目を良くするためだけにデータ構造を変えない。**
 
-```csv
-Department,Name
-Sales,Tanaka
-Sales,Sato
-Sales,Suzuki
-Development,Yamada
-Development,Takahashi
-```
+## 現在の実装
 
-may visually group the consecutive `Sales` and `Development` values.
-However, the underlying CSV remains completely unchanged: every row still contains its own value.
+Rust コアでは次を実装済みです。
 
-> **Never change the data structure just to improve presentation.**
+- UTF-8 CSV の読み込み／保存
+- Shift_JIS の検出と読み込み時の UTF-8 変換
+- 保存時の UTF-8 出力
+- 文字列ベースの行／セルモデル
+- `A1`、`AA10` などの A1 セル参照
+- `A1:A8`、`A1:B4` などの矩形範囲
+- 範囲編集の原子性
+- 行の挿入／削除
+- 不揃いな行を保持した列の挿入／削除
+- セル編集・構造編集の undo/redo
+- 保存状態を考慮した dirty 管理
+- 先頭行を明示的にヘッダーとして扱う検索と重複検出
+- `String` / `Integer` / `Decimal` / `Boolean` の非破壊列チェック
+- 日本語文字チェックと A1 参照による結果報告
+- process API 上で動作する BASIC 風 Rowly DSL
+- Rowly DSL の変数、関数、引数、戻り値、ローカルスコープ
+- `If` / `Else`、`Not` / `And` / `Or`、`!=` / `<` / `<=` / `>` / `>=`
+- Rowly DSL のクラス、インスタンス、フィールド、メソッド、`Self`、`New ClassName()`
+- `Integer(...)` / `Decimal(...)` / `Boolean(...)` / `String(...)` による明示変換
+- Integer / Decimal の数値比較と、文字列の辞書順比較
+- Luau ユーザースクリプト実行アダプタ
+- process レベルの open/edit/save API
+- ヘッドレス CLI のスモークエントリポイント
 
-## Current implementation
+列型チェックは意味解釈／検証のみであり、CSV の正本文字列を書き換えません。
 
-The Rust core currently provides:
+## スクリプト
 
-- UTF-8 CSV open/save
-- Shift_JIS detection and decode on open
-- UTF-8 conversion on save
-- textual row/cell model
-- A1 cell references such as `A1`, `AA10`
-- rectangular ranges such as `A1:A8` and `A1:B4`
-- atomic range value edits
-- row insertion/deletion
-- column insertion/deletion with ragged-row preservation
-- undo/redo for cell and structural edits
-- saved-state-aware dirty tracking
-- first-row header lookup with duplicate-header detection
-- non-mutating column interpretation checks for `String`, `Integer`, `Decimal`, and `Boolean`
-- Japanese-character checks that report matching/non-matching cells by A1 reference
-- a BASIC-style Rowly DSL parser/executor over the process API
-- Rowly DSL variables, functions, arguments, return values, local call scopes, and conditions
-- `Else`, `Not`, `And`, `Or`, `!=`, `<`, `<=`, `>`, and `>=` conditions
-- Rowly DSL classes, instances, fields, methods, `Self`, and `New ClassName()` construction
-- explicit DSL conversions with `Integer(...)`, `Decimal(...)`, `Boolean(...)`, and `String(...)`
-- numeric ordering for Integer/Decimal values without implicit string coercion
-- process-level open/edit/save API
-- headless CLI smoke entry point
+### Rowly DSL
 
-Column type checks are semantic validation only. They never rewrite canonical CSV cell text.
-
-The Rowly DSL supports `If ... Then` / `Else` / `End If`, `Let`, `Def ...` / `End Def`, `Return`, functions, classes, fields, methods, column checks, and range value assignment. For example:
+Rowly DSL はアプリ操作を直接表現する専用言語です。
+`If ... Then` / `Else` / `End If`、`Let`、`Def ...` / `End Def`、`Return`、関数、クラス、フィールド、メソッド、列チェック、範囲値設定を扱います。
 
 ```text
 Class Formatter
@@ -83,7 +76,7 @@ Let formatter = New Formatter()
 This.Worksheet.Editor.Cell(A2 To A8).Value.Set = formatter.Value()
 ```
 
-Explicit conversions provide typed runtime values without changing existing literal behavior:
+明示変換により、既存の文字列リテラルの挙動を変えずに型付きランタイム値を扱えます。
 
 ```text
 Let small = Integer("2")
@@ -96,12 +89,35 @@ If large > small And threshold < large Then
 End If
 ```
 
-Strings still compare lexicographically, while Integer and Decimal values compare numerically. Integer and Decimal can be compared with each other. Boolean values support equality/inequality; invalid ordered comparisons fail explicitly rather than coercing silently. Typed scalar values written to CSV cells are converted back to text at the process boundary, so CSV remains canonical textual data.
+文字列は辞書順、Integer / Decimal は数値として比較します。Integer と Decimal の相互比較も可能です。Boolean は等値／不等値比較のみです。CSV セルへ型付きスカラーを書き込む場合は process 境界で文字列へ変換し、CSV の正本性を維持します。
 
-Object variables hold runtime-only references; class instances never become an alternative source of truth for CSV data. Methods can mutate their own fields through `Self.field`, and aliases share the same instance identity. Object values cannot be written directly into CSV cells.
+オブジェクト変数は DSL ランタイム内部だけの参照です。クラスインスタンスが CSV に代わる正本になることはありません。CSV への作用は必ず process API を通します。
 
-Function and method calls use local scopes for parameters and `Let` bindings while retaining read access to outer/global variables. `Cell("A2:A8")` is also accepted. DSL actions route through the same process APIs as future GUI and scripting adapters; the DSL does not access CSV codecs directly.
+### Luau
 
-The GUI, arithmetic expressions, Luau integration, Python/Excel bridge, persistent column metadata/type declarations, broader type inference, and visual grouping are intentionally not implemented yet.
+Luau は自由度の高いユーザースクリプト用です。現時点ではグローバル `Rowly` テーブルを通じて、セル読み取り、単一セル／範囲編集、行列数取得、undo/redo を利用できます。
 
-For the current architecture and dependency rules, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+```luau
+assert(Rowly.cell("A2") == "Alice")
+Rowly.set_cell("B2", "42")
+Rowly.set_range("A3:B3", "updated")
+```
+
+Luau からも CSV コーデックや `data` 層へ直接アクセスせず、すべて `process::CsvDocument` を経由します。
+Luau 連携の正本仕様は [`docs/LUAU.md`](docs/LUAU.md) を参照してください。
+
+## 未実装
+
+- GUI
+- Rowly DSL の算術式、継承、引数付きコンストラクタ
+- Python/Excel ブリッジ
+- 永続的な列メタデータ／型宣言
+- より広い型推論
+- 表示上のグループ化
+- Luau の実行時間・命令数・メモリ量の制限
+
+アーキテクチャと依存方向は [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) を参照してください。
+
+## 文書の言語
+
+この日本語 README を正本とします。英語版を用意する場合も、内容に差異があるときは日本語版を優先します。

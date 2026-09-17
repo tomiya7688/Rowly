@@ -42,6 +42,8 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - UI, DSL, Luau, and Python adapters must enter through the process/application boundary rather than reaching into CSV I/O internals.
 - A1/range addressing is process-layer behavior; the canonical data layer remains zero-based textual rows/cells.
 - Multi-cell edits must validate before mutation so a failed edit cannot partially modify the CSV table.
+- Structural edits are explicit data edits. Ragged rows must not be silently rectangularized merely to simplify column operations.
+- Undo/redo for structural edits must restore exact removed row/cell values, not reconstructed approximations.
 
 ## Validation
 Use the smallest sufficient validation for the change:
@@ -62,7 +64,9 @@ Implemented:
 - UTF-8 save path
 - A1 cell and rectangular range references
 - atomic range value edits
-- undo/redo history with saved-state-aware dirty tracking
+- row insertion/deletion
+- column insertion/deletion with ragged-row preservation
+- undo/redo history for cell and structural edits with saved-state-aware dirty tracking
 - headless CLI smoke entry point
 
 Not implemented yet:
@@ -71,7 +75,6 @@ Not implemented yet:
 - Luau
 - Python/Excel bridge
 - type inference/column metadata
-- structural row/column operations
 - visual grouping
 
 ## Context Priority

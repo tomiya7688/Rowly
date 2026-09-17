@@ -58,14 +58,17 @@ The Rust core currently provides:
 - non-mutating column interpretation checks for `String`, `Integer`, `Decimal`, and `Boolean`
 - Japanese-character checks that report matching/non-matching cells by A1 reference
 - a BASIC-style Rowly DSL parser/executor over the process API
-- Rowly DSL variables, functions, arguments, return values, local call scopes, and equality conditions
+- Rowly DSL variables, functions, arguments, return values, local call scopes, and conditions
+- `Else`, `Not`, `And`, `Or`, `!=`, `<`, `<=`, `>`, and `>=` conditions
 - Rowly DSL classes, instances, fields, methods, `Self`, and `New ClassName()` construction
+- explicit DSL conversions with `Integer(...)`, `Decimal(...)`, `Boolean(...)`, and `String(...)`
+- numeric ordering for Integer/Decimal values without implicit string coercion
 - process-level open/edit/save API
 - headless CLI smoke entry point
 
 Column type checks are semantic validation only. They never rewrite canonical CSV cell text.
 
-The Rowly DSL supports `If ... Then` / `End If`, `Let`, `Def ...` / `End Def`, `Return`, functions, classes, fields, methods, column checks, and range value assignment. For example:
+The Rowly DSL supports `If ... Then` / `Else` / `End If`, `Let`, `Def ...` / `End Def`, `Return`, functions, classes, fields, methods, column checks, and range value assignment. For example:
 
 ```text
 Class Formatter
@@ -80,10 +83,25 @@ Let formatter = New Formatter()
 This.Worksheet.Editor.Cell(A2 To A8).Value.Set = formatter.Value()
 ```
 
-Object variables hold runtime-only references; class instances never become an alternative source of truth for CSV data. Methods can mutate their own fields through `Self.field`, and aliases share the same instance identity. Object values cannot be written directly into CSV cells: cell edits still require textual values and route through the process API.
+Explicit conversions provide typed runtime values without changing existing literal behavior:
+
+```text
+Let small = Integer("2")
+Let large = Integer("10")
+Let threshold = Decimal("9.5")
+Let enabled = Boolean("true")
+
+If large > small And threshold < large Then
+    This.Worksheet.Editor.Cell(A2).Value.Set = large
+End If
+```
+
+Strings still compare lexicographically, while Integer and Decimal values compare numerically. Integer and Decimal can be compared with each other. Boolean values support equality/inequality; invalid ordered comparisons fail explicitly rather than coercing silently. Typed scalar values written to CSV cells are converted back to text at the process boundary, so CSV remains canonical textual data.
+
+Object variables hold runtime-only references; class instances never become an alternative source of truth for CSV data. Methods can mutate their own fields through `Self.field`, and aliases share the same instance identity. Object values cannot be written directly into CSV cells.
 
 Function and method calls use local scopes for parameters and `Let` bindings while retaining read access to outer/global variables. `Cell("A2:A8")` is also accepted. DSL actions route through the same process APIs as future GUI and scripting adapters; the DSL does not access CSV codecs directly.
 
-The GUI, richer Rowly DSL operators/expressions, Luau integration, Python/Excel bridge, persistent column metadata/type declarations, broader type inference, and visual grouping are intentionally not implemented yet.
+The GUI, arithmetic expressions, Luau integration, Python/Excel bridge, persistent column metadata/type declarations, broader type inference, and visual grouping are intentionally not implemented yet.
 
 For the current architecture and dependency rules, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).

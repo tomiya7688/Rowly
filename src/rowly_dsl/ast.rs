@@ -10,9 +10,17 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn classes(&self) -> &[ClassDefinition] { &self.classes }
-    pub fn functions(&self) -> &[FunctionDefinition] { &self.functions }
-    pub fn statements(&self) -> &[Statement] { &self.statements }
+    pub fn classes(&self) -> &[ClassDefinition] {
+        &self.classes
+    }
+
+    pub fn functions(&self) -> &[FunctionDefinition] {
+        &self.functions
+    }
+
+    pub fn statements(&self) -> &[Statement] {
+        &self.statements
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,9 +31,17 @@ pub struct ClassDefinition {
 }
 
 impl ClassDefinition {
-    pub fn name(&self) -> &str { &self.name }
-    pub fn fields(&self) -> &[FieldDefinition] { &self.fields }
-    pub fn methods(&self) -> &[FunctionDefinition] { &self.methods }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn fields(&self) -> &[FieldDefinition] {
+        &self.fields
+    }
+
+    pub fn methods(&self) -> &[FunctionDefinition] {
+        &self.methods
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,8 +51,13 @@ pub struct FieldDefinition {
 }
 
 impl FieldDefinition {
-    pub fn name(&self) -> &str { &self.name }
-    pub fn default(&self) -> &Expression { &self.default }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn default(&self) -> &Expression {
+        &self.default
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,32 +68,80 @@ pub struct FunctionDefinition {
 }
 
 impl FunctionDefinition {
-    pub fn name(&self) -> &str { &self.name }
-    pub fn parameters(&self) -> &[String] { &self.parameters }
-    pub fn body(&self) -> &[Statement] { &self.body }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn parameters(&self) -> &[String] {
+        &self.parameters
+    }
+
+    pub fn body(&self) -> &[Statement] {
+        &self.body
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Statement {
-    If { condition: Condition, body: Vec<Statement>, else_body: Vec<Statement> },
-    Let { name: String, value: Expression },
-    Return { value: Option<Expression> },
-    Call { name: String, arguments: Vec<Expression> },
-    MethodCall { target: String, name: String, arguments: Vec<Expression> },
-    SetField { target: String, field: String, value: Expression },
-    SetRangeValue { range: CellRange, value: Expression },
-    ValidateColumnType { selector: ColumnSelector, column_type: ColumnType },
-    CheckJapanese { selector: ColumnSelector },
+    If {
+        condition: Condition,
+        body: Vec<Statement>,
+        else_body: Vec<Statement>,
+    },
+    Let {
+        name: String,
+        value: Expression,
+    },
+    Return {
+        value: Option<Expression>,
+    },
+    Call {
+        name: String,
+        arguments: Vec<Expression>,
+    },
+    MethodCall {
+        target: String,
+        name: String,
+        arguments: Vec<Expression>,
+    },
+    SetField {
+        target: String,
+        field: String,
+        value: Expression,
+    },
+    SetRangeValue {
+        range: CellRange,
+        value: Expression,
+    },
+    ValidateColumnType {
+        selector: ColumnSelector,
+        column_type: ColumnType,
+    },
+    CheckJapanese {
+        selector: ColumnSelector,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expression {
     Literal(String),
     Variable(String),
-    Call { name: String, arguments: Vec<Expression> },
-    New { class_name: String },
-    Field { target: String, field: String },
-    MethodCall { target: String, name: String, arguments: Vec<Expression> },
+    Call {
+        name: String,
+        arguments: Vec<Expression>,
+    },
+    New {
+        class_name: String,
+    },
+    Field {
+        target: String,
+        field: String,
+    },
+    MethodCall {
+        target: String,
+        name: String,
+        arguments: Vec<Expression>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,9 +156,18 @@ pub enum ComparisonOperator {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Condition {
-    ColumnExists { selector: ColumnSelector },
-    ColumnTitleEquals { selector: ColumnSelector, expected: Expression },
-    Compare { left: Expression, operator: ComparisonOperator, right: Expression },
+    ColumnExists {
+        selector: ColumnSelector,
+    },
+    ColumnTitleEquals {
+        selector: ColumnSelector,
+        expected: Expression,
+    },
+    Compare {
+        left: Expression,
+        operator: ComparisonOperator,
+        right: Expression,
+    },
     Not(Box<Condition>),
     And(Box<Condition>, Box<Condition>),
     Or(Box<Condition>, Box<Condition>),
@@ -109,10 +187,16 @@ pub struct ExecutionReport {
 }
 
 impl ExecutionReport {
-    pub fn events(&self) -> &[ExecutionEvent] { &self.events }
-    pub fn variable(&self, name: &str) -> Option<&str> {
-        self.variables.get(&normalize_identifier(name)).map(String::as_str)
+    pub fn events(&self) -> &[ExecutionEvent] {
+        &self.events
     }
+
+    pub fn variable(&self, name: &str) -> Option<&str> {
+        self.variables
+            .get(&normalize_identifier(name))
+            .map(String::as_str)
+    }
+
     pub fn object_field(&self, variable: &str, field: &str) -> Option<&str> {
         self.object_fields
             .get(&normalize_identifier(variable))?
@@ -123,15 +207,45 @@ impl ExecutionReport {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecutionEvent {
-    ConditionEvaluated { condition: Condition, result: bool },
-    VariableSet { name: String, value: String },
-    ObjectCreated { class_name: String },
-    FieldSet { target: String, field: String, value: String },
-    FunctionCalled { name: String, arguments: Vec<String>, return_value: Option<String> },
-    MethodCalled { class_name: String, name: String, arguments: Vec<String>, return_value: Option<String> },
-    RangeValueSet { range: CellRange, value: String },
-    ColumnTypeChecked { selector: ColumnSelector, report: ColumnTypeReport },
-    JapaneseChecked { selector: ColumnSelector, report: JapaneseCheckReport },
+    ConditionEvaluated {
+        condition: Condition,
+        result: bool,
+    },
+    VariableSet {
+        name: String,
+        value: String,
+    },
+    ObjectCreated {
+        class_name: String,
+    },
+    FieldSet {
+        target: String,
+        field: String,
+        value: String,
+    },
+    FunctionCalled {
+        name: String,
+        arguments: Vec<String>,
+        return_value: Option<String>,
+    },
+    MethodCalled {
+        class_name: String,
+        name: String,
+        arguments: Vec<String>,
+        return_value: Option<String>,
+    },
+    RangeValueSet {
+        range: CellRange,
+        value: String,
+    },
+    ColumnTypeChecked {
+        selector: ColumnSelector,
+        report: ColumnTypeReport,
+    },
+    JapaneseChecked {
+        selector: ColumnSelector,
+        report: JapaneseCheckReport,
+    },
 }
 
 pub(super) fn normalize_identifier(identifier: &str) -> String {

@@ -121,7 +121,7 @@ impl<'a> Runtime<'a> {
             return Err(ExecutionError::ReturnOutsideFunction);
         }
 
-        let global = self.scopes.into_iter().next().unwrap_or_default();
+        let global = self.scopes.pop().unwrap_or_default();
         let mut variables = HashMap::new();
         let mut object_fields = HashMap::new();
         for (name, value) in global {
@@ -309,7 +309,11 @@ impl<'a> Runtime<'a> {
                 (Value::Object(left), Value::Object(right)) => left == right,
                 _ => false,
             };
-            return Ok(if matches!(operator, Equal) { equal } else { !equal });
+            return Ok(if matches!(operator, Equal) {
+                equal
+            } else {
+                !equal
+            });
         }
 
         let ordering = match (&left, &right) {

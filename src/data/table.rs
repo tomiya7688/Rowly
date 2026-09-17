@@ -132,9 +132,7 @@ pub(crate) enum TableError {
     #[error("row insertion index {index} is out of bounds for {row_count} rows")]
     RowInsertOutOfBounds { index: usize, row_count: usize },
 
-    #[error(
-        "row range starting at {index} with length {remove_count} exceeds {row_count} rows"
-    )]
+    #[error("row range starting at {index} with length {remove_count} exceeds {row_count} rows")]
     RowRangeOutOfBounds {
         index: usize,
         remove_count: usize,
@@ -197,11 +195,7 @@ mod tests {
 
     #[test]
     fn replacing_rows_returns_exact_removed_rows() {
-        let mut table = Table::new(vec![
-            vec!["a".into()],
-            vec!["b".into()],
-            vec!["c".into()],
-        ]);
+        let mut table = Table::new(vec![vec!["a".into()], vec!["b".into()], vec!["c".into()]]);
 
         let removed = table
             .replace_rows(1, 1, vec![vec!["x".into()], vec!["y".into()]])
@@ -221,12 +215,7 @@ mod tests {
 
     #[test]
     fn replacing_row_segment_preserves_surrounding_cells() {
-        let mut table = Table::new(vec![vec![
-            "a".into(),
-            "b".into(),
-            "c".into(),
-            "d".into(),
-        ]]);
+        let mut table = Table::new(vec![vec!["a".into(), "b".into(), "c".into(), "d".into()]]);
 
         let removed = table
             .replace_row_segment(0, 1, 2, &["x".into(), "y".into(), "z".into()])

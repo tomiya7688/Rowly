@@ -166,10 +166,7 @@ fn evaluate_condition(
     }
 }
 
-fn resolve_column(
-    selector: &ColumnSelector,
-    document: &CsvDocument,
-) -> Result<usize, ColumnError> {
+fn resolve_column(selector: &ColumnSelector, document: &CsvDocument) -> Result<usize, ColumnError> {
     match selector {
         ColumnSelector::Index(column) => {
             let column_count = document.column_count();
@@ -291,10 +288,7 @@ impl Parser {
 fn parse_if_condition(line: &SourceLine) -> Result<Condition, ParseError> {
     let lower = line.text.to_ascii_lowercase();
     if !lower.starts_with("if ") || !lower.ends_with(" then") {
-        return Err(parse_error(
-            line.number,
-            "expected `If <condition> Then`",
-        ));
+        return Err(parse_error(line.number, "expected `If <condition> Then`"));
     }
 
     let condition = line.text[3..line.text.len() - 5].trim();

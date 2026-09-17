@@ -447,11 +447,7 @@ fn parse_column_statement(line: &SourceLine) -> Result<Statement, ParseError> {
 }
 
 fn parse_cell_statement(line: &SourceLine) -> Result<Statement, ParseError> {
-    let (argument, remainder) = parse_call(
-        &line.text,
-        "this.worksheet.editor.cell(",
-        line.number,
-    )?;
+    let (argument, remainder) = parse_call(&line.text, "this.worksheet.editor.cell(", line.number)?;
     if !starts_with_ci(remainder, ".value.set") {
         return Err(parse_error(
             line.number,
@@ -867,8 +863,7 @@ fn is_identifier(identifier: &str) -> bool {
     let Some(first) = chars.next() else {
         return false;
     };
-    (first == '_' || first.is_alphabetic())
-        && chars.all(|ch| ch == '_' || ch.is_alphanumeric())
+    (first == '_' || first.is_alphabetic()) && chars.all(|ch| ch == '_' || ch.is_alphanumeric())
 }
 
 fn is_terminator(text: &str) -> bool {

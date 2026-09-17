@@ -48,8 +48,11 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Column type checks are non-mutating interpretation/validation. `String`, numeric, and boolean checks must not rewrite canonical CSV text.
 - Duplicate header names are ambiguous for singular lookup and must be reported instead of silently selecting one.
 - Rowly DSL is an adapter over `process`; it must not call `data` or CSV codecs directly.
-- The DSL is top-to-bottom macro execution. Initial syntax is intentionally small and line-oriented; add `def`, class, return, and richer expressions by extending the AST rather than bypassing it.
+- The DSL is top-to-bottom macro execution. Extend language features through AST/parser/runtime boundaries rather than bypassing them.
 - DSL column numbers are 1-based user-facing indices; process/data indices remain zero-based.
+- Function calls use local scopes, may read outer/global variables, and must not leak local bindings outward.
+- Function calls used as expressions require an explicit return value.
+- Runtime call depth is capped to prevent runaway recursion.
 
 ## Validation
 Use the smallest sufficient validation for the change:
@@ -76,12 +79,12 @@ Implemented:
 - process-layer first-row header lookup with duplicate detection
 - non-mutating `String` / `Integer` / `Decimal` / `Boolean` column validation
 - Japanese-character column checks with A1 result references
-- initial Rowly DSL AST/parser/executor for `If`, column checks, and range value assignment
+- Rowly DSL AST/parser/runtime for `If`, variables, functions, calls, return, column checks, and range value assignment
 - headless CLI smoke entry point
 
 Not implemented yet:
 - GUI
-- Rowly DSL `def` / class / return / variables / general expressions
+- Rowly DSL classes / objects and richer operators/expressions
 - Luau
 - Python/Excel bridge
 - persistent column metadata/type declarations

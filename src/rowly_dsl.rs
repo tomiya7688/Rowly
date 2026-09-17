@@ -3,8 +3,8 @@ mod parser;
 mod runtime;
 
 pub use ast::{
-    ColumnSelector, Condition, ExecutionEvent, ExecutionReport, Expression, FunctionDefinition,
-    Program, Statement,
+    ClassDefinition, ColumnSelector, Condition, ExecutionEvent, ExecutionReport, Expression,
+    FieldDefinition, FunctionDefinition, Program, Statement,
 };
 pub use parser::ParseError;
 pub use runtime::ExecutionError;
@@ -40,3 +40,5 @@ pub enum DslError {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_classes;

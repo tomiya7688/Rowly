@@ -108,7 +108,11 @@ fn ordered_comparison_rejects_boolean_and_string_mix() {
     )
     .unwrap_err();
 
-    assert!(error.to_string().contains("cannot compare Boolean and String"));
+    assert!(
+        error
+            .to_string()
+            .contains("cannot compare Boolean and String")
+    );
 }
 
 #[test]
@@ -122,5 +126,9 @@ fn invalid_conversion_is_reported() {
     )
     .unwrap_err();
 
-    assert!(error.to_string().contains("cannot convert String value `12.5` to Integer"));
+    assert!(
+        error
+            .to_string()
+            .contains("cannot convert String value `12.5` to Integer")
+    );
 }

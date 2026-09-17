@@ -8,8 +8,40 @@ pub(super) struct CellChange {
 }
 
 #[derive(Debug, Clone)]
+pub(super) struct RowEdit {
+    pub(super) index: usize,
+    pub(super) removed: Vec<Vec<String>>,
+    pub(super) inserted: Vec<Vec<String>>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct ColumnChange {
+    pub(super) row: usize,
+    pub(super) index: usize,
+    pub(super) removed: Vec<String>,
+    pub(super) inserted: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum EditOperation {
+    Cells(Vec<CellChange>),
+    Rows(RowEdit),
+    Columns(Vec<ColumnChange>),
+}
+
+impl EditOperation {
+    fn is_empty(&self) -> bool {
+        match self {
+            Self::Cells(changes) => changes.is_empty(),
+            Self::Rows(edit) => edit.removed.is_empty() && edit.inserted.is_empty(),
+            Self::Columns(changes) => changes.is_empty(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub(super) struct EditCommand {
-    pub(super) changes: Vec<CellChange>,
+    pub(super) operation: EditOperation,
     before_state_id: u64,
     after_state_id: u64,
 }
@@ -36,14 +68,14 @@ impl EditHistory {
         !self.redo.is_empty()
     }
 
-    pub(super) fn record(&mut self, changes: Vec<CellChange>) {
-        if changes.is_empty() {
+    pub(super) fn record(&mut self, operation: EditOperation) {
+        if operation.is_empty() {
             return;
         }
 
         self.next_state_id = self.next_state_id.saturating_add(1);
         let command = EditCommand {
-            changes,
+            operation,
             before_state_id: self.current_state_id,
             after_state_id: self.next_state_id,
         };

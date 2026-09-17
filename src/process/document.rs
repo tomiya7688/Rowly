@@ -6,7 +6,7 @@ use crate::data::{SourceEncoding, Table, read_csv, write_csv_utf8};
 
 use super::{
     CellRange, CellRef, ReferenceError,
-    history::{CellChange, EditCommand, EditHistory},
+    history::{CellChange, ColumnChange, EditCommand, EditHistory, EditOperation, RowEdit},
 };
 
 #[derive(Debug)]
@@ -114,6 +114,110 @@ impl CsvDocument {
         self.set_range_value(range.parse()?, value)
     }
 
+    pub fn insert_rows(&mut self, index: usize, count: usize) -> Result<(), DocumentError> {
+        let width = self.column_count().max(1);
+        let inserted = vec![vec![String::new(); width]; count];
+        let removed = self
+            .table
+            .replace_rows(index, 0, inserted.clone())
+            .map_err(|error| DocumentError::Edit(error.to_string()))?;
+
+        self.history.record(EditOperation::Rows(RowEdit {
+            index,
+            removed,
+            inserted,
+        }));
+        Ok(())
+    }
+
+    pub fn delete_rows(&mut self, index: usize, count: usize) -> Result<(), DocumentError> {
+        let removed = self
+            .table
+            .replace_rows(index, count, Vec::new())
+            .map_err(|error| DocumentError::Edit(error.to_string()))?;
+
+        self.history.record(EditOperation::Rows(RowEdit {
+            index,
+            removed,
+            inserted: Vec::new(),
+        }));
+        Ok(())
+    }
+
+    pub fn insert_columns(&mut self, index: usize, count: usize) -> Result<(), DocumentError> {
+        let column_count = self.column_count();
+        if index > column_count {
+            return Err(DocumentError::Edit(format!(
+                "column insertion index {index} is out of bounds for {column_count} columns"
+            )));
+        }
+
+        let inserted = vec![String::new(); count];
+        let changes = self
+            .table
+            .rows()
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| index <= row.len())
+            .map(|(row, _)| ColumnChange {
+                row,
+                index,
+                removed: Vec::new(),
+                inserted: inserted.clone(),
+            })
+            .collect::<Vec<_>>();
+
+        for change in &changes {
+            self.table
+                .replace_row_segment(change.row, change.index, 0, &change.inserted)
+                .map_err(|error| DocumentError::Edit(error.to_string()))?;
+        }
+
+        self.history.record(EditOperation::Columns(changes));
+        Ok(())
+    }
+
+    pub fn delete_columns(&mut self, index: usize, count: usize) -> Result<(), DocumentError> {
+        let column_count = self.column_count();
+        let end = index
+            .checked_add(count)
+            .ok_or_else(|| DocumentError::Edit("column range arithmetic overflowed".into()))?;
+        if index > column_count || end > column_count {
+            return Err(DocumentError::Edit(format!(
+                "column range starting at {index} with length {count} exceeds {column_count} columns"
+            )));
+        }
+
+        let changes = self
+            .table
+            .rows()
+            .iter()
+            .enumerate()
+            .filter_map(|(row_index, row)| {
+                if index >= row.len() {
+                    return None;
+                }
+
+                let row_end = end.min(row.len());
+                Some(ColumnChange {
+                    row: row_index,
+                    index,
+                    removed: row[index..row_end].to_vec(),
+                    inserted: Vec::new(),
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for change in &changes {
+            self.table
+                .replace_row_segment(change.row, change.index, change.removed.len(), &[])
+                .map_err(|error| DocumentError::Edit(error.to_string()))?;
+        }
+
+        self.history.record(EditOperation::Columns(changes));
+        Ok(())
+    }
+
     pub fn undo(&mut self) -> Result<bool, DocumentError> {
         let Some(command) = self.history.take_undo() else {
             return Ok(false);
@@ -199,7 +303,7 @@ impl CsvDocument {
                 .map_err(|error| DocumentError::Edit(error.to_string()))?;
         }
 
-        self.history.record(changes);
+        self.history.record(EditOperation::Cells(changes));
         Ok(())
     }
 
@@ -208,7 +312,19 @@ impl CsvDocument {
         command: &EditCommand,
         direction: CommandDirection,
     ) -> Result<(), DocumentError> {
-        for change in &command.changes {
+        match &command.operation {
+            EditOperation::Cells(changes) => self.apply_cell_changes(changes, direction),
+            EditOperation::Rows(edit) => self.apply_row_edit(edit, direction),
+            EditOperation::Columns(changes) => self.apply_column_changes(changes, direction),
+        }
+    }
+
+    fn apply_cell_changes(
+        &mut self,
+        changes: &[CellChange],
+        direction: CommandDirection,
+    ) -> Result<(), DocumentError> {
+        for change in changes {
             let value = match direction {
                 CommandDirection::Undo => &change.before,
                 CommandDirection::Redo => &change.after,
@@ -220,6 +336,77 @@ impl CsvDocument {
                     change.reference.column(),
                     value.clone(),
                 )
+                .map_err(|error| {
+                    DocumentError::Edit(format!(
+                        "edit history no longer matches the table: {error}"
+                    ))
+                })?;
+        }
+
+        Ok(())
+    }
+
+    fn apply_row_edit(
+        &mut self,
+        edit: &RowEdit,
+        direction: CommandDirection,
+    ) -> Result<(), DocumentError> {
+        let (expected, replacement) = match direction {
+            CommandDirection::Undo => (&edit.inserted, &edit.removed),
+            CommandDirection::Redo => (&edit.removed, &edit.inserted),
+        };
+        let end = edit
+            .index
+            .checked_add(expected.len())
+            .ok_or_else(|| DocumentError::Edit("row history range overflowed".into()))?;
+        let current = self.table.rows().get(edit.index..end).ok_or_else(|| {
+            DocumentError::Edit("edit history no longer matches the table rows".into())
+        })?;
+        if current != expected.as_slice() {
+            return Err(DocumentError::Edit(
+                "edit history no longer matches the table rows".into(),
+            ));
+        }
+
+        self.table
+            .replace_rows(edit.index, expected.len(), replacement.to_vec())
+            .map_err(|error| {
+                DocumentError::Edit(format!("edit history no longer matches the table: {error}"))
+            })?;
+        Ok(())
+    }
+
+    fn apply_column_changes(
+        &mut self,
+        changes: &[ColumnChange],
+        direction: CommandDirection,
+    ) -> Result<(), DocumentError> {
+        for change in changes {
+            let expected = match direction {
+                CommandDirection::Undo => &change.inserted,
+                CommandDirection::Redo => &change.removed,
+            };
+            let row = self.table.rows().get(change.row).ok_or_else(|| {
+                DocumentError::Edit("edit history no longer matches the table rows".into())
+            })?;
+            let end = change
+                .index
+                .checked_add(expected.len())
+                .ok_or_else(|| DocumentError::Edit("column history range overflowed".into()))?;
+            if row.get(change.index..end) != Some(expected.as_slice()) {
+                return Err(DocumentError::Edit(
+                    "edit history no longer matches the table columns".into(),
+                ));
+            }
+        }
+
+        for change in changes {
+            let (expected, replacement) = match direction {
+                CommandDirection::Undo => (&change.inserted, &change.removed),
+                CommandDirection::Redo => (&change.removed, &change.inserted),
+            };
+            self.table
+                .replace_row_segment(change.row, change.index, expected.len(), replacement)
                 .map_err(|error| {
                     DocumentError::Edit(format!(
                         "edit history no longer matches the table: {error}"
@@ -324,6 +511,104 @@ mod tests {
     }
 
     #[test]
+    fn row_insert_delete_and_history_restore_exact_rows() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("rows.csv");
+        fs::write(&path, "a,b\n1,2\n3,4\n").unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        document.insert_rows(1, 2).unwrap();
+        assert_eq!(document.row_count(), 5);
+        assert_eq!(document.cell(1, 0), Some(""));
+        assert_eq!(document.cell(1, 1), Some(""));
+        assert_eq!(document.cell(3, 0), Some("1"));
+
+        assert!(document.undo().unwrap());
+        assert_eq!(document.row_count(), 3);
+        assert_eq!(document.cell(1, 0), Some("1"));
+        assert!(document.redo().unwrap());
+        assert_eq!(document.row_count(), 5);
+
+        document.delete_rows(1, 3).unwrap();
+        assert_eq!(document.row_count(), 2);
+        assert_eq!(document.cell(1, 0), Some("3"));
+        assert!(document.undo().unwrap());
+        assert_eq!(document.row_count(), 5);
+        assert_eq!(document.cell(3, 0), Some("1"));
+        assert_eq!(document.cell(4, 0), Some("3"));
+    }
+
+    #[test]
+    fn column_insert_preserves_ragged_missing_cells_and_undo_restores_shape() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("ragged.csv");
+        fs::write(&path, "a,b,c\n1,2\nx\n").unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        document.insert_columns(2, 1).unwrap();
+
+        assert_eq!(document.column_count(), 4);
+        assert_eq!(document.cell(0, 2), Some(""));
+        assert_eq!(document.cell(0, 3), Some("c"));
+        assert_eq!(document.cell(1, 2), Some(""));
+        assert_eq!(document.cell(2, 1), None);
+
+        assert!(document.undo().unwrap());
+        assert_eq!(document.column_count(), 3);
+        assert_eq!(document.cell(0, 2), Some("c"));
+        assert_eq!(document.cell(1, 1), Some("2"));
+        assert_eq!(document.cell(1, 2), None);
+        assert_eq!(document.cell(2, 1), None);
+
+        assert!(document.redo().unwrap());
+        assert_eq!(document.cell(0, 3), Some("c"));
+    }
+
+    #[test]
+    fn column_delete_and_undo_restore_removed_values_per_row() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("ragged.csv");
+        fs::write(&path, "a,b,c,d\n1,2,3\nx,y\nz\n").unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        document.delete_columns(1, 2).unwrap();
+
+        assert_eq!(document.cell(0, 0), Some("a"));
+        assert_eq!(document.cell(0, 1), Some("d"));
+        assert_eq!(document.cell(1, 0), Some("1"));
+        assert_eq!(document.cell(1, 1), None);
+        assert_eq!(document.cell(2, 0), Some("x"));
+        assert_eq!(document.cell(2, 1), None);
+        assert_eq!(document.cell(3, 0), Some("z"));
+
+        assert!(document.undo().unwrap());
+        assert_eq!(document.cell(0, 1), Some("b"));
+        assert_eq!(document.cell(0, 2), Some("c"));
+        assert_eq!(document.cell(0, 3), Some("d"));
+        assert_eq!(document.cell(1, 1), Some("2"));
+        assert_eq!(document.cell(1, 2), Some("3"));
+        assert_eq!(document.cell(2, 1), Some("y"));
+        assert_eq!(document.cell(3, 1), None);
+    }
+
+    #[test]
+    fn invalid_structural_edit_is_atomic_and_not_recorded() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("data.csv");
+        fs::write(&path, "a,b\n1,2\n").unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        assert!(document.delete_rows(1, 2).is_err());
+        assert!(document.delete_columns(1, 2).is_err());
+
+        assert_eq!(document.row_count(), 2);
+        assert_eq!(document.column_count(), 2);
+        assert_eq!(document.cell(1, 1), Some("2"));
+        assert!(!document.can_undo());
+        assert!(!document.is_dirty());
+    }
+
+    #[test]
     fn dirty_state_tracks_saved_state_through_undo_and_redo() {
         let directory = tempdir().unwrap();
         let path = directory.path().join("data.csv");
@@ -345,6 +630,22 @@ mod tests {
         assert!(document.is_dirty());
         assert!(document.redo().unwrap());
         assert!(!document.is_dirty());
+    }
+
+    #[test]
+    fn structural_edit_uses_same_dirty_history_state() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("data.csv");
+        fs::write(&path, "a,b\n1,2\n").unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        document.insert_columns(1, 1).unwrap();
+        assert!(document.is_dirty());
+
+        assert!(document.undo().unwrap());
+        assert!(!document.is_dirty());
+        assert!(document.redo().unwrap());
+        assert!(document.is_dirty());
     }
 
     #[test]

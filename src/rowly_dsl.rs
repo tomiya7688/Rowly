@@ -3,8 +3,8 @@ mod parser;
 mod runtime;
 
 pub use ast::{
-    ClassDefinition, ColumnSelector, ComparisonOperator, Condition, ExecutionEvent, ExecutionReport,
-    Expression, FieldDefinition, FunctionDefinition, Program, Statement,
+    ClassDefinition, ColumnSelector, ComparisonOperator, Condition, ExecutionEvent,
+    ExecutionReport, Expression, FieldDefinition, FunctionDefinition, Program, Statement,
 };
 pub use parser::ParseError;
 pub use runtime::ExecutionError;

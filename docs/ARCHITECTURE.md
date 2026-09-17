@@ -1,13 +1,13 @@
-# Architecture
+# アーキテクチャ
 
-## Goal
+## 目的
 
-Rowly is a CSV-first editor. The architecture must make it difficult for presentation, scripting, or integration code to become a second source of truth.
+Rowly は CSV-first のエディタです。表示、スクリプト、外部連携のコードが第二の正本を作らない構造を維持します。
 
-## Dependency direction
+## 依存方向
 
 ```text
-UI / Rowly DSL / future Luau / Python adapters
+UI / Rowly DSL / Luau / Python adapters
                 |
                 v
         process/application
@@ -16,92 +16,117 @@ UI / Rowly DSL / future Luau / Python adapters
               data
 ```
 
-The `data` module owns canonical table storage and CSV/encoding mechanics.
-The `process` module orchestrates user-visible operations such as open, edit, save, addressing, and column interpretation checks.
-The `rowly_dsl` module parses/evaluates Rowly commands by calling the process boundary; it does not call CSV codecs directly.
-Future UI, Luau, and Python adapters follow the same dependency rule.
+`data` モジュールは正本となる表データと CSV／文字コード処理を担当します。
+`process` モジュールは open、edit、save、A1 参照、列の意味解釈など、ユーザーから見える操作を統括します。
+`rowly_dsl` と `luau` は `process` 境界を通じて操作し、CSV コーデックへ直接アクセスしません。
+将来の UI や Python アダプタも同じ依存方向に従います。
 
-This borrows the responsibility and dependency-direction principles from UPD Commander Base Design without mechanically reproducing its class-oriented Commander/Messenger structure in Rust. Rust modules, visibility, and narrow APIs are used to enforce the same intent with less ceremony.
+この方針は UPD Commander Base Design の責務分離と依存方向の考え方を参考にしますが、Java 的な Commander/Messenger 構造を Rust へ機械的に移植しません。Rust のモジュール、可視性、狭い API を使って同じ目的をより少ない儀式で実現します。
 
-## Data layer
+## Data 層
 
-Responsibilities:
-- store CSV rows/cells as text
-- decode supported source encodings into internal UTF-8 text
-- parse CSV records
-- write canonical CSV output
+責務:
+- CSV の行／セルを文字列として保持する
+- 対応文字コードを内部 UTF-8 へ変換する
+- CSV レコードを解析する
+- 正本 CSV を書き出す
 
-Non-responsibilities:
-- UI state
-- visual grouping
-- scripting syntax or runtime objects
-- Excel-specific concepts
-- inferred display types
+責務外:
+- UI 状態
+- 表示上のグループ化
+- スクリプト構文やランタイムオブジェクト
+- Excel 固有概念
+- 推論された表示型
 
-The first row is not inherently special in the canonical model. Header interpretation belongs to a higher layer so CSV structure is not silently redefined.
+先頭行は正本モデル上では特別扱いしません。ヘッダー解釈は上位層の責務です。
 
-## Process/application layer
+## Process / application 層
 
-Responsibilities:
-- coordinate open/edit/save flows
-- expose stable operations to UI and scripting adapters
-- track transient session state such as dirty state and source path
-- provide A1/range editing and structural row/column operations
-- provide explicit header lookup and non-mutating column semantic checks
-- translate low-level data errors into application-facing errors
+責務:
+- open/edit/save の調停
+- UI・スクリプトアダプタへ安定した操作を公開する
+- dirty 状態やパスなどセッション状態を管理する
+- A1／範囲編集、行列の構造編集を提供する
+- ヘッダー検索と非破壊な列意味チェックを提供する
+- data 層のエラーをアプリ向けエラーへ変換する
 
-Non-responsibilities:
-- CSV byte parsing/encoding details
-- rendering
-- DSL parsing/evaluation or object lifetime
-- Excel implementation details
+責務外:
+- CSV バイト解析／文字コード詳細
+- 描画
+- DSL 構文解析／評価やオブジェクト寿命
+- Luau 言語ランタイムの内部仕様
+- Excel 実装詳細
 
-As the application grows, large operations should be decomposed into small processing modules. Orchestrators should coordinate operations rather than absorb their implementation.
+処理が大きくなった場合は、小さな processing module へ分割します。オーケストレータは調停に集中し、実装詳細を抱え込まないようにします。
 
-## Rowly DSL adapter
+## Rowly DSL アダプタ
 
-`rowly_dsl` is a user-facing macro language adapter over `process`. Its implementation is split into AST, parser, and runtime responsibilities so language growth does not leak into the data layer.
+`rowly_dsl` は `process` 上に載るユーザー向けマクロ言語です。AST、parser、runtime を分離し、言語拡張が data 層へ漏れないようにします。
 
-Current responsibilities:
-- parse line-oriented BASIC-style control flow (`If ... Then` / `End If`)
-- parse `Let`, top-level `Def ...` / `End Def`, calls, arguments, and `Return`
-- parse `Class ...` / `End Class`, `Field`, methods, `New ClassName()`, member reads/writes, and method calls
-- evaluate literal, variable, call, object, field, and method expressions plus equality conditions
-- maintain a global scope and per-call local scopes; parameters and local `Let` bindings do not overwrite outer variables
-- inject `Self` into method scope only while a method is executing
-- keep class instances and object identity entirely inside the DSL runtime
-- propagate `Return` through nested control flow and require a value when a call is used as an expression
-- cap function/method call depth to prevent runaway recursion
-- map object-path commands such as `This.Worksheet.Column(...)` and `This.Worksheet.Editor.Cell(...)` to process APIs
-- expose execution reports for semantic checks, assignments, calls, and object field state
-- preserve top-to-bottom macro execution semantics
+現在の責務:
+- `If ... Then` / `Else` / `End If` の制御構文
+- `Not` / `And` / `Or` と比較演算子
+- `Let`、トップレベル `Def ...` / `End Def`、呼び出し、引数、`Return`
+- `Class ...` / `End Class`、`Field`、method、`New ClassName()`、member 読み書き
+- global scope と関数／method ごとの local scope
+- method 実行時だけの `Self`
+- DSL runtime 内だけの class instance / object identity
+- `Integer(...)` / `Decimal(...)` / `Boolean(...)` / `String(...)` の明示変換
+- Integer / Decimal の数値比較、文字列の辞書順比較
+- `Return` のネスト制御フロー伝播
+- 暴走再帰を防ぐ call depth 上限
+- `This.Worksheet.Column(...)` / `This.Worksheet.Editor.Cell(...)` を process API へ対応付ける
+- 実行レポートの提供
+- 上から下へ実行するマクロ semantics の維持
 
-Runtime objects are not part of the canonical CSV model. Object aliases may share runtime instance identity, but any effect on CSV must still go through process APIs. CSV cell assignments require text, so object references cannot be silently serialized into canonical data.
+DSL の runtime object は CSV 正本モデルの一部ではありません。CSV への作用は必ず process API を通します。型付きスカラーを CSV セルへ書く場合も process 境界で文字列へ変換します。
 
-Constructors with arguments, inheritance, and richer operators remain deferred language features.
+引数付きコンストラクタ、継承、算術式は今後の拡張です。
 
-DSL column indices are 1-based because they are user-facing. Process/data indices remain zero-based.
+DSL の列番号はユーザー向けに 1-based、process/data の内部 index は 0-based です。
 
-## Encoding policy
+## Luau アダプタ
 
-- Internal text representation is UTF-8 Rust `String` data.
-- UTF-8 input is accepted, including UTF-8 BOM.
-- Shift_JIS is detected and decoded to UTF-8 on open.
-- Unsupported detected encodings fail explicitly rather than being silently mis-decoded.
-- Save output is UTF-8.
+`luau` は自由度の高いユーザースクリプト用の組み込みアダプタです。Luau VM は `mlua` の Luau backend を使用します。
 
-UI policy around notifying the user about Shift_JIS -> UTF-8 conversion is intentionally deferred until the GUI exists.
+Luau にはグローバル `Rowly` テーブルを公開し、現時点では次の process 操作だけを提供します。
+
+- `Rowly.cell(reference)`
+- `Rowly.set_cell(reference, value)`
+- `Rowly.set_range(range, value)`
+- `Rowly.row_count()`
+- `Rowly.column_count()`
+- `Rowly.undo()` / `Rowly.redo()`
+
+Luau から `data` や CSV codec へ直接アクセスさせません。不正な A1 参照など process 層のエラーは Luau runtime error として伝播します。
+
+Luau 側から CSV へ書き込める値は現時点では文字列だけです。table、function、userdata などを暗黙に CSV 文字列へ変換してはなりません。
+
+Luau の実行時間・命令数・メモリ量の制限は未実装です。詳細仕様は [`LUAU.md`](LUAU.md) を正本とします。
+
+## 文字コード方針
+
+- 内部表現は UTF-8 の Rust `String`。
+- UTF-8 入力を受け付ける。UTF-8 BOM も対応する。
+- Shift_JIS は読み込み時に検出し UTF-8 へ変換する。
+- 対応外と判断した文字コードは黙って誤変換せずエラーにする。
+- 保存時は UTF-8 とする。
+
+Shift_JIS → UTF-8 変換をユーザーへどう通知するかは GUI 実装時に決めます。
 
 ## CSV fidelity
 
-Rowly preserves table meaning as rows and textual cells. Saving may normalize byte-level CSV representation (for example quoting or line endings) while preserving parsed records and values.
+Rowly は、行と文字列セルからなる表の意味を保持します。保存時には quoting や改行コードなどのバイト表現が正規化される場合がありますが、解析後のレコードと値を維持します。
 
-Exact byte-for-byte round-tripping is not an architectural requirement. If future requirements make blank-line or dialect fidelity significant, that must be handled explicitly in the data layer rather than hidden in UI metadata.
+byte-for-byte の完全 round trip は要件ではありません。空行や dialect の忠実性が将来重要になった場合は、UI metadata へ隠さず data 層で明示的に扱います。
 
-## Future boundaries
+## 今後の境界
 
-- `ui`: concrete viewer/editor toolkit and rendering; depends on process only.
-- `luau`: embedded general-purpose scripting adapter over the same process API.
-- `excel_python`: Python-backed Excel import/export adapter. Excel is an interchange path, not a replacement source of truth for an opened CSV.
+- `ui`: 具体的な viewer/editor と描画。process のみに依存する。
+- `excel_python`: Python-backed Excel import/export。Excel は交換経路であり、開いた CSV に代わる正本にはしない。
 
-These boundaries should be added only when implemented; do not create empty abstraction layers in advance.
+空の抽象化層は先に作らず、必要になった時点で追加します。
+
+## 文書の言語
+
+この日本語版をアーキテクチャ仕様の正本とします。英語版を用意する場合も、差異があるときは日本語版を優先します。

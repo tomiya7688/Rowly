@@ -6,7 +6,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Name: Rowly
 - Purpose: CSV-first table viewer/editor. CSV remains the canonical data source.
 - Main language/runtime: Rust.
-- Planned adapters: Rowly DSL and Luau scripting; Python for Excel I/O.
+- Adapters: Rowly DSL is being implemented in Rust; Luau scripting is planned; Python is planned for Excel I/O.
 
 ## Source of Truth
 - Product invariants: `README.md`
@@ -47,6 +47,9 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Header lookup and column semantic checks live above the canonical data layer. The first row is only treated as a header when a process-layer header API is explicitly used.
 - Column type checks are non-mutating interpretation/validation. `String`, numeric, and boolean checks must not rewrite canonical CSV text.
 - Duplicate header names are ambiguous for singular lookup and must be reported instead of silently selecting one.
+- Rowly DSL is an adapter over `process`; it must not call `data` or CSV codecs directly.
+- The DSL is top-to-bottom macro execution. Initial syntax is intentionally small and line-oriented; add `def`, class, return, and richer expressions by extending the AST rather than bypassing it.
+- DSL column numbers are 1-based user-facing indices; process/data indices remain zero-based.
 
 ## Validation
 Use the smallest sufficient validation for the change:
@@ -73,11 +76,12 @@ Implemented:
 - process-layer first-row header lookup with duplicate detection
 - non-mutating `String` / `Integer` / `Decimal` / `Boolean` column validation
 - Japanese-character column checks with A1 result references
+- initial Rowly DSL AST/parser/executor for `If`, column checks, and range value assignment
 - headless CLI smoke entry point
 
 Not implemented yet:
 - GUI
-- Rowly DSL
+- Rowly DSL `def` / class / return / variables / general expressions
 - Luau
 - Python/Excel bridge
 - persistent column metadata/type declarations

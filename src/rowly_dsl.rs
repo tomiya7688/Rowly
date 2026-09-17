@@ -367,10 +367,7 @@ fn parse_cell_statement(line: &SourceLine) -> Result<Statement, ParseError> {
     Ok(Statement::SetRangeValue { range, value })
 }
 
-fn parse_column_target(
-    text: &str,
-    line: usize,
-) -> Result<(ColumnSelector, &str), ParseError> {
+fn parse_column_target(text: &str, line: usize) -> Result<(ColumnSelector, &str), ParseError> {
     let prefix = "this.worksheet.column(";
     let (argument, remainder) = parse_call(text, prefix, line)?;
     let selector = parse_column_selector(argument, line)?;

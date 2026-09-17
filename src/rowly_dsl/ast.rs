@@ -54,11 +54,8 @@ impl FunctionDefinition {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Statement {
-    If {
-        condition: Condition,
-        body: Vec<Statement>,
-        else_body: Vec<Statement>,
-    },
+    If { condition: Condition, body: Vec<Statement> },
+    IfElse { condition: Condition, body: Vec<Statement>, else_body: Vec<Statement> },
     Let { name: String, value: Expression },
     Return { value: Option<Expression> },
     Call { name: String, arguments: Vec<Expression> },
@@ -93,11 +90,7 @@ pub enum ComparisonOperator {
 pub enum Condition {
     ColumnExists { selector: ColumnSelector },
     ColumnTitleEquals { selector: ColumnSelector, expected: Expression },
-    Compare {
-        left: Expression,
-        operator: ComparisonOperator,
-        right: Expression,
-    },
+    Compare { left: Expression, operator: ComparisonOperator, right: Expression },
     Not(Box<Condition>),
     And(Box<Condition>, Box<Condition>),
     Or(Box<Condition>, Box<Condition>),

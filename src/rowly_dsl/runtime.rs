@@ -220,7 +220,7 @@ impl<'a> Runtime<'a> {
                 }
                 Statement::SetRangeValue { range, value } => {
                     let value = self.evaluate_expression(value)?;
-                    let value = self.into_cell_text(value)?;
+                    let value = self.cell_text(value)?;
                     self.document.set_range_value(*range, value.clone())?;
                     self.events.push(ExecutionEvent::RangeValueSet {
                         range: *range,
@@ -679,7 +679,7 @@ impl<'a> Runtime<'a> {
         }
     }
 
-    fn into_cell_text(&self, value: Value) -> Result<String, ExecutionError> {
+    fn cell_text(&self, value: Value) -> Result<String, ExecutionError> {
         match value {
             Value::Text(value) => Ok(value),
             Value::Integer(value) => Ok(value.to_string()),

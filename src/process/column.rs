@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn japanese_check_reports_matching_and_nonmatching_cells() {
-        let document = open("名前\n田中太郎\nAlice\n山田 Taro\n\n");
+        let document = open("名前\n田中太郎\nAlice\n山田 Taro\n\"\"\n");
         let report = document.check_column_japanese_by_header("名前").unwrap();
 
         assert_eq!(report.checked_cells(), 4);

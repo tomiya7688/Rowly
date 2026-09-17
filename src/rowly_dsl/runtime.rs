@@ -5,8 +5,8 @@ use thiserror::Error;
 use crate::process::{ColumnError, CsvDocument, DocumentError};
 
 use super::ast::{
-    normalize_identifier, ColumnSelector, Condition, ExecutionEvent, ExecutionReport, Expression,
-    Program, Statement,
+    ColumnSelector, Condition, ExecutionEvent, ExecutionReport, Expression, Program, Statement,
+    normalize_identifier,
 };
 
 const MAX_CALL_DEPTH: usize = 64;
@@ -88,10 +88,7 @@ impl<'a> Runtime<'a> {
         })
     }
 
-    fn execute_statements(
-        &mut self,
-        statements: &[Statement],
-    ) -> Result<Flow, ExecutionError> {
+    fn execute_statements(&mut self, statements: &[Statement]) -> Result<Flow, ExecutionError> {
         for statement in statements {
             match statement {
                 Statement::If { condition, body } => {

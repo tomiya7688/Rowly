@@ -4,17 +4,59 @@ use crate::process::{CellRange, ColumnType, ColumnTypeReport, JapaneseCheckRepor
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
+    pub(super) classes: Vec<ClassDefinition>,
     pub(super) functions: Vec<FunctionDefinition>,
     pub(super) statements: Vec<Statement>,
 }
 
 impl Program {
+    pub fn classes(&self) -> &[ClassDefinition] {
+        &self.classes
+    }
+
     pub fn functions(&self) -> &[FunctionDefinition] {
         &self.functions
     }
 
     pub fn statements(&self) -> &[Statement] {
         &self.statements
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassDefinition {
+    pub(super) name: String,
+    pub(super) fields: Vec<FieldDefinition>,
+    pub(super) methods: Vec<FunctionDefinition>,
+}
+
+impl ClassDefinition {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn fields(&self) -> &[FieldDefinition] {
+        &self.fields
+    }
+
+    pub fn methods(&self) -> &[FunctionDefinition] {
+        &self.methods
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldDefinition {
+    pub(super) name: String,
+    pub(super) default: Expression,
+}
+
+impl FieldDefinition {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn default(&self) -> &Expression {
+        &self.default
     }
 }
 
@@ -56,6 +98,16 @@ pub enum Statement {
         name: String,
         arguments: Vec<Expression>,
     },
+    MethodCall {
+        target: String,
+        name: String,
+        arguments: Vec<Expression>,
+    },
+    SetField {
+        target: String,
+        field: String,
+        value: Expression,
+    },
     SetRangeValue {
         range: CellRange,
         value: Expression,
@@ -74,6 +126,18 @@ pub enum Expression {
     Literal(String),
     Variable(String),
     Call {
+        name: String,
+        arguments: Vec<Expression>,
+    },
+    New {
+        class_name: String,
+    },
+    Field {
+        target: String,
+        field: String,
+    },
+    MethodCall {
+        target: String,
         name: String,
         arguments: Vec<Expression>,
     },
@@ -104,6 +168,7 @@ pub enum ColumnSelector {
 pub struct ExecutionReport {
     pub(super) events: Vec<ExecutionEvent>,
     pub(super) variables: HashMap<String, String>,
+    pub(super) object_fields: HashMap<String, HashMap<String, String>>,
 }
 
 impl ExecutionReport {
@@ -114,6 +179,13 @@ impl ExecutionReport {
     pub fn variable(&self, name: &str) -> Option<&str> {
         self.variables
             .get(&normalize_identifier(name))
+            .map(String::as_str)
+    }
+
+    pub fn object_field(&self, variable: &str, field: &str) -> Option<&str> {
+        self.object_fields
+            .get(&normalize_identifier(variable))?
+            .get(&normalize_identifier(field))
             .map(String::as_str)
     }
 }
@@ -128,7 +200,21 @@ pub enum ExecutionEvent {
         name: String,
         value: String,
     },
+    ObjectCreated {
+        class_name: String,
+    },
+    FieldSet {
+        target: String,
+        field: String,
+        value: String,
+    },
     FunctionCalled {
+        name: String,
+        arguments: Vec<String>,
+        return_value: Option<String>,
+    },
+    MethodCalled {
+        class_name: String,
         name: String,
         arguments: Vec<String>,
         return_value: Option<String>,

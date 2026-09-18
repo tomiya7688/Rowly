@@ -88,6 +88,13 @@ pub enum Statement {
         body: Vec<Statement>,
         else_body: Vec<Statement>,
     },
+    For {
+        variable: String,
+        start: Expression,
+        end: Expression,
+        step: Option<Expression>,
+        body: Vec<Statement>,
+    },
     Let {
         name: String,
         value: Expression,

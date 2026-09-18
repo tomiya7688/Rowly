@@ -53,6 +53,8 @@ Rust コアでは次を実装済みです。
 - Rowly DSL の算術式 `+` / `-` / `*` / `/`、単項 `-`、括弧、演算子優先順位
 - `Contains` / `StartsWith` / `EndsWith` / `IsJapanese` / `IsInteger` / `IsDecimal` / `IsBoolean` 組み込み判定
 - `CellValue("A2")` による CSV セル値の式読み取り
+- `For ... To ... [Step ...]` / `Next` による整数ループ
+- `RowCount()` / `ColumnCount()` / `CellValueAt(row, column)` / `SetCellValueAt(row, column, value)` による動的セル操作
 - Luau ユーザースクリプト実行アダプタ
 - process レベルの open/edit/save API
 - ヘッドレス CLI のスモークエントリポイント
@@ -99,6 +101,8 @@ End If
 値単位の判定には `Contains` / `StartsWith` / `EndsWith` / `IsJapanese` / `IsInteger` / `IsDecimal` / `IsBoolean` を使用できます。Boolean を返す式は `If IsJapanese(value) Then` のように比較演算子なしで条件として直接使用できます。`IsJapanese` は文字列中に日本語文字を1文字以上含むかを判定します。
 
 CSV の既存セル値は `CellValue("A2")` で文字列として読み取れます。読み取りも `process::CsvDocument` を経由し、同じスクリプト内で先に行った編集結果を直後の式から参照できます。不正な A1 参照や存在しないセルは明示エラーです。
+
+全行処理には `For row = Integer("2") To RowCount()` / `Next row` を使用できます。`Step` は省略時1で、負数による降順ループにも対応します。`CellValueAt` / `SetCellValueAt` の行・列番号は1-basedです。ループ変数とループ内 `Let` はループ専用スコープに限定され、終了後は外側へ漏れません。
 
 オブジェクト変数は DSL ランタイム内部だけの参照です。クラスインスタンスが CSV に代わる正本になることはありません。CSV への作用は必ず process API を通します。
 

@@ -179,6 +179,7 @@ impl Parser {
             if is_end_class(&current.text)
                 || eq_ci(&current.text, "else")
                 || is_end_if(&current.text)
+                || is_next(&current.text)
             {
                 return Err(parse_error(current.number, "unexpected block terminator"));
             }
@@ -196,6 +197,9 @@ impl Parser {
         if starts_with_ci(&line.text, "if ") {
             return self.parse_if(&line);
         }
+        if starts_with_ci(&line.text, "for ") {
+            return self.parse_for(&line);
+        }
         if starts_with_ci(&line.text, "def ") || starts_with_ci(&line.text, "class ") {
             return Err(parse_error(
                 line.number,
@@ -205,6 +209,62 @@ impl Parser {
         let statement = parse_statement(&line)?;
         self.position += 1;
         Ok(statement)
+    }
+
+    fn parse_for(&mut self, line: &SourceLine) -> Result<Statement, ParseError> {
+        let rest = strip_prefix_ci(&line.text, "for ")
+            .ok_or_else(|| parse_error(line.number, "expected `For name = start To end`"))?;
+        let (variable, range) = split_top_level_once(rest, '=')
+            .ok_or_else(|| parse_error(line.number, "expected `For name = start To end`"))?;
+        let variable = variable.trim();
+        validate_identifier(variable, line.number)?;
+
+        let (start_text, end_and_step) = split_keyword_top_level(range.trim(), " to ")
+            .ok_or_else(|| parse_error(line.number, "expected `To` in For loop"))?;
+        let (end_text, step_text) =
+            if let Some((end, step)) = split_keyword_top_level(end_and_step.trim(), " step ") {
+                (end.trim(), Some(step.trim()))
+            } else {
+                (end_and_step.trim(), None)
+            };
+
+        let start = parse_expression(start_text.trim(), line.number)?;
+        let end = parse_expression(end_text, line.number)?;
+        let step = step_text
+            .map(|text| parse_expression(text, line.number))
+            .transpose()?;
+
+        self.position += 1;
+        let mut body = Vec::new();
+        while let Some(current) = self.lines.get(self.position).cloned() {
+            if is_next(&current.text) {
+                if let Some(name) = next_variable(&current.text) {
+                    if !name.eq_ignore_ascii_case(variable) {
+                        return Err(parse_error(
+                            current.number,
+                            format!(
+                                "Next variable `{name}` does not match For variable `{variable}`"
+                            ),
+                        ));
+                    }
+                }
+                self.position += 1;
+                return Ok(Statement::For {
+                    variable: variable.to_owned(),
+                    start,
+                    end,
+                    step,
+                    body,
+                });
+            }
+            if is_end_def(&current.text) || is_end_class(&current.text) || is_end_if(&current.text)
+            {
+                return Err(parse_error(current.number, "unexpected block terminator"));
+            }
+            body.push(self.parse_statement_or_if()?);
+        }
+
+        Err(parse_error(line.number, "missing `Next`"))
     }
 
     fn parse_if(&mut self, line: &SourceLine) -> Result<Statement, ParseError> {
@@ -231,7 +291,7 @@ impl Parser {
                 self.position += 1;
                 continue;
             }
-            if is_end_def(&current.text) || is_end_class(&current.text) {
+            if is_end_def(&current.text) || is_end_class(&current.text) || is_next(&current.text) {
                 return Err(parse_error(current.number, "unexpected block terminator"));
             }
             let statement = self.parse_statement_or_if()?;
@@ -244,6 +304,16 @@ impl Parser {
 
         Err(parse_error(line.number, "missing `End If`"))
     }
+}
+
+fn is_next(text: &str) -> bool {
+    eq_ci(text.trim(), "next") || starts_with_ci(text.trim(), "next ")
+}
+
+fn next_variable(text: &str) -> Option<&str> {
+    strip_prefix_ci(text.trim(), "next ")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
 }
 
 fn parse_function_signature(line: &SourceLine) -> Result<(String, Vec<String>), ParseError> {

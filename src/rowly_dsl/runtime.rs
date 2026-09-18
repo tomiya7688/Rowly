@@ -101,6 +101,14 @@ pub enum ExecutionError {
     },
     #[error("call `{0}` was used as a value but did not return one")]
     MissingReturnValue(String),
+    #[error("{context} requires an Integer value")]
+    ExpectedInteger { context: String },
+    #[error("{context} must be at least 1")]
+    InvalidOneBasedIndex { context: String },
+    #[error("For loop Step cannot be zero")]
+    ZeroLoopStep,
+    #[error("For loop counter overflowed")]
+    LoopCounterOverflow,
     #[error("`Return` can only be used inside a function or method")]
     ReturnOutsideFunction,
     #[error("Rowly DSL call depth exceeded the limit of {limit}")]
@@ -195,6 +203,60 @@ impl<'a> Runtime<'a> {
                         return Ok(flow);
                     }
                 }
+                Statement::For {
+                    variable,
+                    start,
+                    end,
+                    step,
+                    body,
+                } => {
+                    let start = self.evaluate_expression(start)?;
+                    let end = self.evaluate_expression(end)?;
+                    let step = step
+                        .as_ref()
+                        .map(|expression| self.evaluate_expression(expression))
+                        .transpose()?;
+                    let mut current = self.expect_integer(start, "For start")?;
+                    let end = self.expect_integer(end, "For end")?;
+                    let step = match step {
+                        Some(value) => self.expect_integer(value, "For Step")?,
+                        None => 1,
+                    };
+                    if step == 0 {
+                        return Err(ExecutionError::ZeroLoopStep);
+                    }
+
+                    self.scopes.push(HashMap::new());
+                    let execution = (|| -> Result<Flow, ExecutionError> {
+                        loop {
+                            let in_range = if step > 0 {
+                                current <= end
+                            } else {
+                                current >= end
+                            };
+                            if !in_range {
+                                break;
+                            }
+
+                            self.current_scope_mut()
+                                .insert(normalize_identifier(variable), Value::Integer(current));
+                            let flow = self.execute_statements(body)?;
+                            if !matches!(flow, Flow::Continue) {
+                                return Ok(flow);
+                            }
+
+                            current = current
+                                .checked_add(step)
+                                .ok_or(ExecutionError::LoopCounterOverflow)?;
+                        }
+                        Ok(Flow::Continue)
+                    })();
+                    self.scopes.pop();
+                    let flow = execution?;
+                    if !matches!(flow, Flow::Continue) {
+                        return Ok(flow);
+                    }
+                }
                 Statement::Let { name, value } => {
                     let value = self.evaluate_expression(value)?;
                     let event_value = self.describe_value(&value);
@@ -213,7 +275,9 @@ impl<'a> Runtime<'a> {
                     return Ok(Flow::Return(value));
                 }
                 Statement::Call { name, arguments } => {
-                    let _ = self.call_function(name, arguments)?;
+                    if self.call_builtin(name, arguments)?.is_none() {
+                        let _ = self.call_function(name, arguments)?;
+                    }
                 }
                 Statement::MethodCall {
                     target,
@@ -520,6 +584,14 @@ impl<'a> Runtime<'a> {
             Some("IsBoolean")
         } else if name.eq_ignore_ascii_case("cellvalue") {
             Some("CellValue")
+        } else if name.eq_ignore_ascii_case("rowcount") {
+            Some("RowCount")
+        } else if name.eq_ignore_ascii_case("columncount") {
+            Some("ColumnCount")
+        } else if name.eq_ignore_ascii_case("cellvalueat") {
+            Some("CellValueAt")
+        } else if name.eq_ignore_ascii_case("setcellvalueat") {
+            Some("SetCellValueAt")
         } else {
             None
         };
@@ -528,7 +600,9 @@ impl<'a> Runtime<'a> {
             return Ok(None);
         };
         let expected = match canonical {
-            "Contains" | "StartsWith" | "EndsWith" => 2,
+            "RowCount" | "ColumnCount" => 0,
+            "Contains" | "StartsWith" | "EndsWith" | "CellValueAt" => 2,
+            "SetCellValueAt" => 3,
             _ => 1,
         };
         if arguments.len() != expected {
@@ -574,6 +648,25 @@ impl<'a> Runtime<'a> {
                     .cell_a1(&reference)?
                     .ok_or_else(|| ExecutionError::MissingCell(reference.clone()))?;
                 Value::Text(value.to_owned())
+            }
+            "RowCount" => Value::Integer(self.document.row_count() as i64),
+            "ColumnCount" => Value::Integer(self.document.column_count() as i64),
+            "CellValueAt" => {
+                let row = self.expect_one_based_index(values[0].clone(), "CellValueAt row")?;
+                let column =
+                    self.expect_one_based_index(values[1].clone(), "CellValueAt column")?;
+                let value = self.document.cell(row - 1, column - 1).ok_or_else(|| {
+                    ExecutionError::MissingCell(format!("row {row}, column {column}"))
+                })?;
+                Value::Text(value.to_owned())
+            }
+            "SetCellValueAt" => {
+                let row = self.expect_one_based_index(values[0].clone(), "SetCellValueAt row")?;
+                let column =
+                    self.expect_one_based_index(values[1].clone(), "SetCellValueAt column")?;
+                let value = self.cell_text(values[2].clone())?;
+                self.document.set_cell(row - 1, column - 1, value.clone())?;
+                Value::Text(value)
             }
             _ => unreachable!(),
         }))
@@ -839,6 +932,27 @@ impl<'a> Runtime<'a> {
         self.objects
             .get_mut(object_id)
             .ok_or_else(|| ExecutionError::ExpectedObject(format!("object#{object_id}")))
+    }
+
+    fn expect_integer(&self, value: Value, context: &str) -> Result<i64, ExecutionError> {
+        match value {
+            Value::Integer(value) => Ok(value),
+            _ => Err(ExecutionError::ExpectedInteger {
+                context: context.to_owned(),
+            }),
+        }
+    }
+
+    fn expect_one_based_index(&self, value: Value, context: &str) -> Result<usize, ExecutionError> {
+        let value = self.expect_integer(value, context)?;
+        if value < 1 {
+            return Err(ExecutionError::InvalidOneBasedIndex {
+                context: context.to_owned(),
+            });
+        }
+        usize::try_from(value).map_err(|_| ExecutionError::InvalidOneBasedIndex {
+            context: context.to_owned(),
+        })
     }
 
     fn expect_text(&self, value: Value, context: &str) -> Result<String, ExecutionError> {

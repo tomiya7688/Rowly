@@ -6,7 +6,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Name: Rowly
 - Purpose: CSV-first table viewer/editor. CSV remains the canonical data source.
 - Main language/runtime: Rust.
-- Adapters: Rowly DSL is implemented in Rust; Luau scripting is planned; Python is planned for Excel I/O.
+- Adapters: Rowly DSL and Luau scripting are implemented in Rust; Python is planned for Excel I/O.
 
 ## Source of Truth
 - Product invariants: `README.md`
@@ -56,6 +56,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Class instances are runtime-only DSL objects. They must not become canonical table state or bypass process-layer edits.
 - Object aliases share instance identity. `Self` is injected only while a method executes.
 - CSV cell edits require textual values; object references cannot be written directly into canonical CSV cells.
+- DSL arithmetic is typed: Integer/Decimal only, with explicit promotion, division-by-zero errors, and no implicit string coercion.
 
 ## Validation
 Use the smallest sufficient validation for the change:
@@ -82,13 +83,13 @@ Implemented:
 - process-layer first-row header lookup with duplicate detection
 - non-mutating `String` / `Integer` / `Decimal` / `Boolean` column validation
 - Japanese-character column checks with A1 result references
-- Rowly DSL AST/parser/runtime for `If`, variables, functions, calls, return, classes, objects, fields, methods, column checks, and range value assignment
+- Rowly DSL AST/parser/runtime for `If`, variables, functions, calls, return, classes, objects, fields, methods, arithmetic expressions, column checks, and range value assignment
+- typed Integer/Decimal arithmetic with precedence, unary minus, parentheses, and explicit arithmetic errors
 - headless CLI smoke entry point
 
 Not implemented yet:
 - GUI
-- richer Rowly DSL operators/expressions and inheritance/constructors
-- Luau
+- Rowly DSL inheritance/constructors
 - Python/Excel bridge
 - persistent column metadata/type declarations
 - broader type inference

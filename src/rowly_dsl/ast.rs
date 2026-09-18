@@ -190,6 +190,7 @@ pub enum Condition {
         operator: ComparisonOperator,
         right: Expression,
     },
+    Expression(Expression),
     Not(Box<Condition>),
     And(Box<Condition>, Box<Condition>),
     Or(Box<Condition>, Box<Condition>),

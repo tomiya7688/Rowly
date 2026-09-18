@@ -76,6 +76,7 @@ UI / Rowly DSL / Luau / Python adapters
 - `+` / `-` / `*` / `/`、単項 `-`、括弧を持つ型付き算術式と演算子優先順位
 - `Contains` / `StartsWith` / `EndsWith` / `IsJapanese` / `IsInteger` / `IsDecimal` / `IsBoolean` の値判定
 - Boolean 値を返す式を直接 `If` 条件として評価する
+- `CellValue("A1")` による process 境界経由の現在セル値読み取り
 - `Return` のネスト制御フロー伝播
 - 暴走再帰を防ぐ call depth 上限
 - `This.Worksheet.Column(...)` / `This.Worksheet.Editor.Cell(...)` を process API へ対応付ける

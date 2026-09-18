@@ -47,6 +47,8 @@ pub enum ExecutionError {
     UnknownFunction(String),
     #[error("unknown Rowly DSL class `{0}`")]
     UnknownClass(String),
+    #[error("cell `{0}` is outside the existing CSV table")]
+    MissingCell(String),
     #[error("unknown field `{field}` on class `{class_name}`")]
     UnknownField { class_name: String, field: String },
     #[error("unknown method `{method}` on class `{class_name}`")]
@@ -516,6 +518,8 @@ impl<'a> Runtime<'a> {
             Some("IsDecimal")
         } else if name.eq_ignore_ascii_case("isboolean") {
             Some("IsBoolean")
+        } else if name.eq_ignore_ascii_case("cellvalue") {
+            Some("CellValue")
         } else {
             None
         };
@@ -563,6 +567,14 @@ impl<'a> Runtime<'a> {
             "IsInteger" => Value::Boolean(is_integer_value(&values[0])),
             "IsDecimal" => Value::Boolean(is_decimal_value(&values[0])),
             "IsBoolean" => Value::Boolean(is_boolean_value(&values[0])),
+            "CellValue" => {
+                let reference = self.expect_text(values[0].clone(), "CellValue argument")?;
+                let value = self
+                    .document
+                    .cell_a1(&reference)?
+                    .ok_or_else(|| ExecutionError::MissingCell(reference.clone()))?;
+                Value::Text(value.to_owned())
+            }
             _ => unreachable!(),
         }))
     }

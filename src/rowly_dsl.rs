@@ -44,6 +44,8 @@ mod tests;
 #[cfg(test)]
 mod tests_arithmetic;
 #[cfg(test)]
+mod tests_cell_value;
+#[cfg(test)]
 mod tests_classes;
 #[cfg(test)]
 mod tests_conditions;

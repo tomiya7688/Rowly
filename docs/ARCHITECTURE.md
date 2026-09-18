@@ -77,6 +77,8 @@ UI / Rowly DSL / Luau / Python adapters
 - `Contains` / `StartsWith` / `EndsWith` / `IsJapanese` / `IsInteger` / `IsDecimal` / `IsBoolean` の値判定
 - Boolean 値を返す式を直接 `If` 条件として評価する
 - `CellValue("A1")` による process 境界経由の現在セル値読み取り
+- `For ... To ... [Step ...]` / `Next` の整数ループとループ専用スコープ
+- `RowCount()` / `ColumnCount()` / `CellValueAt(...)` / `SetCellValueAt(...)` の1-based動的セル操作
 - `Return` のネスト制御フロー伝播
 - 暴走再帰を防ぐ call depth 上限
 - `This.Worksheet.Column(...)` / `This.Worksheet.Editor.Cell(...)` を process API へ対応付ける

@@ -55,6 +55,7 @@ Rust コアでは次を実装済みです。
 - `CellValue("A2")` による CSV セル値の式読み取り
 - `For ... To ... [Step ...]` / `Next` による整数ループ
 - `RowCount()` / `ColumnCount()` / `CellValueAt(row, column)` / `SetCellValueAt(row, column, value)` による動的セル操作
+- `ColumnIndex(header)` / `CellValueByHeader(row, header)` / `SetCellValueByHeader(row, header, value)` によるヘッダー名ベース操作
 - Luau ユーザースクリプト実行アダプタ
 - process レベルの open/edit/save API
 - ヘッドレス CLI のスモークエントリポイント
@@ -103,6 +104,8 @@ End If
 CSV の既存セル値は `CellValue("A2")` で文字列として読み取れます。読み取りも `process::CsvDocument` を経由し、同じスクリプト内で先に行った編集結果を直後の式から参照できます。不正な A1 参照や存在しないセルは明示エラーです。
 
 全行処理には `For row = Integer("2") To RowCount()` / `Next row` を使用できます。`Step` は省略時1で、負数による降順ループにも対応します。`CellValueAt` / `SetCellValueAt` の行・列番号は1-basedです。ループ変数とループ内 `Let` はループ専用スコープに限定され、終了後は外側へ漏れません。
+
+列番号を固定したくない場合は `ColumnIndex("名前")`、`CellValueByHeader(row, "名前")`、`SetCellValueByHeader(row, "状態", value)` を使用できます。ヘッダー検索は先頭行を完全一致で検索し、見つからない場合や重複して一意に決められない場合はエラーにします。`ColumnIndex` の返り値はDSL上の1-based列番号です。
 
 オブジェクト変数は DSL ランタイム内部だけの参照です。クラスインスタンスが CSV に代わる正本になることはありません。CSV への作用は必ず process API を通します。
 

@@ -61,6 +61,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - `CellValue("A1")` reads current CSV text through the process boundary; missing cells and invalid references must fail explicitly.
 - `For ... To ... [Step ...]` loops operate on Integer bounds evaluated once; loop scope does not leak outward.
 - Dynamic cell builtins use 1-based row/column indices and must still route through `CsvDocument`.
+- Header-based dynamic access must use exact first-row header lookup and preserve existing missing/ambiguous-header errors.
 
 ## Validation
 Use the smallest sufficient validation for the change:
@@ -92,6 +93,7 @@ Implemented:
 - value predicates for string matching, Japanese detection, and Integer/Decimal/Boolean interpretation
 - expression-level CSV cell reads through `CellValue(...)`
 - BASIC-style For loops plus row/column counts and dynamic 1-based cell reads/writes
+- header-based column lookup and row cell reads/writes without hard-coded column numbers
 - headless CLI smoke entry point
 
 Not implemented yet:

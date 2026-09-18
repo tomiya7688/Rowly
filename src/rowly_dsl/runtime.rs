@@ -661,8 +661,7 @@ impl<'a> Runtime<'a> {
                 Value::Text(value.to_owned())
             }
             "SetCellValueAt" => {
-                let row =
-                    self.expect_one_based_index(values[0].clone(), "SetCellValueAt row")?;
+                let row = self.expect_one_based_index(values[0].clone(), "SetCellValueAt row")?;
                 let column =
                     self.expect_one_based_index(values[1].clone(), "SetCellValueAt column")?;
                 let value = self.cell_text(values[2].clone())?;
@@ -944,11 +943,7 @@ impl<'a> Runtime<'a> {
         }
     }
 
-    fn expect_one_based_index(
-        &self,
-        value: Value,
-        context: &str,
-    ) -> Result<usize, ExecutionError> {
+    fn expect_one_based_index(&self, value: Value, context: &str) -> Result<usize, ExecutionError> {
         let value = self.expect_integer(value, context)?;
         if value < 1 {
             return Err(ExecutionError::InvalidOneBasedIndex {

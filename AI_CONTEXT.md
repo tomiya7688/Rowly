@@ -57,6 +57,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Object aliases share instance identity. `Self` is injected only while a method executes.
 - CSV cell edits require textual values; object references cannot be written directly into canonical CSV cells.
 - DSL arithmetic is typed: Integer/Decimal only, with explicit promotion, division-by-zero errors, and no implicit string coercion.
+- DSL predicate builtins return Boolean values and Boolean expressions may be used directly as `If` conditions.
 
 ## Validation
 Use the smallest sufficient validation for the change:
@@ -85,6 +86,7 @@ Implemented:
 - Japanese-character column checks with A1 result references
 - Rowly DSL AST/parser/runtime for `If`, variables, functions, calls, return, classes, objects, fields, methods, arithmetic expressions, column checks, and range value assignment
 - typed Integer/Decimal arithmetic with precedence, unary minus, parentheses, and explicit arithmetic errors
+- value predicates for string matching, Japanese detection, and Integer/Decimal/Boolean interpretation
 - headless CLI smoke entry point
 
 Not implemented yet:

@@ -73,6 +73,7 @@ UI / Rowly DSL / Luau / Python adapters
 - DSL runtime 内だけの class instance / object identity
 - `Integer(...)` / `Decimal(...)` / `Boolean(...)` / `String(...)` の明示変換
 - Integer / Decimal の数値比較、文字列の辞書順比較
+- `+` / `-` / `*` / `/`、単項 `-`、括弧を持つ型付き算術式と演算子優先順位
 - `Return` のネスト制御フロー伝播
 - 暴走再帰を防ぐ call depth 上限
 - `This.Worksheet.Column(...)` / `This.Worksheet.Editor.Cell(...)` を process API へ対応付ける
@@ -81,7 +82,7 @@ UI / Rowly DSL / Luau / Python adapters
 
 DSL の runtime object は CSV 正本モデルの一部ではありません。CSV への作用は必ず process API を通します。型付きスカラーを CSV セルへ書く場合も process 境界で文字列へ変換します。
 
-引数付きコンストラクタ、継承、算術式は今後の拡張です。
+引数付きコンストラクタと継承は今後の拡張です。
 
 DSL の列番号はユーザー向けに 1-based、process/data の内部 index は 0-based です。
 

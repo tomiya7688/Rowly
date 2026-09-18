@@ -921,9 +921,7 @@ fn is_integer_value(value: &Value) -> bool {
 fn is_decimal_value(value: &Value) -> bool {
     match value {
         Value::Integer(_) | Value::Decimal(_) => true,
-        Value::Text(value) => value
-            .parse::<f64>()
-            .is_ok_and(|parsed| parsed.is_finite()),
+        Value::Text(value) => value.parse::<f64>().is_ok_and(|parsed| parsed.is_finite()),
         _ => false,
     }
 }

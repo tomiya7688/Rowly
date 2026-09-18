@@ -55,6 +55,8 @@ pub enum ExecutionError {
     ExpectedObject(String),
     #[error("{context} requires a text value")]
     ExpectedText { context: String },
+    #[error("{context} requires a Boolean value")]
+    ExpectedBoolean { context: String },
     #[error("cannot convert {value_type} value `{value}` to {target}")]
     Conversion {
         value_type: &'static str,
@@ -289,6 +291,10 @@ impl<'a> Runtime<'a> {
                 let right = self.evaluate_expression(right)?;
                 self.compare_values(left, *operator, right)
             }
+            Condition::Expression(expression) => {
+                let value = self.evaluate_expression(expression)?;
+                self.expect_boolean(value, "condition")
+            }
             Condition::Not(inner) => Ok(!self.evaluate_condition(inner)?),
             Condition::And(left, right) => {
                 if !self.evaluate_condition(left)? {
@@ -488,7 +494,7 @@ impl<'a> Runtime<'a> {
         name: &str,
         arguments: &[Expression],
     ) -> Result<Option<Value>, ExecutionError> {
-        let target = if name.eq_ignore_ascii_case("integer") {
+        let canonical = if name.eq_ignore_ascii_case("integer") {
             Some("Integer")
         } else if name.eq_ignore_ascii_case("decimal") {
             Some("Decimal")
@@ -496,26 +502,67 @@ impl<'a> Runtime<'a> {
             Some("Boolean")
         } else if name.eq_ignore_ascii_case("string") {
             Some("String")
+        } else if name.eq_ignore_ascii_case("contains") {
+            Some("Contains")
+        } else if name.eq_ignore_ascii_case("startswith") {
+            Some("StartsWith")
+        } else if name.eq_ignore_ascii_case("endswith") {
+            Some("EndsWith")
+        } else if name.eq_ignore_ascii_case("isjapanese") {
+            Some("IsJapanese")
+        } else if name.eq_ignore_ascii_case("isinteger") {
+            Some("IsInteger")
+        } else if name.eq_ignore_ascii_case("isdecimal") {
+            Some("IsDecimal")
+        } else if name.eq_ignore_ascii_case("isboolean") {
+            Some("IsBoolean")
         } else {
             None
         };
 
-        let Some(target) = target else {
+        let Some(canonical) = canonical else {
             return Ok(None);
         };
-        if arguments.len() != 1 {
+        let expected = match canonical {
+            "Contains" | "StartsWith" | "EndsWith" => 2,
+            _ => 1,
+        };
+        if arguments.len() != expected {
             return Err(ExecutionError::ArgumentCount {
-                name: target.to_owned(),
-                expected: 1,
+                name: canonical.to_owned(),
+                expected,
                 actual: arguments.len(),
             });
         }
-        let value = self.evaluate_expression(&arguments[0])?;
-        Ok(Some(match target {
-            "Integer" => self.convert_integer(value)?,
-            "Decimal" => self.convert_decimal(value)?,
-            "Boolean" => self.convert_boolean(value)?,
-            "String" => self.convert_string(value)?,
+
+        let values = self.evaluate_arguments(arguments)?;
+        Ok(Some(match canonical {
+            "Integer" => self.convert_integer(values[0].clone())?,
+            "Decimal" => self.convert_decimal(values[0].clone())?,
+            "Boolean" => self.convert_boolean(values[0].clone())?,
+            "String" => self.convert_string(values[0].clone())?,
+            "Contains" => {
+                let haystack = self.expect_text(values[0].clone(), "Contains first argument")?;
+                let needle = self.expect_text(values[1].clone(), "Contains second argument")?;
+                Value::Boolean(haystack.contains(&needle))
+            }
+            "StartsWith" => {
+                let value = self.expect_text(values[0].clone(), "StartsWith first argument")?;
+                let prefix = self.expect_text(values[1].clone(), "StartsWith second argument")?;
+                Value::Boolean(value.starts_with(&prefix))
+            }
+            "EndsWith" => {
+                let value = self.expect_text(values[0].clone(), "EndsWith first argument")?;
+                let suffix = self.expect_text(values[1].clone(), "EndsWith second argument")?;
+                Value::Boolean(value.ends_with(&suffix))
+            }
+            "IsJapanese" => {
+                let value = self.expect_text(values[0].clone(), "IsJapanese argument")?;
+                Value::Boolean(contains_japanese(&value))
+            }
+            "IsInteger" => Value::Boolean(is_integer_value(&values[0])),
+            "IsDecimal" => Value::Boolean(is_decimal_value(&values[0])),
+            "IsBoolean" => Value::Boolean(is_boolean_value(&values[0])),
             _ => unreachable!(),
         }))
     }
@@ -791,6 +838,15 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    fn expect_boolean(&self, value: Value, context: &str) -> Result<bool, ExecutionError> {
+        match value {
+            Value::Boolean(value) => Ok(value),
+            _ => Err(ExecutionError::ExpectedBoolean {
+                context: context.to_owned(),
+            }),
+        }
+    }
+
     fn cell_text(&self, value: Value) -> Result<String, ExecutionError> {
         match value {
             Value::Text(value) => Ok(value),
@@ -836,6 +892,49 @@ impl<'a> Runtime<'a> {
         self.scopes
             .last_mut()
             .expect("runtime always has at least the global scope")
+    }
+}
+
+fn contains_japanese(value: &str) -> bool {
+    value.chars().any(|ch| {
+        matches!(
+            ch,
+            '\u{3040}'..='\u{309f}'
+                | '\u{30a0}'..='\u{30ff}'
+                | '\u{31f0}'..='\u{31ff}'
+                | '\u{3400}'..='\u{4dbf}'
+                | '\u{4e00}'..='\u{9fff}'
+                | '\u{f900}'..='\u{faff}'
+                | '\u{ff66}'..='\u{ff9f}'
+        )
+    })
+}
+
+fn is_integer_value(value: &Value) -> bool {
+    match value {
+        Value::Integer(_) => true,
+        Value::Text(value) => value.parse::<i64>().is_ok(),
+        _ => false,
+    }
+}
+
+fn is_decimal_value(value: &Value) -> bool {
+    match value {
+        Value::Integer(_) | Value::Decimal(_) => true,
+        Value::Text(value) => value
+            .parse::<f64>()
+            .is_ok_and(|parsed| parsed.is_finite()),
+        _ => false,
+    }
+}
+
+fn is_boolean_value(value: &Value) -> bool {
+    match value {
+        Value::Boolean(_) => true,
+        Value::Text(value) => {
+            value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false")
+        }
+        _ => false,
     }
 }
 

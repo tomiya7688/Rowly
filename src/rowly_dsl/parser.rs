@@ -242,7 +242,9 @@ impl Parser {
                     if !name.eq_ignore_ascii_case(variable) {
                         return Err(parse_error(
                             current.number,
-                            format!("Next variable `{name}` does not match For variable `{variable}`"),
+                            format!(
+                                "Next variable `{name}` does not match For variable `{variable}`"
+                            ),
                         ));
                     }
                 }
@@ -255,7 +257,8 @@ impl Parser {
                     body,
                 });
             }
-            if is_end_def(&current.text) || is_end_class(&current.text) || is_end_if(&current.text) {
+            if is_end_def(&current.text) || is_end_class(&current.text) || is_end_if(&current.text)
+            {
                 return Err(parse_error(current.number, "unexpected block terminator"));
             }
             body.push(self.parse_statement_or_if()?);

@@ -592,6 +592,12 @@ impl<'a> Runtime<'a> {
             Some("CellValueAt")
         } else if name.eq_ignore_ascii_case("setcellvalueat") {
             Some("SetCellValueAt")
+        } else if name.eq_ignore_ascii_case("columnindex") {
+            Some("ColumnIndex")
+        } else if name.eq_ignore_ascii_case("cellvaluebyheader") {
+            Some("CellValueByHeader")
+        } else if name.eq_ignore_ascii_case("setcellvaluebyheader") {
+            Some("SetCellValueByHeader")
         } else {
             None
         };
@@ -601,8 +607,8 @@ impl<'a> Runtime<'a> {
         };
         let expected = match canonical {
             "RowCount" | "ColumnCount" => 0,
-            "Contains" | "StartsWith" | "EndsWith" | "CellValueAt" => 2,
-            "SetCellValueAt" => 3,
+            "Contains" | "StartsWith" | "EndsWith" | "CellValueAt" | "CellValueByHeader" => 2,
+            "SetCellValueAt" | "SetCellValueByHeader" => 3,
             _ => 1,
         };
         if arguments.len() != expected {
@@ -666,6 +672,32 @@ impl<'a> Runtime<'a> {
                     self.expect_one_based_index(values[1].clone(), "SetCellValueAt column")?;
                 let value = self.cell_text(values[2].clone())?;
                 self.document.set_cell(row - 1, column - 1, value.clone())?;
+                Value::Text(value)
+            }
+            "ColumnIndex" => {
+                let header = self.expect_text(values[0].clone(), "ColumnIndex header")?;
+                let column = self.document.column_index_by_header(&header)?;
+                Value::Integer((column + 1) as i64)
+            }
+            "CellValueByHeader" => {
+                let row =
+                    self.expect_one_based_index(values[0].clone(), "CellValueByHeader row")?;
+                let header =
+                    self.expect_text(values[1].clone(), "CellValueByHeader header")?;
+                let column = self.document.column_index_by_header(&header)?;
+                let value = self.document.cell(row - 1, column).ok_or_else(|| {
+                    ExecutionError::MissingCell(format!("row {row}, header {header}"))
+                })?;
+                Value::Text(value.to_owned())
+            }
+            "SetCellValueByHeader" => {
+                let row =
+                    self.expect_one_based_index(values[0].clone(), "SetCellValueByHeader row")?;
+                let header =
+                    self.expect_text(values[1].clone(), "SetCellValueByHeader header")?;
+                let column = self.document.column_index_by_header(&header)?;
+                let value = self.cell_text(values[2].clone())?;
+                self.document.set_cell(row - 1, column, value.clone())?;
                 Value::Text(value)
             }
             _ => unreachable!(),

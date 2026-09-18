@@ -570,7 +570,10 @@ fn parse_primary_expression(text: &str, line: usize) -> Result<Expression, Parse
     Ok(Expression::Literal(text.to_owned()))
 }
 
-fn split_top_level_arithmetic(text: &str, operators: &[char]) -> Option<(&str, char, &str)> {
+fn split_top_level_arithmetic<'a>(
+    text: &'a str,
+    operators: &[char],
+) -> Option<(&'a str, char, &'a str)> {
     let mut depth = 0usize;
     let mut quoted = false;
     let mut escaped = false;

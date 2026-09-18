@@ -3,8 +3,9 @@ mod parser;
 mod runtime;
 
 pub use ast::{
-    ClassDefinition, ColumnSelector, ComparisonOperator, Condition, ExecutionEvent,
-    ExecutionReport, Expression, FieldDefinition, FunctionDefinition, Program, Statement,
+    ArithmeticOperator, ClassDefinition, ColumnSelector, ComparisonOperator, Condition,
+    ExecutionEvent, ExecutionReport, Expression, FieldDefinition, FunctionDefinition, Program,
+    Statement, UnaryOperator,
 };
 pub use parser::ParseError;
 pub use runtime::ExecutionError;
@@ -46,3 +47,5 @@ mod tests_classes;
 mod tests_conditions;
 #[cfg(test)]
 mod tests_typed_values;
+#[cfg(test)]
+mod tests_arithmetic;

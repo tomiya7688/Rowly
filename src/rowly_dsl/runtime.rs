@@ -682,8 +682,7 @@ impl<'a> Runtime<'a> {
             "CellValueByHeader" => {
                 let row =
                     self.expect_one_based_index(values[0].clone(), "CellValueByHeader row")?;
-                let header =
-                    self.expect_text(values[1].clone(), "CellValueByHeader header")?;
+                let header = self.expect_text(values[1].clone(), "CellValueByHeader header")?;
                 let column = self.document.column_index_by_header(&header)?;
                 let value = self.document.cell(row - 1, column).ok_or_else(|| {
                     ExecutionError::MissingCell(format!("row {row}, header {header}"))
@@ -693,8 +692,7 @@ impl<'a> Runtime<'a> {
             "SetCellValueByHeader" => {
                 let row =
                     self.expect_one_based_index(values[0].clone(), "SetCellValueByHeader row")?;
-                let header =
-                    self.expect_text(values[1].clone(), "SetCellValueByHeader header")?;
+                let header = self.expect_text(values[1].clone(), "SetCellValueByHeader header")?;
                 let column = self.document.column_index_by_header(&header)?;
                 let value = self.cell_text(values[2].clone())?;
                 self.document.set_cell(row - 1, column, value.clone())?;

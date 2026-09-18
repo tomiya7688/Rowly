@@ -328,13 +328,14 @@ fn parse_condition(text: &str, line: usize) -> Result<Condition, ParseError> {
             }
         }
     }
-    let (left, operator, right) = split_comparison(text)
-        .ok_or_else(|| parse_error(line, "expected a comparison condition"))?;
-    Ok(Condition::Compare {
-        left: parse_expression(left.trim(), line)?,
-        operator,
-        right: parse_expression(right.trim(), line)?,
-    })
+    if let Some((left, operator, right)) = split_comparison(text) {
+        return Ok(Condition::Compare {
+            left: parse_expression(left.trim(), line)?,
+            operator,
+            right: parse_expression(right.trim(), line)?,
+        });
+    }
+    Ok(Condition::Expression(parse_expression(text, line)?))
 }
 
 fn split_comparison(text: &str) -> Option<(&str, ComparisonOperator, &str)> {

@@ -6,8 +6,8 @@ use thiserror::Error;
 use crate::process::{ColumnError, CsvDocument, DocumentError};
 
 use super::ast::{
-    ColumnSelector, ComparisonOperator, Condition, ExecutionEvent, ExecutionReport, Expression,
-    Program, Statement, normalize_identifier,
+    ArithmeticOperator, ColumnSelector, ComparisonOperator, Condition, ExecutionEvent,
+    ExecutionReport, Expression, Program, Statement, UnaryOperator, normalize_identifier,
 };
 
 const MAX_CALL_DEPTH: usize = 64;
@@ -67,6 +67,21 @@ pub enum ExecutionError {
         right_type: &'static str,
         operator: &'static str,
     },
+    #[error("cannot apply arithmetic operator `{operator}` to {left_type} and {right_type}")]
+    IncomparableArithmetic {
+        left_type: &'static str,
+        right_type: &'static str,
+        operator: &'static str,
+    },
+    #[error("cannot apply unary operator `{operator}` to {value_type}")]
+    InvalidUnaryArithmetic {
+        value_type: &'static str,
+        operator: &'static str,
+    },
+    #[error("division by zero")]
+    DivisionByZero,
+    #[error("arithmetic overflow while applying `{operator}`")]
+    ArithmeticOverflow { operator: &'static str },
     #[error("function `{name}` expects {expected} arguments but received {actual}")]
     ArgumentCount {
         name: String,
@@ -343,6 +358,19 @@ impl<'a> Runtime<'a> {
     fn evaluate_expression(&mut self, expression: &Expression) -> Result<Value, ExecutionError> {
         match expression {
             Expression::Literal(value) => Ok(Value::Text(value.clone())),
+            Expression::Unary { operator, operand } => {
+                let value = self.evaluate_expression(operand)?;
+                self.evaluate_unary(*operator, value)
+            }
+            Expression::Arithmetic {
+                left,
+                operator,
+                right,
+            } => {
+                let left = self.evaluate_expression(left)?;
+                let right = self.evaluate_expression(right)?;
+                self.evaluate_arithmetic(left, *operator, right)
+            }
             Expression::Variable(name) => self
                 .lookup_variable(name)
                 .cloned()
@@ -368,6 +396,90 @@ impl<'a> Runtime<'a> {
                 self.call_method(object_id, name, arguments)?
                     .ok_or_else(|| ExecutionError::MissingReturnValue(format!("{target}.{name}")))
             }
+        }
+    }
+
+    fn evaluate_unary(
+        &self,
+        operator: UnaryOperator,
+        value: Value,
+    ) -> Result<Value, ExecutionError> {
+        match operator {
+            UnaryOperator::Negate => match value {
+                Value::Integer(value) => value
+                    .checked_neg()
+                    .map(Value::Integer)
+                    .ok_or(ExecutionError::ArithmeticOverflow { operator: "-" }),
+                Value::Decimal(value) => Ok(Value::Decimal(-value)),
+                other => Err(ExecutionError::InvalidUnaryArithmetic {
+                    value_type: value_type(&other),
+                    operator: "-",
+                }),
+            },
+        }
+    }
+
+    fn evaluate_arithmetic(
+        &self,
+        left: Value,
+        operator: ArithmeticOperator,
+        right: Value,
+    ) -> Result<Value, ExecutionError> {
+        use ArithmeticOperator::{Add, Divide, Multiply, Subtract};
+
+        if matches!(operator, Divide) {
+            let (left_number, right_number) =
+                arithmetic_numbers(&left, &right, arithmetic_operator_text(operator))?;
+            if right_number == 0.0 {
+                return Err(ExecutionError::DivisionByZero);
+            }
+            let result = left_number / right_number;
+            if !result.is_finite() {
+                return Err(ExecutionError::ArithmeticOverflow {
+                    operator: arithmetic_operator_text(operator),
+                });
+            }
+            return Ok(Value::Decimal(result));
+        }
+
+        match (&left, &right) {
+            (Value::Integer(left), Value::Integer(right)) => {
+                let result = match operator {
+                    Add => left.checked_add(*right),
+                    Subtract => left.checked_sub(*right),
+                    Multiply => left.checked_mul(*right),
+                    Divide => unreachable!(),
+                };
+                result
+                    .map(Value::Integer)
+                    .ok_or(ExecutionError::ArithmeticOverflow {
+                        operator: arithmetic_operator_text(operator),
+                    })
+            }
+            (Value::Integer(_), Value::Decimal(_))
+            | (Value::Decimal(_), Value::Integer(_))
+            | (Value::Decimal(_), Value::Decimal(_)) => {
+                let (left_number, right_number) =
+                    arithmetic_numbers(&left, &right, arithmetic_operator_text(operator))?;
+                let result = match operator {
+                    Add => left_number + right_number,
+                    Subtract => left_number - right_number,
+                    Multiply => left_number * right_number,
+                    Divide => unreachable!(),
+                };
+                if result.is_finite() {
+                    Ok(Value::Decimal(result))
+                } else {
+                    Err(ExecutionError::ArithmeticOverflow {
+                        operator: arithmetic_operator_text(operator),
+                    })
+                }
+            }
+            _ => Err(ExecutionError::IncomparableArithmetic {
+                left_type: value_type(&left),
+                right_type: value_type(&right),
+                operator: arithmetic_operator_text(operator),
+            }),
         }
     }
 
@@ -739,6 +851,35 @@ fn value_type(value: &Value) -> &'static str {
         Value::Decimal(_) => "Decimal",
         Value::Boolean(_) => "Boolean",
         Value::Object(_) => "Object",
+    }
+}
+
+fn arithmetic_numbers(
+    left: &Value,
+    right: &Value,
+    operator: &'static str,
+) -> Result<(f64, f64), ExecutionError> {
+    let number = |value: &Value| match value {
+        Value::Integer(value) => Some(*value as f64),
+        Value::Decimal(value) => Some(*value),
+        _ => None,
+    };
+    match (number(left), number(right)) {
+        (Some(left), Some(right)) => Ok((left, right)),
+        _ => Err(ExecutionError::IncomparableArithmetic {
+            left_type: value_type(left),
+            right_type: value_type(right),
+            operator,
+        }),
+    }
+}
+
+fn arithmetic_operator_text(operator: ArithmeticOperator) -> &'static str {
+    match operator {
+        ArithmeticOperator::Add => "+",
+        ArithmeticOperator::Subtract => "-",
+        ArithmeticOperator::Multiply => "*",
+        ArithmeticOperator::Divide => "/",
     }
 }
 

@@ -122,9 +122,31 @@ pub enum Statement {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOperator {
+    Negate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArithmeticOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expression {
     Literal(String),
+    Unary {
+        operator: UnaryOperator,
+        operand: Box<Expression>,
+    },
+    Arithmetic {
+        left: Box<Expression>,
+        operator: ArithmeticOperator,
+        right: Box<Expression>,
+    },
     Variable(String),
     Call {
         name: String,

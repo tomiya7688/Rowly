@@ -50,6 +50,7 @@ Rust コアでは次を実装済みです。
 - Rowly DSL のクラス、インスタンス、フィールド、メソッド、`Self`、`New ClassName()`
 - `Integer(...)` / `Decimal(...)` / `Boolean(...)` / `String(...)` による明示変換
 - Integer / Decimal の数値比較と、文字列の辞書順比較
+- Rowly DSL の算術式 `+` / `-` / `*` / `/`、単項 `-`、括弧、演算子優先順位
 - Luau ユーザースクリプト実行アダプタ
 - process レベルの open/edit/save API
 - ヘッドレス CLI のスモークエントリポイント
@@ -91,6 +92,8 @@ End If
 
 文字列は辞書順、Integer / Decimal は数値として比較します。Integer と Decimal の相互比較も可能です。Boolean は等値／不等値比較のみです。CSV セルへ型付きスカラーを書き込む場合は process 境界で文字列へ変換し、CSV の正本性を維持します。
 
+算術式は `-x`、`*` / `/`、`+` / `-`、比較、`And`、`Or` の順に優先されます。Integer 同士の `+` / `-` / `*` は Integer、Integer / Decimal 混在は Decimal、`/` は常に Decimal です。0 除算、整数 overflow、非数値への算術は暗黙変換せずエラーにします。
+
 オブジェクト変数は DSL ランタイム内部だけの参照です。クラスインスタンスが CSV に代わる正本になることはありません。CSV への作用は必ず process API を通します。
 
 ### Luau
@@ -109,7 +112,7 @@ Luau 連携の正本仕様は [`docs/LUAU.md`](docs/LUAU.md) を参照してく�
 ## 未実装
 
 - GUI
-- Rowly DSL の算術式、継承、引数付きコンストラクタ
+- Rowly DSL の継承、引数付きコンストラクタ
 - Python/Excel ブリッジ
 - 永続的な列メタデータ／型宣言
 - より広い型推論

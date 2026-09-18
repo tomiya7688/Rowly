@@ -3,8 +3,8 @@ use thiserror::Error;
 use crate::process::{CellRange, ColumnType};
 
 use super::ast::{
-    ClassDefinition, ColumnSelector, ComparisonOperator, Condition, Expression, FieldDefinition,
-    FunctionDefinition, Program, Statement,
+    ArithmeticOperator, ClassDefinition, ColumnSelector, ComparisonOperator, Condition, Expression,
+    FieldDefinition, FunctionDefinition, Program, Statement, UnaryOperator,
 };
 
 pub fn parse(source: &str) -> Result<Program, ParseError> {
@@ -467,9 +467,63 @@ fn parse_column_target(text: &str, line: usize) -> Result<(ColumnSelector, &str)
 }
 
 fn parse_expression(text: &str, line: usize) -> Result<Expression, ParseError> {
+    parse_additive_expression(text.trim(), line)
+}
+
+fn parse_additive_expression(text: &str, line: usize) -> Result<Expression, ParseError> {
+    if let Some((left, operator, right)) = split_top_level_arithmetic(text, &['+', '-']) {
+        let operator = match operator {
+            '+' => ArithmeticOperator::Add,
+            '-' => ArithmeticOperator::Subtract,
+            _ => unreachable!(),
+        };
+        return Ok(Expression::Arithmetic {
+            left: Box::new(parse_additive_expression(left.trim(), line)?),
+            operator,
+            right: Box::new(parse_multiplicative_expression(right.trim(), line)?),
+        });
+    }
+    parse_multiplicative_expression(text, line)
+}
+
+fn parse_multiplicative_expression(text: &str, line: usize) -> Result<Expression, ParseError> {
+    if let Some((left, operator, right)) = split_top_level_arithmetic(text, &['*', '/']) {
+        let operator = match operator {
+            '*' => ArithmeticOperator::Multiply,
+            '/' => ArithmeticOperator::Divide,
+            _ => unreachable!(),
+        };
+        return Ok(Expression::Arithmetic {
+            left: Box::new(parse_multiplicative_expression(left.trim(), line)?),
+            operator,
+            right: Box::new(parse_unary_expression(right.trim(), line)?),
+        });
+    }
+    parse_unary_expression(text, line)
+}
+
+fn parse_unary_expression(text: &str, line: usize) -> Result<Expression, ParseError> {
+    let text = text.trim();
+    if let Some(rest) = text.strip_prefix('-') {
+        if rest.trim().is_empty() {
+            return Err(parse_error(line, "expected a value after unary '-'"));
+        }
+        return Ok(Expression::Unary {
+            operator: UnaryOperator::Negate,
+            operand: Box::new(parse_unary_expression(rest.trim(), line)?),
+        });
+    }
+    parse_primary_expression(text, line)
+}
+
+fn parse_primary_expression(text: &str, line: usize) -> Result<Expression, ParseError> {
     let text = text.trim();
     if text.is_empty() {
         return Err(parse_error(line, "expected a value"));
+    }
+    let stripped = strip_outer_parentheses(text);
+    if stripped.len() != text.len() {
+        return parse_expression(stripped, line);
     }
     if text.starts_with('"') {
         return Ok(Expression::Literal(parse_scalar(text, line)?));
@@ -514,6 +568,61 @@ fn parse_expression(text: &str, line: usize) -> Result<Expression, ParseError> {
         return Ok(Expression::Variable(text.to_owned()));
     }
     Ok(Expression::Literal(text.to_owned()))
+}
+
+fn split_top_level_arithmetic<'a>(
+    text: &'a str,
+    operators: &[char],
+) -> Option<(&'a str, char, &'a str)> {
+    let mut depth = 0usize;
+    let mut quoted = false;
+    let mut escaped = false;
+    let mut candidate = None;
+
+    for (index, ch) in text.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' && quoted {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            quoted = !quoted;
+            continue;
+        }
+        if quoted {
+            continue;
+        }
+        match ch {
+            '(' => depth += 1,
+            ')' if depth > 0 => depth -= 1,
+            _ if depth == 0 && operators.contains(&ch) => {
+                if (ch == '+' || ch == '-') && is_unary_sign(text, index) {
+                    continue;
+                }
+                candidate = Some((index, ch));
+            }
+            _ => {}
+        }
+    }
+
+    candidate.map(|(index, operator)| {
+        let right = index + operator.len_utf8();
+        (&text[..index], operator, &text[right..])
+    })
+}
+
+fn is_unary_sign(text: &str, index: usize) -> bool {
+    let before = text[..index].trim_end();
+    if before.is_empty() {
+        return true;
+    }
+    matches!(
+        before.chars().next_back(),
+        Some('(' | ',' | '+' | '-' | '*' | '/' | '=' | '<' | '>')
+    )
 }
 
 fn parse_argument_expressions(text: &str, line: usize) -> Result<Vec<Expression>, ParseError> {

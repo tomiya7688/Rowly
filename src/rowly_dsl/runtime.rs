@@ -57,6 +57,12 @@ pub enum ExecutionError {
     UnknownField { class_name: String, field: String },
     #[error("unknown method `{method}` on class `{class_name}`")]
     UnknownMethod { class_name: String, method: String },
+    #[error("`Super` can only be used inside a method or constructor")]
+    SuperOutsideMethod,
+    #[error("class `{class_name}` has no parent class for `Super`")]
+    NoSuperClass { class_name: String },
+    #[error("unknown super method `{method}` above class `{class_name}`")]
+    UnknownSuperMethod { class_name: String, method: String },
     #[error("`{0}` is not an object")]
     ExpectedObject(String),
     #[error("{context} requires a text value")]
@@ -140,6 +146,7 @@ struct Runtime<'a> {
     objects: Vec<ObjectInstance>,
     events: Vec<ExecutionEvent>,
     call_depth: usize,
+    method_context: Vec<String>,
 }
 
 impl<'a> Runtime<'a> {
@@ -151,6 +158,7 @@ impl<'a> Runtime<'a> {
             objects: Vec::new(),
             events: Vec::new(),
             call_depth: 0,
+            method_context: Vec::new(),
         }
     }
 
@@ -296,8 +304,12 @@ impl<'a> Runtime<'a> {
                     name,
                     arguments,
                 } => {
-                    let object_id = self.resolve_object(target)?;
-                    let _ = self.call_method(object_id, name, arguments)?;
+                    if target.eq_ignore_ascii_case("Super") {
+                        let _ = self.call_super_method(name, arguments)?;
+                    } else {
+                        let object_id = self.resolve_object(target)?;
+                        let _ = self.call_method(object_id, name, arguments)?;
+                    }
                 }
                 Statement::SetField {
                     target,
@@ -479,8 +491,13 @@ impl<'a> Runtime<'a> {
                 name,
                 arguments,
             } => {
-                let object_id = self.resolve_object(target)?;
-                self.call_method(object_id, name, arguments)?
+                let return_value = if target.eq_ignore_ascii_case("Super") {
+                    self.call_super_method(name, arguments)?
+                } else {
+                    let object_id = self.resolve_object(target)?;
+                    self.call_method(object_id, name, arguments)?
+                };
+                return_value
                     .ok_or_else(|| ExecutionError::MissingReturnValue(format!("{target}.{name}")))
             }
         }
@@ -783,7 +800,7 @@ impl<'a> Runtime<'a> {
         let constructor = self.find_method_in_hierarchy(&class.name, "Init")?;
         let expected = constructor
             .as_ref()
-            .map(|constructor| constructor.parameters.len())
+            .map(|(_, constructor)| constructor.parameters.len())
             .unwrap_or(0);
         if expected != arguments.len() {
             return Err(ExecutionError::ConstructorArgumentCount {
@@ -810,35 +827,13 @@ impl<'a> Runtime<'a> {
             class_name: class.name.clone(),
         });
 
-        if let Some(constructor) = constructor {
-            self.ensure_call_depth()?;
-            let mut scope: HashMap<String, Value> = constructor
-                .parameters
-                .iter()
-                .zip(values.iter())
-                .map(|(parameter, value)| (normalize_identifier(parameter), value.clone()))
-                .collect();
-            scope.insert("self".to_owned(), Value::Object(object_id));
-            self.scopes.push(scope);
-            self.call_depth += 1;
-            let execution = self.execute_statements(&constructor.body);
-            self.call_depth -= 1;
-            self.scopes.pop();
-            let return_value = match execution? {
-                Flow::Continue => None,
-                Flow::Return(value) => value,
-            };
-            self.events.push(ExecutionEvent::MethodCalled {
-                class_name: class.name,
-                name: constructor.name,
-                arguments: values
-                    .iter()
-                    .map(|value| self.describe_value(value))
-                    .collect(),
-                return_value: return_value
-                    .as_ref()
-                    .map(|value| self.describe_value(value)),
-            });
+        if let Some((defining_class, constructor)) = constructor {
+            let _ = self.invoke_method_with_values(
+                object_id,
+                &defining_class,
+                &constructor,
+                values,
+            )?;
         }
 
         Ok(Value::Object(object_id))
@@ -899,24 +894,69 @@ impl<'a> Runtime<'a> {
         name: &str,
         arguments: &[Expression],
     ) -> Result<Option<Value>, ExecutionError> {
-        self.ensure_call_depth()?;
         let class_name = self.object(object_id)?.class_name.clone();
-        let class = self.class_by_name(&class_name)?.clone();
-        let method = self
+        let (defining_class, method) = self
             .find_method_in_hierarchy(&class_name, name)?
             .ok_or_else(|| ExecutionError::UnknownMethod {
-                class_name: class.name.clone(),
+                class_name: class_name.clone(),
                 method: name.to_owned(),
             })?;
         if method.parameters.len() != arguments.len() {
             return Err(ExecutionError::MethodArgumentCount {
-                class_name: class.name,
+                class_name,
                 name: method.name,
                 expected: method.parameters.len(),
                 actual: arguments.len(),
             });
         }
         let values = self.evaluate_arguments(arguments)?;
+        self.invoke_method_with_values(object_id, &defining_class, &method, values)
+    }
+
+    fn call_super_method(
+        &mut self,
+        name: &str,
+        arguments: &[Expression],
+    ) -> Result<Option<Value>, ExecutionError> {
+        let current_class = self
+            .method_context
+            .last()
+            .cloned()
+            .ok_or(ExecutionError::SuperOutsideMethod)?;
+        let parent = self
+            .class_by_name(&current_class)?
+            .parent
+            .clone()
+            .ok_or_else(|| ExecutionError::NoSuperClass {
+                class_name: current_class.clone(),
+            })?;
+        let object_id = self.resolve_object("Self")?;
+        let (defining_class, method) = self
+            .find_method_in_hierarchy(&parent, name)?
+            .ok_or_else(|| ExecutionError::UnknownSuperMethod {
+                class_name: current_class,
+                method: name.to_owned(),
+            })?;
+        if method.parameters.len() != arguments.len() {
+            return Err(ExecutionError::MethodArgumentCount {
+                class_name: defining_class.clone(),
+                name: method.name,
+                expected: method.parameters.len(),
+                actual: arguments.len(),
+            });
+        }
+        let values = self.evaluate_arguments(arguments)?;
+        self.invoke_method_with_values(object_id, &defining_class, &method, values)
+    }
+
+    fn invoke_method_with_values(
+        &mut self,
+        object_id: ObjectId,
+        defining_class: &str,
+        method: &super::ast::FunctionDefinition,
+        values: Vec<Value>,
+    ) -> Result<Option<Value>, ExecutionError> {
+        self.ensure_call_depth()?;
         let mut scope: HashMap<String, Value> = method
             .parameters
             .iter()
@@ -925,17 +965,19 @@ impl<'a> Runtime<'a> {
             .collect();
         scope.insert("self".to_owned(), Value::Object(object_id));
         self.scopes.push(scope);
+        self.method_context.push(defining_class.to_owned());
         self.call_depth += 1;
         let execution = self.execute_statements(&method.body);
         self.call_depth -= 1;
+        self.method_context.pop();
         self.scopes.pop();
         let return_value = match execution? {
             Flow::Continue => None,
             Flow::Return(value) => value,
         };
         self.events.push(ExecutionEvent::MethodCalled {
-            class_name,
-            name: method.name,
+            class_name: defining_class.to_owned(),
+            name: method.name.clone(),
             arguments: values
                 .iter()
                 .map(|value| self.describe_value(value))
@@ -994,7 +1036,7 @@ impl<'a> Runtime<'a> {
         &self,
         class_name: &str,
         method_name: &str,
-    ) -> Result<Option<super::ast::FunctionDefinition>, ExecutionError> {
+    ) -> Result<Option<(String, super::ast::FunctionDefinition)>, ExecutionError> {
         let lineage = self.class_lineage(class_name)?;
         Ok(lineage.iter().rev().find_map(|class| {
             class
@@ -1002,6 +1044,7 @@ impl<'a> Runtime<'a> {
                 .iter()
                 .find(|method| method.name.eq_ignore_ascii_case(method_name))
                 .cloned()
+                .map(|method| (class.name.clone(), method))
         }))
     }
 

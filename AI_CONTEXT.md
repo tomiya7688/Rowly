@@ -45,6 +45,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Structural edits are explicit data edits. Ragged rows must not be silently rectangularized merely to simplify column operations.
 - Undo/redo for structural edits must restore exact removed row/cell values, not reconstructed approximations.
 - Header lookup and column semantic checks live above the canonical data layer. The first row is only treated as a header when a process-layer header API is explicitly used.
+- CSV I/O follows standard quoting semantics: empty fields, quoted commas, doubled quotes, embedded quoted newlines, and LF/CRLF input must remain supported. Saving normalizes to UTF-8 with LF; byte-for-byte round trips are not required.
 - Column type checks are non-mutating interpretation/validation. `String`, numeric, and boolean checks must not rewrite canonical CSV text.
 - Duplicate header names are ambiguous for singular lookup and must be reported instead of silently selecting one.
 - Rowly DSL is an adapter over `process`; it must not call `data` or CSV codecs directly.

@@ -44,6 +44,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Multi-cell edits must validate before mutation so a failed edit cannot partially modify the CSV table.
 - Structural edits are explicit data edits. Ragged rows must not be silently rectangularized merely to simplify column operations.
 - Undo/redo for structural edits must restore exact removed row/cell values, not reconstructed approximations.
+- Process transactions group multiple cell/row/column edits into one undo/redo command. Rollback must restore edits in reverse order without creating history. Transactions are non-nestable, and undo/redo/save/save_as are unavailable while one is active.
 - Header lookup and column semantic checks live above the canonical data layer. The first row is only treated as a header when a process-layer header API is explicitly used.
 - Column type checks are non-mutating interpretation/validation. `String`, numeric, and boolean checks must not rewrite canonical CSV text.
 - Duplicate header names are ambiguous for singular lookup and must be reported instead of silently selecting one.
@@ -88,6 +89,7 @@ Implemented:
 - row insertion/deletion
 - column insertion/deletion with ragged-row preservation
 - undo/redo history for cell and structural edits with saved-state-aware dirty tracking
+- process-layer begin/commit/rollback transactions that aggregate mixed edits into one history command
 - process-layer first-row header lookup with duplicate detection
 - non-mutating `String` / `Integer` / `Decimal` / `Boolean` column validation
 - Japanese-character column checks with A1 result references

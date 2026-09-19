@@ -177,6 +177,44 @@ impl CsvDocument {
         Ok(())
     }
 
+    pub fn begin_transaction(&mut self) -> Result<(), DocumentError> {
+        if !self.history.begin_transaction() {
+            return Err(DocumentError::Transaction(
+                "a transaction is already active".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn commit_transaction(&mut self) -> Result<(), DocumentError> {
+        if self.history.commit_transaction().is_none() {
+            return Err(DocumentError::Transaction(
+                "no transaction is active".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn rollback_transaction(&mut self) -> Result<(), DocumentError> {
+        let Some(operations) = self.history.take_transaction() else {
+            return Err(DocumentError::Transaction(
+                "no transaction is active".into(),
+            ));
+        };
+
+        for operation in operations.iter().rev() {
+            if let Err(error) = self.apply_operation(operation, CommandDirection::Undo) {
+                self.history.restore_transaction(operations);
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn transaction_active(&self) -> bool {
+        self.history.transaction_active()
+    }
+
     pub fn delete_columns(&mut self, index: usize, count: usize) -> Result<(), DocumentError> {
         let column_count = self.column_count();
         let end = index
@@ -219,6 +257,7 @@ impl CsvDocument {
     }
 
     pub fn undo(&mut self) -> Result<bool, DocumentError> {
+        self.ensure_no_transaction("undo")?;
         let Some(command) = self.history.take_undo() else {
             return Ok(false);
         };
@@ -233,6 +272,7 @@ impl CsvDocument {
     }
 
     pub fn redo(&mut self) -> Result<bool, DocumentError> {
+        self.ensure_no_transaction("redo")?;
         let Some(command) = self.history.take_redo() else {
             return Ok(false);
         };
@@ -247,6 +287,7 @@ impl CsvDocument {
     }
 
     pub fn save(&mut self) -> Result<(), DocumentError> {
+        self.ensure_no_transaction("save")?;
         write_csv_utf8(&self.path, &self.table).map_err(|error| DocumentError::Save {
             path: self.path.display().to_string(),
             message: error.to_string(),
@@ -258,6 +299,7 @@ impl CsvDocument {
     }
 
     pub fn save_as(&mut self, path: impl AsRef<Path>) -> Result<(), DocumentError> {
+        self.ensure_no_transaction("save_as")?;
         let path = path.as_ref().to_path_buf();
         write_csv_utf8(&path, &self.table).map_err(|error| DocumentError::Save {
             path: path.display().to_string(),
@@ -312,11 +354,42 @@ impl CsvDocument {
         command: &EditCommand,
         direction: CommandDirection,
     ) -> Result<(), DocumentError> {
-        match &command.operation {
+        self.apply_operation(&command.operation, direction)
+    }
+
+    fn apply_operation(
+        &mut self,
+        operation: &EditOperation,
+        direction: CommandDirection,
+    ) -> Result<(), DocumentError> {
+        match operation {
             EditOperation::Cells(changes) => self.apply_cell_changes(changes, direction),
             EditOperation::Rows(edit) => self.apply_row_edit(edit, direction),
             EditOperation::Columns(changes) => self.apply_column_changes(changes, direction),
+            EditOperation::Batch(operations) => match direction {
+                CommandDirection::Undo => {
+                    for operation in operations.iter().rev() {
+                        self.apply_operation(operation, direction)?;
+                    }
+                    Ok(())
+                }
+                CommandDirection::Redo => {
+                    for operation in operations {
+                        self.apply_operation(operation, direction)?;
+                    }
+                    Ok(())
+                }
+            },
         }
+    }
+
+    fn ensure_no_transaction(&self, operation: &str) -> Result<(), DocumentError> {
+        if self.history.transaction_active() {
+            return Err(DocumentError::Transaction(format!(
+                "cannot {operation} while a transaction is active"
+            )));
+        }
+        Ok(())
     }
 
     fn apply_cell_changes(
@@ -437,6 +510,9 @@ pub enum DocumentError {
 
     #[error("failed to save CSV `{path}`: {message}")]
     Save { path: String, message: String },
+
+    #[error("invalid transaction operation: {0}")]
+    Transaction(String),
 }
 
 #[cfg(test)]
@@ -662,6 +738,98 @@ mod tests {
 
         document.set_cell_a1("A1", "header").unwrap();
         assert!(!document.can_redo());
+    }
+
+    #[test]
+    fn committed_transaction_is_one_undoable_command() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("data.csv");
+        fs::write(&path, "a,b\n1,2\n3,4\n").unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        document.begin_transaction().unwrap();
+        document.set_cell_a1("A2", "x").unwrap();
+        document.set_cell_a1("B3", "y").unwrap();
+        document.insert_rows(2, 1).unwrap();
+        assert!(document.is_dirty());
+        assert!(document.transaction_active());
+        document.commit_transaction().unwrap();
+
+        assert!(!document.transaction_active());
+        assert_eq!(document.cell_a1("A2").unwrap(), Some("x"));
+        assert_eq!(document.row_count(), 4);
+
+        assert!(document.undo().unwrap());
+        assert_eq!(document.cell_a1("A2").unwrap(), Some("1"));
+        assert_eq!(document.cell_a1("B3").unwrap(), Some("4"));
+        assert_eq!(document.row_count(), 3);
+        assert!(!document.can_undo());
+
+        assert!(document.redo().unwrap());
+        assert_eq!(document.cell_a1("A2").unwrap(), Some("x"));
+        assert_eq!(document.row_count(), 4);
+    }
+
+    #[test]
+    fn rollback_transaction_restores_all_changes_without_history() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("data.csv");
+        fs::write(&path, "a,b\n1,2\n").unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        document.begin_transaction().unwrap();
+        document.set_cell_a1("A2", "x").unwrap();
+        document.insert_columns(1, 1).unwrap();
+        assert!(document.is_dirty());
+
+        document.rollback_transaction().unwrap();
+
+        assert_eq!(document.cell_a1("A2").unwrap(), Some("1"));
+        assert_eq!(document.cell_a1("B2").unwrap(), Some("2"));
+        assert_eq!(document.column_count(), 2);
+        assert!(!document.is_dirty());
+        assert!(!document.can_undo());
+        assert!(!document.transaction_active());
+    }
+
+    #[test]
+    fn transaction_rejects_nested_begin_and_history_or_save_operations() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("data.csv");
+        fs::write(&path, "a,b\n1,2\n").unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        document.begin_transaction().unwrap();
+        assert!(matches!(
+            document.begin_transaction(),
+            Err(DocumentError::Transaction(_))
+        ));
+        assert!(matches!(document.undo(), Err(DocumentError::Transaction(_))));
+        assert!(matches!(document.redo(), Err(DocumentError::Transaction(_))));
+        assert!(matches!(document.save(), Err(DocumentError::Transaction(_))));
+        assert!(matches!(
+            document.save_as(directory.path().join("other.csv")),
+            Err(DocumentError::Transaction(_))
+        ));
+
+        document.rollback_transaction().unwrap();
+    }
+
+    #[test]
+    fn transaction_commit_and_rollback_require_active_transaction() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("data.csv");
+        fs::write(&path, "a,b\n1,2\n").unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        assert!(matches!(
+            document.commit_transaction(),
+            Err(DocumentError::Transaction(_))
+        ));
+        assert!(matches!(
+            document.rollback_transaction(),
+            Err(DocumentError::Transaction(_))
+        ));
     }
 
     #[test]

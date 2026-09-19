@@ -804,9 +804,18 @@ mod tests {
             document.begin_transaction(),
             Err(DocumentError::Transaction(_))
         ));
-        assert!(matches!(document.undo(), Err(DocumentError::Transaction(_))));
-        assert!(matches!(document.redo(), Err(DocumentError::Transaction(_))));
-        assert!(matches!(document.save(), Err(DocumentError::Transaction(_))));
+        assert!(matches!(
+            document.undo(),
+            Err(DocumentError::Transaction(_))
+        ));
+        assert!(matches!(
+            document.redo(),
+            Err(DocumentError::Transaction(_))
+        ));
+        assert!(matches!(
+            document.save(),
+            Err(DocumentError::Transaction(_))
+        ));
         assert!(matches!(
             document.save_as(directory.path().join("other.csv")),
             Err(DocumentError::Transaction(_))

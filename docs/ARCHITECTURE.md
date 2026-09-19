@@ -47,6 +47,7 @@ UI / Rowly DSL / Luau / Python adapters
 - UI・スクリプトアダプタへ安定した操作を公開する
 - dirty 状態やパスなどセッション状態を管理する
 - A1／範囲編集、行列の構造編集を提供する
+- 複数編集を1つの履歴操作として commit / rollback する transaction API を提供する
 - ヘッダー検索と非破壊な列意味チェックを提供する
 - data 層のエラーをアプリ向けエラーへ変換する
 
@@ -58,6 +59,12 @@ UI / Rowly DSL / Luau / Python adapters
 - Excel 実装詳細
 
 処理が大きくなった場合は、小さな processing module へ分割します。オーケストレータは調停に集中し、実装詳細を抱え込まないようにします。
+
+### Process transaction
+
+`CsvDocument` の transaction はメモリ上の編集履歴をまとめるための process API です。ネストは許可しません。transaction 中の編集は即座に正本テーブルへ反映されますが、commit 時に1つの履歴コマンドへ集約され、1回の undo/redo で全体を戻す／進めることができます。rollback は transaction 内の編集を逆順に戻し、履歴には残しません。
+
+transaction 中は履歴位置や保存基準を壊さないため `undo` / `redo` / `save` / `save_as` を禁止します。未commitの実変更がある間は dirty とみなします。これはDB transactionではなく、CSV-first編集セッション上の原子的な操作単位です。
 
 ## Rowly DSL アダプタ
 

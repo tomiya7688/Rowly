@@ -40,6 +40,7 @@ Rust コアでは次を実装済みです。
 - 行の挿入／削除
 - 不揃いな行を保持した列の挿入／削除
 - セル編集・構造編集の undo/redo
+- 複数編集を1回の undo/redo にまとめる process transaction API
 - 保存状態を考慮した dirty 管理
 - 先頭行を明示的にヘッダーとして扱う検索と重複検出
 - `String` / `Integer` / `Decimal` / `Boolean` の非破壊列チェック
@@ -61,6 +62,8 @@ Rust コアでは次を実装済みです。
 - ヘッドレス CLI のスモークエントリポイント
 
 列型チェックは意味解釈／検証のみであり、CSV の正本文字列を書き換えません。
+
+`CsvDocument::begin_transaction()` / `commit_transaction()` / `rollback_transaction()` で複数編集を1つの履歴操作にまとめられます。transaction 中は `undo` / `redo` / `save` / `save_as` を禁止し、rollback は履歴を増やさず変更を元へ戻します。
 
 ## スクリプト
 

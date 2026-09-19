@@ -47,7 +47,7 @@ Rust コアでは次を実装済みです。
 - process API 上で動作する BASIC 風 Rowly DSL
 - Rowly DSL の変数、関数、引数、戻り値、ローカルスコープ
 - `If` / `Else`、`Not` / `And` / `Or`、`!=` / `<` / `<=` / `>` / `>=`
-- Rowly DSL のクラス、インスタンス、フィールド、メソッド、`Self`、`New ClassName(args...)`、`Init` コンストラクタ
+- Rowly DSL のクラス、単一継承、インスタンス、フィールド、メソッド、`Self`、`New ClassName(args...)`、`Init` コンストラクタ
 - `Integer(...)` / `Decimal(...)` / `Boolean(...)` / `String(...)` による明示変換
 - Integer / Decimal の数値比較と、文字列の辞書順比較
 - Rowly DSL の算術式 `+` / `-` / `*` / `/`、単項 `-`、括弧、演算子優先順位
@@ -109,6 +109,8 @@ CSV の既存セル値は `CellValue("A2")` で文字列として読み取れま
 
 クラス内に `Def Init(...)` を定義すると、`New ClassName(args...)` の生成時にフィールド初期値を作成した後、`Self` をその新規インスタンスへ束縛して自動実行します。`Init` が無いクラスは従来どおり引数なしで生成でき、余分な引数や不足した引数は明示エラーになります。
 
+単一継承は `Class Child Extends Parent` で定義します。フィールド初期値は親から子の順に適用し、子の同名フィールドが親を上書きします。メソッドと `Init` も子側を優先して探索するため、子で定義しなければ親の実装を継承します。存在しない親クラスと循環継承は明示エラーになります。`Super` 呼び出しは未実装です。
+
 オブジェクト変数は DSL ランタイム内部だけの参照です。クラスインスタンスが CSV に代わる正本になることはありません。CSV への作用は必ず process API を通します。
 
 ### Luau
@@ -127,7 +129,7 @@ Luau 連携の正本仕様は [`docs/LUAU.md`](docs/LUAU.md) を参照してく�
 ## 未実装
 
 - GUI
-- Rowly DSL の継承
+- Rowly DSL の `Super` 呼び出し
 - Python/Excel ブリッジ
 - 永続的な列メタデータ／型宣言
 - より広い型推論

@@ -107,11 +107,20 @@ impl Parser {
     }
 
     fn parse_class(&mut self, line: &SourceLine) -> Result<ClassDefinition, ParseError> {
-        let name = strip_prefix_ci(&line.text, "class ")
+        let header = strip_prefix_ci(&line.text, "class ")
             .map(str::trim)
             .ok_or_else(|| parse_error(line.number, "expected `Class name`"))?;
-        validate_identifier(name, line.number)?;
-        let name = name.to_owned();
+        let (name, parent) =
+            if let Some((name, parent)) = split_keyword_top_level(header, " extends ") {
+                let name = name.trim();
+                let parent = parent.trim();
+                validate_identifier(name, line.number)?;
+                validate_identifier(parent, line.number)?;
+                (name.to_owned(), Some(parent.to_owned()))
+            } else {
+                validate_identifier(header, line.number)?;
+                (header.to_owned(), None)
+            };
         self.position += 1;
 
         let mut fields = Vec::new();
@@ -121,6 +130,7 @@ impl Parser {
                 self.position += 1;
                 return Ok(ClassDefinition {
                     name,
+                    parent,
                     fields,
                     methods,
                 });

@@ -51,6 +51,161 @@ fn parses_class_fields_methods_and_new_expression() {
 }
 
 #[test]
+fn parses_single_inheritance() {
+    let program = parse(
+        r#"
+            Class Base
+                Field value = "base"
+            End Class
+
+            Class Child Extends Base
+                Field extra = "child"
+            End Class
+
+            Let child = New Child()
+        "#,
+    )
+    .unwrap();
+
+    assert_eq!(program.classes()[1].name(), "Child");
+    assert_eq!(program.classes()[1].parent(), Some("Base"));
+}
+
+#[test]
+fn inherited_fields_are_initialized_and_child_fields_override_parent_fields() {
+    let (_directory, mut document) = open("値\n1\n");
+    let report = run(
+        r#"
+            Class Base
+                Field value = "base"
+                Field inherited = "yes"
+            End Class
+
+            Class Child Extends Base
+                Field value = "child"
+            End Class
+
+            Let child = New Child()
+            Let value = child.value
+            Let inherited = child.inherited
+        "#,
+        &mut document,
+    )
+    .unwrap();
+
+    assert_eq!(report.variable("value"), Some("child"));
+    assert_eq!(report.variable("inherited"), Some("yes"));
+    assert_eq!(report.object_field("child", "value"), Some("child"));
+    assert_eq!(report.object_field("child", "inherited"), Some("yes"));
+}
+
+#[test]
+fn inherited_methods_are_available_and_child_methods_override_parent_methods() {
+    let (_directory, mut document) = open("値\n1\n");
+    let report = run(
+        r#"
+            Class Base
+                Def Name()
+                    Return "base"
+                End Def
+
+                Def Inherited()
+                    Return "inherited"
+                End Def
+            End Class
+
+            Class Child Extends Base
+                Def Name()
+                    Return "child"
+                End Def
+            End Class
+
+            Let child = New Child()
+            Let name = child.Name()
+            Let inherited = child.Inherited()
+        "#,
+        &mut document,
+    )
+    .unwrap();
+
+    assert_eq!(report.variable("name"), Some("child"));
+    assert_eq!(report.variable("inherited"), Some("inherited"));
+}
+
+#[test]
+fn inherited_init_is_used_when_child_does_not_override_it() {
+    let (_directory, mut document) = open("値\n1\n");
+    let report = run(
+        r#"
+            Class Base
+                Field value = "initial"
+
+                Def Init(value)
+                    Self.value = value
+                End Def
+            End Class
+
+            Class Child Extends Base
+                Field extra = "child"
+            End Class
+
+            Let child = New Child("from-parent")
+        "#,
+        &mut document,
+    )
+    .unwrap();
+
+    assert_eq!(report.object_field("child", "value"), Some("from-parent"));
+    assert_eq!(report.object_field("child", "extra"), Some("child"));
+}
+
+#[test]
+fn unknown_parent_class_is_reported() {
+    let (_directory, mut document) = open("値\n1\n");
+    let error = run(
+        r#"
+            Class Child Extends Missing
+            End Class
+
+            Let child = New Child()
+        "#,
+        &mut document,
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        DslError::Execute(ExecutionError::UnknownParentClass {
+            class_name,
+            parent,
+        }) if class_name == "Child" && parent == "Missing"
+    ));
+}
+
+#[test]
+fn inheritance_cycles_are_reported() {
+    let (_directory, mut document) = open("値\n1\n");
+    let error = run(
+        r#"
+            Class First Extends Second
+            End Class
+
+            Class Second Extends First
+            End Class
+
+            Let value = New First()
+        "#,
+        &mut document,
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        DslError::Execute(ExecutionError::InheritanceCycle(_))
+    ));
+}
+
+#[test]
 fn constructor_arguments_are_parsed_and_init_runs_automatically() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(

@@ -26,6 +26,7 @@ impl Program {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassDefinition {
     pub(super) name: String,
+    pub(super) parent: Option<String>,
     pub(super) fields: Vec<FieldDefinition>,
     pub(super) methods: Vec<FunctionDefinition>,
 }
@@ -33,6 +34,10 @@ pub struct ClassDefinition {
 impl ClassDefinition {
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn parent(&self) -> Option<&str> {
+        self.parent.as_deref()
     }
 
     pub fn fields(&self) -> &[FieldDefinition] {

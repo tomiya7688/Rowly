@@ -66,6 +66,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - `For ... To ... [Step ...]` loops operate on Integer bounds evaluated once; loop scope does not leak outward.
 - Dynamic cell builtins use 1-based row/column indices and must still route through `CsvDocument`.
 - Header-based dynamic access must use exact first-row header lookup and preserve existing missing/ambiguous-header errors.
+- Rowly DSL transaction controls must delegate to `CsvDocument` begin/commit/rollback APIs; the DSL must not maintain a second transaction or history model.
 - Luau user scripts must run with finite execution-time, VM-interrupt-count, and VM-memory limits. The interrupt count is a VM safepoint callback count, not an exact Luau instruction count.
 
 ## Validation
@@ -100,6 +101,7 @@ Implemented:
 - expression-level CSV cell reads through `CellValue(...)`
 - BASIC-style For loops plus row/column counts and dynamic 1-based cell reads/writes
 - header-based column lookup and row cell reads/writes without hard-coded column numbers
+- explicit Rowly DSL transaction control through `BeginTransaction()`, `CommitTransaction()`, and `RollbackTransaction()`
 - Luau execution limits for wall-clock duration, VM interrupt count, and VM memory
 - headless CLI smoke entry point
 

@@ -57,6 +57,7 @@ Rust コアでは次を実装済みです。
 - `For ... To ... [Step ...]` / `Next` による整数ループ
 - `RowCount()` / `ColumnCount()` / `CellValueAt(row, column)` / `SetCellValueAt(row, column, value)` による動的セル操作
 - `ColumnIndex(header)` / `CellValueByHeader(row, header)` / `SetCellValueByHeader(row, header, value)` によるヘッダー名ベース操作
+- `BeginTransaction()` / `CommitTransaction()` / `RollbackTransaction()` による process transaction 操作
 - Luau ユーザースクリプト実行アダプタと実行時間・interrupt回数・メモリ量の強制制限
 - process レベルの open/edit/save API
 - ヘッドレス CLI のスモークエントリポイント
@@ -109,6 +110,8 @@ CSV の既存セル値は `CellValue("A2")` で文字列として読み取れま
 全行処理には `For row = Integer("2") To RowCount()` / `Next row` を使用できます。`Step` は省略時1で、負数による降順ループにも対応します。`CellValueAt` / `SetCellValueAt` の行・列番号は1-basedです。ループ変数とループ内 `Let` はループ専用スコープに限定され、終了後は外側へ漏れません。
 
 列番号を固定したくない場合は `ColumnIndex("名前")`、`CellValueByHeader(row, "名前")`、`SetCellValueByHeader(row, "状態", value)` を使用できます。ヘッダー検索は先頭行を完全一致で検索し、見つからない場合や重複して一意に決められない場合はエラーにします。`ColumnIndex` の返り値はDSL上の1-based列番号です。
+
+複数の DSL 編集を1つの undo/redo 単位にまとめる場合は `BeginTransaction()` で開始し、`CommitTransaction()` で確定します。`RollbackTransaction()` は transaction 内の編集を逆順に元へ戻し、履歴を追加しません。transaction のネストや active transaction がない状態での commit / rollback は process 層の明示エラーになります。
 
 クラス内に `Def Init(...)` を定義すると、`New ClassName(args...)` の生成時にフィールド初期値を作成した後、`Self` をその新規インスタンスへ束縛して自動実行します。`Init` が無いクラスは従来どおり引数なしで生成でき、余分な引数や不足した引数は明示エラーになります。
 

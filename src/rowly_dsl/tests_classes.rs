@@ -40,9 +40,122 @@ fn parses_class_fields_methods_and_new_expression() {
     assert!(matches!(
         &program.statements()[0],
         Statement::Let {
-            value: Expression::New { class_name },
+            value:
+                Expression::New {
+                    class_name,
+                    arguments,
+                },
             ..
-        } if class_name == "Formatter"
+        } if class_name == "Formatter" && arguments.is_empty()
+    ));
+}
+
+#[test]
+fn constructor_arguments_are_parsed_and_init_runs_automatically() {
+    let (_directory, mut document) = open("値\n1\n");
+    let report = run(
+        r#"
+            Class Box
+                Field value = "initial"
+
+                Def Init(value)
+                    Self.value = value
+                End Def
+            End Class
+
+            Let box = New Box("constructed")
+            Let copied = box.value
+        "#,
+        &mut document,
+    )
+    .unwrap();
+
+    assert_eq!(report.variable("copied"), Some("constructed"));
+    assert_eq!(report.object_field("box", "value"), Some("constructed"));
+    assert!(report.events().iter().any(|event| matches!(
+        event,
+        ExecutionEvent::MethodCalled {
+            class_name,
+            name,
+            arguments,
+            ..
+        } if class_name == "Box" && name == "Init" && arguments == &["constructed"]
+    )));
+}
+
+#[test]
+fn constructor_arguments_can_use_typed_expressions() {
+    let (_directory, mut document) = open("値\n1\n");
+    let report = run(
+        r#"
+            Class Counter
+                Field value = "0"
+
+                Def Init(value)
+                    Self.value = value
+                End Def
+            End Class
+
+            Let counter = New Counter(Integer("2") + Integer("3"))
+        "#,
+        &mut document,
+    )
+    .unwrap();
+
+    assert_eq!(report.object_field("counter", "value"), Some("5"));
+}
+
+#[test]
+fn constructor_argument_count_is_reported() {
+    let (_directory, mut document) = open("値\n1\n");
+    let error = run(
+        r#"
+            Class Box
+                Field value = "initial"
+
+                Def Init(value)
+                    Self.value = value
+                End Def
+            End Class
+
+            Let box = New Box()
+        "#,
+        &mut document,
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        DslError::Execute(ExecutionError::ConstructorArgumentCount {
+            class_name,
+            expected: 1,
+            actual: 0,
+        }) if class_name == "Box"
+    ));
+}
+
+#[test]
+fn class_without_init_rejects_constructor_arguments() {
+    let (_directory, mut document) = open("値\n1\n");
+    let error = run(
+        r#"
+            Class Box
+                Field value = "initial"
+            End Class
+
+            Let box = New Box("unexpected")
+        "#,
+        &mut document,
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        DslError::Execute(ExecutionError::ConstructorArgumentCount {
+            class_name,
+            expected: 0,
+            actual: 1,
+        }) if class_name == "Box"
     ));
 }
 

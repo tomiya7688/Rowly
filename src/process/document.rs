@@ -18,10 +18,7 @@ pub struct CsvDocument {
 }
 
 impl CsvDocument {
-    pub fn create(
-        path: impl AsRef<Path>,
-        rows: Vec<Vec<String>>,
-    ) -> Result<Self, DocumentError> {
+    pub fn create(path: impl AsRef<Path>, rows: Vec<Vec<String>>) -> Result<Self, DocumentError> {
         let path = path.as_ref().to_path_buf();
         let table = Table::new(rows);
         write_csv_utf8(&path, &table).map_err(|error| DocumentError::Save {
@@ -563,7 +560,10 @@ mod tests {
         assert_eq!(document.source_encoding(), SourceEncoding::Utf8);
         assert!(!document.is_dirty());
         assert!(!document.can_undo());
-        assert_eq!(document.rows().map(|row| row.to_vec()).collect::<Vec<_>>(), rows);
+        assert_eq!(
+            document.rows().map(|row| row.to_vec()).collect::<Vec<_>>(),
+            rows
+        );
 
         let reopened = CsvDocument::open(&path).unwrap();
         assert_eq!(reopened.cell_a1("A2").unwrap(), Some("田中"));

@@ -99,6 +99,14 @@ pub enum ExecutionError {
         expected: usize,
         actual: usize,
     },
+    #[error(
+        "constructor for class `{class_name}` expects {expected} arguments but received {actual}"
+    )]
+    ConstructorArgumentCount {
+        class_name: String,
+        expected: usize,
+        actual: usize,
+    },
     #[error("call `{0}` was used as a value but did not return one")]
     MissingReturnValue(String),
     #[error("{context} requires an Integer value")]
@@ -454,7 +462,10 @@ impl<'a> Runtime<'a> {
                 self.call_function(name, arguments)?
                     .ok_or_else(|| ExecutionError::MissingReturnValue(name.clone()))
             }
-            Expression::New { class_name } => self.instantiate_class(class_name),
+            Expression::New {
+                class_name,
+                arguments,
+            } => self.instantiate_class(class_name, arguments),
             Expression::Field { target, field } => {
                 let object_id = self.resolve_object(target)?;
                 self.get_field(object_id, field)
@@ -758,7 +769,11 @@ impl<'a> Runtime<'a> {
         }
     }
 
-    fn instantiate_class(&mut self, class_name: &str) -> Result<Value, ExecutionError> {
+    fn instantiate_class(
+        &mut self,
+        class_name: &str,
+        arguments: &[Expression],
+    ) -> Result<Value, ExecutionError> {
         let class = self
             .program
             .classes
@@ -766,6 +781,24 @@ impl<'a> Runtime<'a> {
             .find(|class| class.name.eq_ignore_ascii_case(class_name))
             .cloned()
             .ok_or_else(|| ExecutionError::UnknownClass(class_name.to_owned()))?;
+        let constructor = class
+            .methods
+            .iter()
+            .find(|method| method.name.eq_ignore_ascii_case("Init"))
+            .cloned();
+        let expected = constructor
+            .as_ref()
+            .map(|constructor| constructor.parameters.len())
+            .unwrap_or(0);
+        if expected != arguments.len() {
+            return Err(ExecutionError::ConstructorArgumentCount {
+                class_name: class.name,
+                expected,
+                actual: arguments.len(),
+            });
+        }
+        let values = self.evaluate_arguments(arguments)?;
+
         let mut fields = HashMap::new();
         for field in &class.fields {
             let value = self.evaluate_expression(&field.default)?;
@@ -777,8 +810,40 @@ impl<'a> Runtime<'a> {
             fields,
         });
         self.events.push(ExecutionEvent::ObjectCreated {
-            class_name: class.name,
+            class_name: class.name.clone(),
         });
+
+        if let Some(constructor) = constructor {
+            self.ensure_call_depth()?;
+            let mut scope: HashMap<String, Value> = constructor
+                .parameters
+                .iter()
+                .zip(values.iter())
+                .map(|(parameter, value)| (normalize_identifier(parameter), value.clone()))
+                .collect();
+            scope.insert("self".to_owned(), Value::Object(object_id));
+            self.scopes.push(scope);
+            self.call_depth += 1;
+            let execution = self.execute_statements(&constructor.body);
+            self.call_depth -= 1;
+            self.scopes.pop();
+            let return_value = match execution? {
+                Flow::Continue => None,
+                Flow::Return(value) => value,
+            };
+            self.events.push(ExecutionEvent::MethodCalled {
+                class_name: class.name,
+                name: constructor.name,
+                arguments: values
+                    .iter()
+                    .map(|value| self.describe_value(value))
+                    .collect(),
+                return_value: return_value
+                    .as_ref()
+                    .map(|value| self.describe_value(value)),
+            });
+        }
+
         Ok(Value::Object(object_id))
     }
 

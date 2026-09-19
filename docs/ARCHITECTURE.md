@@ -67,7 +67,8 @@ UI / Rowly DSL / Luau / Python adapters
 - `If ... Then` / `Else` / `End If` の制御構文
 - `Not` / `And` / `Or` と比較演算子
 - `Let`、トップレベル `Def ...` / `End Def`、呼び出し、引数、`Return`
-- `Class ...` / `End Class`、`Field`、method、`New ClassName()`、member 読み書き
+- `Class ...` / `End Class`、`Field`、method、`New ClassName(args...)`、member 読み書き
+- `Def Init(...)` を生成時に自動実行する引数付きコンストラクタ
 - global scope と関数／method ごとの local scope
 - method 実行時だけの `Self`
 - DSL runtime 内だけの class instance / object identity
@@ -88,7 +89,7 @@ UI / Rowly DSL / Luau / Python adapters
 
 DSL の runtime object は CSV 正本モデルの一部ではありません。CSV への作用は必ず process API を通します。型付きスカラーを CSV セルへ書く場合も process 境界で文字列へ変換します。
 
-引数付きコンストラクタと継承は今後の拡張です。
+`Init` コンストラクタは実装済みです。継承は今後の拡張です。
 
 DSL の列番号はユーザー向けに 1-based、process/data の内部 index は 0-based です。
 

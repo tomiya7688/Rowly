@@ -47,7 +47,7 @@ Rust コアでは次を実装済みです。
 - process API 上で動作する BASIC 風 Rowly DSL
 - Rowly DSL の変数、関数、引数、戻り値、ローカルスコープ
 - `If` / `Else`、`Not` / `And` / `Or`、`!=` / `<` / `<=` / `>` / `>=`
-- Rowly DSL のクラス、インスタンス、フィールド、メソッド、`Self`、`New ClassName()`
+- Rowly DSL のクラス、インスタンス、フィールド、メソッド、`Self`、`New ClassName(args...)`、`Init` コンストラクタ
 - `Integer(...)` / `Decimal(...)` / `Boolean(...)` / `String(...)` による明示変換
 - Integer / Decimal の数値比較と、文字列の辞書順比較
 - Rowly DSL の算術式 `+` / `-` / `*` / `/`、単項 `-`、括弧、演算子優先順位
@@ -107,6 +107,8 @@ CSV の既存セル値は `CellValue("A2")` で文字列として読み取れま
 
 列番号を固定したくない場合は `ColumnIndex("名前")`、`CellValueByHeader(row, "名前")`、`SetCellValueByHeader(row, "状態", value)` を使用できます。ヘッダー検索は先頭行を完全一致で検索し、見つからない場合や重複して一意に決められない場合はエラーにします。`ColumnIndex` の返り値はDSL上の1-based列番号です。
 
+クラス内に `Def Init(...)` を定義すると、`New ClassName(args...)` の生成時にフィールド初期値を作成した後、`Self` をその新規インスタンスへ束縛して自動実行します。`Init` が無いクラスは従来どおり引数なしで生成でき、余分な引数や不足した引数は明示エラーになります。
+
 オブジェクト変数は DSL ランタイム内部だけの参照です。クラスインスタンスが CSV に代わる正本になることはありません。CSV への作用は必ず process API を通します。
 
 ### Luau
@@ -125,7 +127,7 @@ Luau 連携の正本仕様は [`docs/LUAU.md`](docs/LUAU.md) を参照してく�
 ## 未実装
 
 - GUI
-- Rowly DSL の継承、引数付きコンストラクタ
+- Rowly DSL の継承
 - Python/Excel ブリッジ
 - 永続的な列メタデータ／型宣言
 - より広い型推論

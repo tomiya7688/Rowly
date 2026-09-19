@@ -161,6 +161,7 @@ pub enum Expression {
     },
     New {
         class_name: String,
+        arguments: Vec<Expression>,
     },
     Field {
         target: String,

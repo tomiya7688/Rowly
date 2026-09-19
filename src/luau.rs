@@ -161,10 +161,7 @@ pub fn execute_with_limits(
         lua.load(script).set_name("rowly-user-script").exec()
     });
 
-    if result.is_err()
-        && !transaction_active_before
-        && document.borrow().transaction_active()
-    {
+    if result.is_err() && !transaction_active_before && document.borrow().transaction_active() {
         document
             .borrow_mut()
             .rollback_transaction()

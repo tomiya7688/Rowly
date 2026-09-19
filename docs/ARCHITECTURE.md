@@ -135,10 +135,17 @@ Rowly は、行と文字列セルからなる表の意味を保持します。�
 
 byte-for-byte の完全 round trip は要件ではありません。空行や dialect の忠実性が将来重要になった場合は、UI metadata へ隠さず data 層で明示的に扱います。
 
+## Excel Python アダプタ
+
+`excel_python` は Python / openpyxl を使う `.xlsx` 交換アダプタです。Python 側は CSV codec や Rowly の data 層を直接扱いません。export は `CsvDocument` が process 境界から公開した行文字列を JSON で bridge へ渡し、import は bridge が返した行文字列を `CsvDocument::create` で UTF-8 CSV 正本として作成します。
+
+Excel は交換経路であり、開いた `.xlsx` を第二の正本として保持しません。export 時の CSV セルは Excel でも文字列として書き込みます。import 時の値は canonical CSV 文字列へ明示変換し、Excel の型・書式・数式計算結果を Rowly の正本モデルへ持ち込みません。
+
+現時点では単一シートのみを扱い、シート名指定がなければ active sheet を読み込みます。merged cell、複数シート統合、書式保持は Rowly のデータモデルへ暗黙導入しません。詳細は [`EXCEL.md`](EXCEL.md) を正本とします。
+
 ## 今後の境界
 
 - `ui`: 具体的な viewer/editor と描画。process のみに依存する。
-- `excel_python`: Python-backed Excel import/export。Excel は交換経路であり、開いた CSV に代わる正本にはしない。
 
 空の抽象化層は先に作らず、必要になった時点で追加します。
 

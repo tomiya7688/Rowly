@@ -601,13 +601,10 @@ fn parse_primary_expression(text: &str, line: usize) -> Result<Expression, Parse
     }
     if let Some(rest) = strip_prefix_ci(text, "new ") {
         let (class_name, arguments) = parse_named_call(rest.trim(), line)?;
-        if !split_arguments(arguments, line)?.is_empty() {
-            return Err(parse_error(
-                line,
-                "class construction does not accept arguments yet",
-            ));
-        }
-        return Ok(Expression::New { class_name });
+        return Ok(Expression::New {
+            class_name,
+            arguments: parse_argument_expressions(arguments, line)?,
+        });
     }
     if let Some((target, member)) = split_member(text) {
         validate_identifier(target, line)?;

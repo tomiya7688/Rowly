@@ -3,7 +3,7 @@ use std::fs;
 use tempfile::tempdir;
 
 use super::*;
-use crate::process::CsvDocument;
+use crate::process::{CsvDocument, DocumentError};
 
 fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
     let directory = tempdir().unwrap();

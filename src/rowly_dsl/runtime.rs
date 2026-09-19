@@ -828,12 +828,8 @@ impl<'a> Runtime<'a> {
         });
 
         if let Some((defining_class, constructor)) = constructor {
-            let _ = self.invoke_method_with_values(
-                object_id,
-                &defining_class,
-                &constructor,
-                values,
-            )?;
+            let _ =
+                self.invoke_method_with_values(object_id, &defining_class, &constructor, values)?;
         }
 
         Ok(Value::Object(object_id))
@@ -931,12 +927,12 @@ impl<'a> Runtime<'a> {
                 class_name: current_class.clone(),
             })?;
         let object_id = self.resolve_object("Self")?;
-        let (defining_class, method) = self
-            .find_method_in_hierarchy(&parent, name)?
-            .ok_or_else(|| ExecutionError::UnknownSuperMethod {
-                class_name: current_class,
-                method: name.to_owned(),
-            })?;
+        let (defining_class, method) =
+            self.find_method_in_hierarchy(&parent, name)?
+                .ok_or_else(|| ExecutionError::UnknownSuperMethod {
+                    class_name: current_class,
+                    method: name.to_owned(),
+                })?;
         if method.parameters.len() != arguments.len() {
             return Err(ExecutionError::MethodArgumentCount {
                 class_name: defining_class.clone(),

@@ -56,7 +56,7 @@ Rust コアでは次を実装済みです。
 - `For ... To ... [Step ...]` / `Next` による整数ループ
 - `RowCount()` / `ColumnCount()` / `CellValueAt(row, column)` / `SetCellValueAt(row, column, value)` による動的セル操作
 - `ColumnIndex(header)` / `CellValueByHeader(row, header)` / `SetCellValueByHeader(row, header, value)` によるヘッダー名ベース操作
-- Luau ユーザースクリプト実行アダプタ
+- Luau ユーザースクリプト実行アダプタと実行時間・interrupt回数・メモリ量の強制制限
 - process レベルの open/edit/save API
 - ヘッドレス CLI のスモークエントリポイント
 
@@ -126,6 +126,7 @@ Rowly.set_range("A3:B3", "updated")
 ```
 
 Luau からも CSV コーデックや `data` 層へ直接アクセスせず、すべて `process::CsvDocument` を経由します。
+ユーザースクリプトは既定で実行時間5秒、VM interrupt 100万回、Luau VMメモリ64 MiBの上限付きで実行し、無限ループや過剰なメモリ確保を停止します。
 Luau 連携の正本仕様は [`docs/LUAU.md`](docs/LUAU.md) を参照してください。
 
 ## 未実装
@@ -135,7 +136,6 @@ Luau 連携の正本仕様は [`docs/LUAU.md`](docs/LUAU.md) を参照してく�
 - 永続的な列メタデータ／型宣言
 - より広い型推論
 - 表示上のグループ化
-- Luau の実行時間・命令数・メモリ量の制限
 
 アーキテクチャと依存方向は [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) を参照してください。
 

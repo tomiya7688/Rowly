@@ -47,6 +47,10 @@ pub enum ExecutionError {
     UnknownFunction(String),
     #[error("unknown Rowly DSL class `{0}`")]
     UnknownClass(String),
+    #[error("class `{class_name}` extends unknown class `{parent}`")]
+    UnknownParentClass { class_name: String, parent: String },
+    #[error("inheritance cycle detected at class `{0}`")]
+    InheritanceCycle(String),
     #[error("cell `{0}` is outside the existing CSV table")]
     MissingCell(String),
     #[error("unknown field `{field}` on class `{class_name}`")]
@@ -774,18 +778,9 @@ impl<'a> Runtime<'a> {
         class_name: &str,
         arguments: &[Expression],
     ) -> Result<Value, ExecutionError> {
-        let class = self
-            .program
-            .classes
-            .iter()
-            .find(|class| class.name.eq_ignore_ascii_case(class_name))
-            .cloned()
-            .ok_or_else(|| ExecutionError::UnknownClass(class_name.to_owned()))?;
-        let constructor = class
-            .methods
-            .iter()
-            .find(|method| method.name.eq_ignore_ascii_case("Init"))
-            .cloned();
+        let class = self.class_by_name(class_name)?.clone();
+        let lineage = self.class_lineage(&class.name)?;
+        let constructor = self.find_method_in_hierarchy(&class.name, "Init")?;
         let expected = constructor
             .as_ref()
             .map(|constructor| constructor.parameters.len())
@@ -800,9 +795,11 @@ impl<'a> Runtime<'a> {
         let values = self.evaluate_arguments(arguments)?;
 
         let mut fields = HashMap::new();
-        for field in &class.fields {
-            let value = self.evaluate_expression(&field.default)?;
-            fields.insert(normalize_identifier(&field.name), value);
+        for current in &lineage {
+            for field in &current.fields {
+                let value = self.evaluate_expression(&field.default)?;
+                fields.insert(normalize_identifier(&field.name), value);
+            }
         }
         let object_id = self.objects.len();
         self.objects.push(ObjectInstance {
@@ -904,18 +901,9 @@ impl<'a> Runtime<'a> {
     ) -> Result<Option<Value>, ExecutionError> {
         self.ensure_call_depth()?;
         let class_name = self.object(object_id)?.class_name.clone();
-        let class = self
-            .program
-            .classes
-            .iter()
-            .find(|class| class.name.eq_ignore_ascii_case(&class_name))
-            .cloned()
-            .ok_or_else(|| ExecutionError::UnknownClass(class_name.clone()))?;
-        let method = class
-            .methods
-            .iter()
-            .find(|method| method.name.eq_ignore_ascii_case(name))
-            .cloned()
+        let class = self.class_by_name(&class_name)?.clone();
+        let method = self
+            .find_method_in_hierarchy(&class_name, name)?
             .ok_or_else(|| ExecutionError::UnknownMethod {
                 class_name: class.name.clone(),
                 method: name.to_owned(),
@@ -957,6 +945,70 @@ impl<'a> Runtime<'a> {
                 .map(|value| self.describe_value(value)),
         });
         Ok(return_value)
+    }
+
+    fn class_by_name(
+        &self,
+        name: &str,
+    ) -> Result<&super::ast::ClassDefinition, ExecutionError> {
+        self.program
+            .classes
+            .iter()
+            .find(|class| class.name.eq_ignore_ascii_case(name))
+            .ok_or_else(|| ExecutionError::UnknownClass(name.to_owned()))
+    }
+
+    fn class_lineage(
+        &self,
+        class_name: &str,
+    ) -> Result<Vec<super::ast::ClassDefinition>, ExecutionError> {
+        let mut lineage = Vec::new();
+        let mut seen = Vec::new();
+        let mut current = self.class_by_name(class_name)?.clone();
+
+        loop {
+            let key = normalize_identifier(&current.name);
+            if seen.iter().any(|name| name == &key) {
+                return Err(ExecutionError::InheritanceCycle(current.name));
+            }
+            seen.push(key);
+            lineage.push(current.clone());
+
+            let Some(parent_name) = current.parent.as_deref() else {
+                break;
+            };
+            current = self
+                .program
+                .classes
+                .iter()
+                .find(|class| class.name.eq_ignore_ascii_case(parent_name))
+                .cloned()
+                .ok_or_else(|| ExecutionError::UnknownParentClass {
+                    class_name: current.name.clone(),
+                    parent: parent_name.to_owned(),
+                })?;
+        }
+
+        lineage.reverse();
+        Ok(lineage)
+    }
+
+    fn find_method_in_hierarchy(
+        &self,
+        class_name: &str,
+        method_name: &str,
+    ) -> Result<Option<super::ast::FunctionDefinition>, ExecutionError> {
+        let lineage = self.class_lineage(class_name)?;
+        Ok(lineage
+            .iter()
+            .rev()
+            .find_map(|class| {
+                class
+                    .methods
+                    .iter()
+                    .find(|method| method.name.eq_ignore_ascii_case(method_name))
+                    .cloned()
+            }))
     }
 
     fn evaluate_arguments(

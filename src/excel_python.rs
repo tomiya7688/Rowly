@@ -41,8 +41,8 @@ pub fn import_workbook(
         "sheet_name": sheet_name,
     });
     let output = run_bridge("import", &request)?;
-    let payload: Value = serde_json::from_slice(&output)
-        .map_err(|error| ExcelError::Protocol(error.to_string()))?;
+    let payload: Value =
+        serde_json::from_slice(&output).map_err(|error| ExcelError::Protocol(error.to_string()))?;
     let rows = payload
         .get("rows")
         .cloned()
@@ -66,17 +66,20 @@ fn run_bridge(mode: &str, request: &Value) -> Result<Vec<u8>, ExcelError> {
             message: error.to_string(),
         })?;
 
-    let input = serde_json::to_vec(request).map_err(|error| ExcelError::Protocol(error.to_string()))?;
+    let input =
+        serde_json::to_vec(request).map_err(|error| ExcelError::Protocol(error.to_string()))?;
     child
         .stdin
         .take()
         .expect("stdin is piped")
         .write_all(&input)
-        .map_err(|error| ExcelError::Protocol(format!("failed to write bridge request: {error}")))?;
+        .map_err(|error| {
+            ExcelError::Protocol(format!("failed to write bridge request: {error}"))
+        })?;
 
-    let output = child
-        .wait_with_output()
-        .map_err(|error| ExcelError::Protocol(format!("failed to wait for Python bridge: {error}")))?;
+    let output = child.wait_with_output().map_err(|error| {
+        ExcelError::Protocol(format!("failed to wait for Python bridge: {error}"))
+    })?;
 
     if !output.status.success() {
         return Err(ExcelError::Bridge {
@@ -93,10 +96,7 @@ pub enum ExcelError {
     PythonStart { executable: String, message: String },
 
     #[error("Excel Python bridge failed with status {status:?}: {stderr}")]
-    Bridge {
-        status: Option<i32>,
-        stderr: String,
-    },
+    Bridge { status: Option<i32>, stderr: String },
 
     #[error("invalid Excel Python bridge protocol: {0}")]
     Protocol(String),
@@ -134,7 +134,10 @@ mod tests {
         assert_eq!(imported.cell_a1("B2").unwrap(), Some("001"));
         assert_eq!(imported.cell_a1("B3").unwrap(), Some("=1+1"));
         assert_eq!(imported.cell_a1("B4").unwrap(), Some("田中"));
-        assert_eq!(imported.source_encoding(), crate::process::SourceEncoding::Utf8);
+        assert_eq!(
+            imported.source_encoding(),
+            crate::process::SourceEncoding::Utf8
+        );
         assert!(!imported.is_dirty());
     }
 

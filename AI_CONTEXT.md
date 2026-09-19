@@ -56,6 +56,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Class instances are runtime-only DSL objects. They must not become canonical table state or bypass process-layer edits.
 - Object aliases share instance identity. `Self` is injected while a method or `Init` constructor executes.
 - `New ClassName(args...)` uses a class `Init` method as its constructor; classes without `Init` accept zero constructor arguments.
+- Rowly DSL supports single inheritance with `Class Child Extends Parent`. Fields initialize parent-to-child, and child fields/methods/`Init` override inherited members. Missing parents and inheritance cycles are errors. `Super` calls are not implemented yet.
 - CSV cell edits require textual values; object references cannot be written directly into canonical CSV cells.
 - DSL arithmetic is typed: Integer/Decimal only, with explicit promotion, division-by-zero errors, and no implicit string coercion.
 - DSL predicate builtins return Boolean values and Boolean expressions may be used directly as `If` conditions.
@@ -89,7 +90,7 @@ Implemented:
 - process-layer first-row header lookup with duplicate detection
 - non-mutating `String` / `Integer` / `Decimal` / `Boolean` column validation
 - Japanese-character column checks with A1 result references
-- Rowly DSL AST/parser/runtime for `If`, variables, functions, calls, return, classes, objects, fields, methods, `Init` constructors, arithmetic expressions, column checks, and range value assignment
+- Rowly DSL AST/parser/runtime for `If`, variables, functions, calls, return, classes, single inheritance, objects, fields, methods, `Init` constructors, arithmetic expressions, column checks, and range value assignment
 - typed Integer/Decimal arithmetic with precedence, unary minus, parentheses, and explicit arithmetic errors
 - value predicates for string matching, Japanese detection, and Integer/Decimal/Boolean interpretation
 - expression-level CSV cell reads through `CellValue(...)`
@@ -99,7 +100,7 @@ Implemented:
 
 Not implemented yet:
 - GUI
-- Rowly DSL inheritance
+- Rowly DSL `Super` calls
 - Python/Excel bridge
 - persistent column metadata/type declarations
 - broader type inference

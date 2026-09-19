@@ -56,7 +56,8 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Class instances are runtime-only DSL objects. They must not become canonical table state or bypass process-layer edits.
 - Object aliases share instance identity. `Self` is injected while a method or `Init` constructor executes.
 - `New ClassName(args...)` uses a class `Init` method as its constructor; classes without `Init` accept zero constructor arguments.
-- Rowly DSL supports single inheritance with `Class Child Extends Parent`. Fields initialize parent-to-child, and child fields/methods/`Init` override inherited members. Missing parents and inheritance cycles are errors. `Super` calls are not implemented yet.
+- Rowly DSL supports single inheritance with `Class Child Extends Parent`. Fields initialize parent-to-child, and child fields/methods/`Init` override inherited members. Missing parents and inheritance cycles are errors.
+- `Super.Method(...)` and `Super.Init(...)` resolve from the parent of the class that defined the currently executing method, while keeping `Self` bound to the original instance.
 - CSV cell edits require textual values; object references cannot be written directly into canonical CSV cells.
 - DSL arithmetic is typed: Integer/Decimal only, with explicit promotion, division-by-zero errors, and no implicit string coercion.
 - DSL predicate builtins return Boolean values and Boolean expressions may be used directly as `If` conditions.
@@ -100,7 +101,6 @@ Implemented:
 
 Not implemented yet:
 - GUI
-- Rowly DSL `Super` calls
 - Python/Excel bridge
 - persistent column metadata/type declarations
 - broader type inference

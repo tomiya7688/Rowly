@@ -947,10 +947,7 @@ impl<'a> Runtime<'a> {
         Ok(return_value)
     }
 
-    fn class_by_name(
-        &self,
-        name: &str,
-    ) -> Result<&super::ast::ClassDefinition, ExecutionError> {
+    fn class_by_name(&self, name: &str) -> Result<&super::ast::ClassDefinition, ExecutionError> {
         self.program
             .classes
             .iter()
@@ -999,16 +996,13 @@ impl<'a> Runtime<'a> {
         method_name: &str,
     ) -> Result<Option<super::ast::FunctionDefinition>, ExecutionError> {
         let lineage = self.class_lineage(class_name)?;
-        Ok(lineage
-            .iter()
-            .rev()
-            .find_map(|class| {
-                class
-                    .methods
-                    .iter()
-                    .find(|method| method.name.eq_ignore_ascii_case(method_name))
-                    .cloned()
-            }))
+        Ok(lineage.iter().rev().find_map(|class| {
+            class
+                .methods
+                .iter()
+                .find(|method| method.name.eq_ignore_ascii_case(method_name))
+                .cloned()
+        }))
     }
 
     fn evaluate_arguments(

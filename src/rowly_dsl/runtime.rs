@@ -295,6 +295,9 @@ impl<'a> Runtime<'a> {
                     return Ok(Flow::Return(value));
                 }
                 Statement::Call { name, arguments } => {
+                    if self.call_statement_builtin(name, arguments)? {
+                        continue;
+                    }
                     if self.call_builtin(name, arguments)?.is_none() {
                         let _ = self.call_function(name, arguments)?;
                     }
@@ -585,6 +588,41 @@ impl<'a> Runtime<'a> {
                 operator: arithmetic_operator_text(operator),
             }),
         }
+    }
+
+    fn call_statement_builtin(
+        &mut self,
+        name: &str,
+        arguments: &[Expression],
+    ) -> Result<bool, ExecutionError> {
+        let canonical = if name.eq_ignore_ascii_case("begintransaction") {
+            Some("BeginTransaction")
+        } else if name.eq_ignore_ascii_case("committransaction") {
+            Some("CommitTransaction")
+        } else if name.eq_ignore_ascii_case("rollbacktransaction") {
+            Some("RollbackTransaction")
+        } else {
+            None
+        };
+
+        let Some(canonical) = canonical else {
+            return Ok(false);
+        };
+        if !arguments.is_empty() {
+            return Err(ExecutionError::ArgumentCount {
+                name: canonical.to_owned(),
+                expected: 0,
+                actual: arguments.len(),
+            });
+        }
+
+        match canonical {
+            "BeginTransaction" => self.document.begin_transaction()?,
+            "CommitTransaction" => self.document.commit_transaction()?,
+            "RollbackTransaction" => self.document.rollback_transaction()?,
+            _ => unreachable!(),
+        }
+        Ok(true)
     }
 
     fn call_builtin(

@@ -3,7 +3,7 @@ use std::fs;
 use tempfile::tempdir;
 
 use super::*;
-use crate::process::CsvDocument;
+use crate::process::{CsvDocument, DocumentError};
 
 fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
     let directory = tempdir().unwrap();
@@ -138,6 +138,77 @@ fn header_selector_and_range_set_use_process_boundary() {
     assert!(document.undo().unwrap());
     assert_eq!(document.cell_a1("B2").unwrap(), Some("20"));
     assert_eq!(document.cell_a1("B3").unwrap(), Some("21"));
+}
+
+#[test]
+fn transaction_commit_groups_multiple_dsl_edits_into_one_undo() {
+    let (_directory, mut document) = open("Name,Score\nAlice,10\nBob,20\n");
+
+    run(
+        r#"
+            BeginTransaction()
+            SetCellValueAt(Integer("2"), Integer("2"), "42")
+            SetCellValueAt(Integer("3"), Integer("2"), "99")
+            CommitTransaction()
+        "#,
+        &mut document,
+    )
+    .unwrap();
+
+    assert_eq!(document.cell_a1("B2").unwrap(), Some("42"));
+    assert_eq!(document.cell_a1("B3").unwrap(), Some("99"));
+    assert!(!document.transaction_active());
+
+    assert!(document.undo().unwrap());
+    assert_eq!(document.cell_a1("B2").unwrap(), Some("10"));
+    assert_eq!(document.cell_a1("B3").unwrap(), Some("20"));
+    assert!(!document.can_undo());
+
+    assert!(document.redo().unwrap());
+    assert_eq!(document.cell_a1("B2").unwrap(), Some("42"));
+    assert_eq!(document.cell_a1("B3").unwrap(), Some("99"));
+}
+
+#[test]
+fn transaction_rollback_restores_dsl_edits_without_history() {
+    let (_directory, mut document) = open("Name,Score\nAlice,10\nBob,20\n");
+
+    run(
+        r#"
+            BeginTransaction()
+            This.Worksheet.Editor.Cell(B2 To B3).Value.Set = "changed"
+            RollbackTransaction()
+        "#,
+        &mut document,
+    )
+    .unwrap();
+
+    assert_eq!(document.cell_a1("B2").unwrap(), Some("10"));
+    assert_eq!(document.cell_a1("B3").unwrap(), Some("20"));
+    assert!(!document.transaction_active());
+    assert!(!document.can_undo());
+    assert!(!document.is_dirty());
+}
+
+#[test]
+fn transaction_control_requires_zero_arguments_and_process_state_rules() {
+    let (_directory, mut document) = open("Name,Score\nAlice,10\n");
+
+    let error = run("BeginTransaction(\"unexpected\")", &mut document).unwrap_err();
+    assert!(matches!(
+        error,
+        DslError::Execute(ExecutionError::ArgumentCount {
+            name,
+            expected: 0,
+            actual: 1,
+        }) if name == "BeginTransaction"
+    ));
+
+    let error = run("CommitTransaction()", &mut document).unwrap_err();
+    assert!(matches!(
+        error,
+        DslError::Execute(ExecutionError::Document(DocumentError::Transaction(_)))
+    ));
 }
 
 #[test]

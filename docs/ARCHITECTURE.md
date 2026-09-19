@@ -88,6 +88,7 @@ transaction 中は履歴位置や保存基準を壊さないため `undo` / `red
 - `For ... To ... [Step ...]` / `Next` の整数ループとループ専用スコープ
 - `RowCount()` / `ColumnCount()` / `CellValueAt(...)` / `SetCellValueAt(...)` の1-based動的セル操作
 - `ColumnIndex(...)` / `CellValueByHeader(...)` / `SetCellValueByHeader(...)` による一意ヘッダー経由の動的セル操作
+- `BeginTransaction()` / `CommitTransaction()` / `RollbackTransaction()` による process transaction の明示操作
 - `Return` のネスト制御フロー伝播
 - 暴走再帰を防ぐ call depth 上限
 - `This.Worksheet.Column(...)` / `This.Worksheet.Editor.Cell(...)` を process API へ対応付ける
@@ -95,6 +96,8 @@ transaction 中は履歴位置や保存基準を壊さないため `undo` / `red
 - 上から下へ実行するマクロ semantics の維持
 
 DSL の runtime object は CSV 正本モデルの一部ではありません。CSV への作用は必ず process API を通します。型付きスカラーを CSV セルへ書く場合も process 境界で文字列へ変換します。
+
+Rowly DSL の transaction 制御も独自履歴を持たず、`CsvDocument` の transaction API を直接仲介します。commit 後は transaction 全体が1つの undo/redo 単位になり、rollback は process 層の規則に従って履歴を残さず復元します。
 
 `Init` コンストラクタと単一継承は実装済みです。継承時は親から子の順にフィールドを初期化し、同名フィールド／メソッド／`Init` は子側を優先します。存在しない親と循環継承はエラーにします。`Super.Method(...)` / `Super.Init(...)` は現在実行中のメソッドを定義したクラスの親から探索し、`Self` のオブジェクト同一性を維持します。
 

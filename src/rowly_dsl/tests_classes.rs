@@ -160,6 +160,154 @@ fn inherited_init_is_used_when_child_does_not_override_it() {
 }
 
 #[test]
+fn super_calls_parent_method_and_keeps_self_bound_to_child_instance() {
+    let (_directory, mut document) = open("値\n1\n");
+    let report = run(
+        r#"
+            Class Base
+                Field value = "base"
+
+                Def Set(value)
+                    Self.value = value
+                    Return Self.value
+                End Def
+            End Class
+
+            Class Child Extends Base
+                Def Set(value)
+                    Return Super.Set(value)
+                End Def
+            End Class
+
+            Let child = New Child()
+            Let result = child.Set("updated")
+        "#,
+        &mut document,
+    )
+    .unwrap();
+
+    assert_eq!(report.variable("result"), Some("updated"));
+    assert_eq!(report.object_field("child", "value"), Some("updated"));
+}
+
+#[test]
+fn super_resolution_starts_at_the_defining_class_parent() {
+    let (_directory, mut document) = open("値\n1\n");
+    let report = run(
+        r#"
+            Class Grand
+                Def Name()
+                    Return "grand"
+                End Def
+            End Class
+
+            Class Base Extends Grand
+                Def Name()
+                    Return "base"
+                End Def
+
+                Def ParentName()
+                    Return Super.Name()
+                End Def
+            End Class
+
+            Class Child Extends Base
+                Def Name()
+                    Return "child"
+                End Def
+
+                Def FromChild()
+                    Return Super.Name()
+                End Def
+            End Class
+
+            Let child = New Child()
+            Let from_child = child.FromChild()
+            Let from_base = child.ParentName()
+        "#,
+        &mut document,
+    )
+    .unwrap();
+
+    assert_eq!(report.variable("from_child"), Some("base"));
+    assert_eq!(report.variable("from_base"), Some("grand"));
+}
+
+#[test]
+fn super_init_can_initialize_parent_part_of_child_instance() {
+    let (_directory, mut document) = open("値\n1\n");
+    let report = run(
+        r#"
+            Class Base
+                Field base_value = "unset"
+
+                Def Init(value)
+                    Self.base_value = value
+                End Def
+            End Class
+
+            Class Child Extends Base
+                Field child_value = "unset"
+
+                Def Init(base_value, child_value)
+                    Super.Init(base_value)
+                    Self.child_value = child_value
+                End Def
+            End Class
+
+            Let child = New Child("base", "child")
+        "#,
+        &mut document,
+    )
+    .unwrap();
+
+    assert_eq!(report.object_field("child", "base_value"), Some("base"));
+    assert_eq!(report.object_field("child", "child_value"), Some("child"));
+}
+
+#[test]
+fn super_outside_method_is_reported() {
+    let (_directory, mut document) = open("値\n1\n");
+    let error = run(
+        r#"
+            Super.Missing()
+        "#,
+        &mut document,
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        DslError::Execute(ExecutionError::SuperOutsideMethod)
+    ));
+}
+
+#[test]
+fn super_on_root_class_is_reported() {
+    let (_directory, mut document) = open("値\n1\n");
+    let error = run(
+        r#"
+            Class Root
+                Def CallParent()
+                    Super.Missing()
+                End Def
+            End Class
+
+            Let root = New Root()
+            root.CallParent()
+        "#,
+        &mut document,
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        DslError::Execute(ExecutionError::NoSuperClass { class_name })
+            if class_name == "Root"
+    ));
+}
+
+#[test]
 fn unknown_parent_class_is_reported() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(

@@ -18,6 +18,27 @@ pub struct CsvDocument {
 }
 
 impl CsvDocument {
+    pub fn create(
+        path: impl AsRef<Path>,
+        rows: Vec<Vec<String>>,
+    ) -> Result<Self, DocumentError> {
+        let path = path.as_ref().to_path_buf();
+        let table = Table::new(rows);
+        write_csv_utf8(&path, &table).map_err(|error| DocumentError::Save {
+            path: path.display().to_string(),
+            message: error.to_string(),
+        })?;
+
+        let mut history = EditHistory::default();
+        history.mark_saved();
+        Ok(Self {
+            path,
+            source_encoding: SourceEncoding::Utf8,
+            table,
+            history,
+        })
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self, DocumentError> {
         let path = path.as_ref().to_path_buf();
         let loaded = read_csv(&path).map_err(|error| DocumentError::Open {
@@ -59,6 +80,10 @@ impl CsvDocument {
 
     pub fn column_count(&self) -> usize {
         self.table.column_count()
+    }
+
+    pub fn rows(&self) -> impl Iterator<Item = &[String]> {
+        self.table.rows().iter().map(Vec::as_slice)
     }
 
     pub fn cell(&self, row: usize, column: usize) -> Option<&str> {
@@ -523,6 +548,27 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    #[test]
+    fn create_writes_utf8_csv_and_starts_clean() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("created.csv");
+        let rows = vec![
+            vec!["名前".to_owned(), "値".to_owned()],
+            vec!["田中".to_owned(), "1".to_owned()],
+        ];
+
+        let document = CsvDocument::create(&path, rows.clone()).unwrap();
+
+        assert_eq!(document.source_encoding(), SourceEncoding::Utf8);
+        assert!(!document.is_dirty());
+        assert!(!document.can_undo());
+        assert_eq!(document.rows().map(|row| row.to_vec()).collect::<Vec<_>>(), rows);
+
+        let reopened = CsvDocument::open(&path).unwrap();
+        assert_eq!(reopened.cell_a1("A2").unwrap(), Some("田中"));
+        assert_eq!(reopened.cell_a1("B2").unwrap(), Some("1"));
+    }
 
     #[test]
     fn edit_marks_document_dirty_until_save() {

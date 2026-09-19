@@ -110,7 +110,7 @@ Luau から `data` や CSV codec へ直接アクセスさせません。不正�
 
 Luau 側から CSV へ書き込める値は現時点では文字列だけです。table、function、userdata などを暗黙に CSV 文字列へ変換してはなりません。
 
-Luau の実行時間・命令数・メモリ量の制限は未実装です。詳細仕様は [`LUAU.md`](LUAU.md) を正本とします。
+Luau ユーザースクリプトは `Lua::set_interrupt` による実行時間／interrupt回数制限と、Luau VM allocator のメモリ上限を必ず設定して実行します。既定値は5秒、100万interrupt、64 MiBです。用途別の上限は `LuauLimits` で差し替えます。interrupt回数はLuau命令数そのものではありません。詳細仕様は [`LUAU.md`](LUAU.md) を正本とします。
 
 ## 文字コード方針
 

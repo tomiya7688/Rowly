@@ -44,8 +44,16 @@ mod tests;
 #[cfg(test)]
 mod tests_arithmetic;
 #[cfg(test)]
+mod tests_cell_value;
+#[cfg(test)]
 mod tests_classes;
 #[cfg(test)]
 mod tests_conditions;
+#[cfg(test)]
+mod tests_for_loop;
+#[cfg(test)]
+mod tests_header_access;
+#[cfg(test)]
+mod tests_predicates;
 #[cfg(test)]
 mod tests_typed_values;

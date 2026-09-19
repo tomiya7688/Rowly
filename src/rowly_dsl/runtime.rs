@@ -47,6 +47,8 @@ pub enum ExecutionError {
     UnknownFunction(String),
     #[error("unknown Rowly DSL class `{0}`")]
     UnknownClass(String),
+    #[error("cell `{0}` is outside the existing CSV table")]
+    MissingCell(String),
     #[error("unknown field `{field}` on class `{class_name}`")]
     UnknownField { class_name: String, field: String },
     #[error("unknown method `{method}` on class `{class_name}`")]
@@ -55,6 +57,8 @@ pub enum ExecutionError {
     ExpectedObject(String),
     #[error("{context} requires a text value")]
     ExpectedText { context: String },
+    #[error("{context} requires a Boolean value")]
+    ExpectedBoolean { context: String },
     #[error("cannot convert {value_type} value `{value}` to {target}")]
     Conversion {
         value_type: &'static str,
@@ -97,6 +101,14 @@ pub enum ExecutionError {
     },
     #[error("call `{0}` was used as a value but did not return one")]
     MissingReturnValue(String),
+    #[error("{context} requires an Integer value")]
+    ExpectedInteger { context: String },
+    #[error("{context} must be at least 1")]
+    InvalidOneBasedIndex { context: String },
+    #[error("For loop Step cannot be zero")]
+    ZeroLoopStep,
+    #[error("For loop counter overflowed")]
+    LoopCounterOverflow,
     #[error("`Return` can only be used inside a function or method")]
     ReturnOutsideFunction,
     #[error("Rowly DSL call depth exceeded the limit of {limit}")]
@@ -191,6 +203,60 @@ impl<'a> Runtime<'a> {
                         return Ok(flow);
                     }
                 }
+                Statement::For {
+                    variable,
+                    start,
+                    end,
+                    step,
+                    body,
+                } => {
+                    let start = self.evaluate_expression(start)?;
+                    let end = self.evaluate_expression(end)?;
+                    let step = step
+                        .as_ref()
+                        .map(|expression| self.evaluate_expression(expression))
+                        .transpose()?;
+                    let mut current = self.expect_integer(start, "For start")?;
+                    let end = self.expect_integer(end, "For end")?;
+                    let step = match step {
+                        Some(value) => self.expect_integer(value, "For Step")?,
+                        None => 1,
+                    };
+                    if step == 0 {
+                        return Err(ExecutionError::ZeroLoopStep);
+                    }
+
+                    self.scopes.push(HashMap::new());
+                    let execution = (|| -> Result<Flow, ExecutionError> {
+                        loop {
+                            let in_range = if step > 0 {
+                                current <= end
+                            } else {
+                                current >= end
+                            };
+                            if !in_range {
+                                break;
+                            }
+
+                            self.current_scope_mut()
+                                .insert(normalize_identifier(variable), Value::Integer(current));
+                            let flow = self.execute_statements(body)?;
+                            if !matches!(flow, Flow::Continue) {
+                                return Ok(flow);
+                            }
+
+                            current = current
+                                .checked_add(step)
+                                .ok_or(ExecutionError::LoopCounterOverflow)?;
+                        }
+                        Ok(Flow::Continue)
+                    })();
+                    self.scopes.pop();
+                    let flow = execution?;
+                    if !matches!(flow, Flow::Continue) {
+                        return Ok(flow);
+                    }
+                }
                 Statement::Let { name, value } => {
                     let value = self.evaluate_expression(value)?;
                     let event_value = self.describe_value(&value);
@@ -209,7 +275,9 @@ impl<'a> Runtime<'a> {
                     return Ok(Flow::Return(value));
                 }
                 Statement::Call { name, arguments } => {
-                    let _ = self.call_function(name, arguments)?;
+                    if self.call_builtin(name, arguments)?.is_none() {
+                        let _ = self.call_function(name, arguments)?;
+                    }
                 }
                 Statement::MethodCall {
                     target,
@@ -288,6 +356,10 @@ impl<'a> Runtime<'a> {
                 let left = self.evaluate_expression(left)?;
                 let right = self.evaluate_expression(right)?;
                 self.compare_values(left, *operator, right)
+            }
+            Condition::Expression(expression) => {
+                let value = self.evaluate_expression(expression)?;
+                self.expect_boolean(value, "condition")
             }
             Condition::Not(inner) => Ok(!self.evaluate_condition(inner)?),
             Condition::And(left, right) => {
@@ -488,7 +560,7 @@ impl<'a> Runtime<'a> {
         name: &str,
         arguments: &[Expression],
     ) -> Result<Option<Value>, ExecutionError> {
-        let target = if name.eq_ignore_ascii_case("integer") {
+        let canonical = if name.eq_ignore_ascii_case("integer") {
             Some("Integer")
         } else if name.eq_ignore_ascii_case("decimal") {
             Some("Decimal")
@@ -496,26 +568,136 @@ impl<'a> Runtime<'a> {
             Some("Boolean")
         } else if name.eq_ignore_ascii_case("string") {
             Some("String")
+        } else if name.eq_ignore_ascii_case("contains") {
+            Some("Contains")
+        } else if name.eq_ignore_ascii_case("startswith") {
+            Some("StartsWith")
+        } else if name.eq_ignore_ascii_case("endswith") {
+            Some("EndsWith")
+        } else if name.eq_ignore_ascii_case("isjapanese") {
+            Some("IsJapanese")
+        } else if name.eq_ignore_ascii_case("isinteger") {
+            Some("IsInteger")
+        } else if name.eq_ignore_ascii_case("isdecimal") {
+            Some("IsDecimal")
+        } else if name.eq_ignore_ascii_case("isboolean") {
+            Some("IsBoolean")
+        } else if name.eq_ignore_ascii_case("cellvalue") {
+            Some("CellValue")
+        } else if name.eq_ignore_ascii_case("rowcount") {
+            Some("RowCount")
+        } else if name.eq_ignore_ascii_case("columncount") {
+            Some("ColumnCount")
+        } else if name.eq_ignore_ascii_case("cellvalueat") {
+            Some("CellValueAt")
+        } else if name.eq_ignore_ascii_case("setcellvalueat") {
+            Some("SetCellValueAt")
+        } else if name.eq_ignore_ascii_case("columnindex") {
+            Some("ColumnIndex")
+        } else if name.eq_ignore_ascii_case("cellvaluebyheader") {
+            Some("CellValueByHeader")
+        } else if name.eq_ignore_ascii_case("setcellvaluebyheader") {
+            Some("SetCellValueByHeader")
         } else {
             None
         };
 
-        let Some(target) = target else {
+        let Some(canonical) = canonical else {
             return Ok(None);
         };
-        if arguments.len() != 1 {
+        let expected = match canonical {
+            "RowCount" | "ColumnCount" => 0,
+            "Contains" | "StartsWith" | "EndsWith" | "CellValueAt" | "CellValueByHeader" => 2,
+            "SetCellValueAt" | "SetCellValueByHeader" => 3,
+            _ => 1,
+        };
+        if arguments.len() != expected {
             return Err(ExecutionError::ArgumentCount {
-                name: target.to_owned(),
-                expected: 1,
+                name: canonical.to_owned(),
+                expected,
                 actual: arguments.len(),
             });
         }
-        let value = self.evaluate_expression(&arguments[0])?;
-        Ok(Some(match target {
-            "Integer" => self.convert_integer(value)?,
-            "Decimal" => self.convert_decimal(value)?,
-            "Boolean" => self.convert_boolean(value)?,
-            "String" => self.convert_string(value)?,
+
+        let values = self.evaluate_arguments(arguments)?;
+        Ok(Some(match canonical {
+            "Integer" => self.convert_integer(values[0].clone())?,
+            "Decimal" => self.convert_decimal(values[0].clone())?,
+            "Boolean" => self.convert_boolean(values[0].clone())?,
+            "String" => self.convert_string(values[0].clone())?,
+            "Contains" => {
+                let haystack = self.expect_text(values[0].clone(), "Contains first argument")?;
+                let needle = self.expect_text(values[1].clone(), "Contains second argument")?;
+                Value::Boolean(haystack.contains(&needle))
+            }
+            "StartsWith" => {
+                let value = self.expect_text(values[0].clone(), "StartsWith first argument")?;
+                let prefix = self.expect_text(values[1].clone(), "StartsWith second argument")?;
+                Value::Boolean(value.starts_with(&prefix))
+            }
+            "EndsWith" => {
+                let value = self.expect_text(values[0].clone(), "EndsWith first argument")?;
+                let suffix = self.expect_text(values[1].clone(), "EndsWith second argument")?;
+                Value::Boolean(value.ends_with(&suffix))
+            }
+            "IsJapanese" => {
+                let value = self.expect_text(values[0].clone(), "IsJapanese argument")?;
+                Value::Boolean(contains_japanese(&value))
+            }
+            "IsInteger" => Value::Boolean(is_integer_value(&values[0])),
+            "IsDecimal" => Value::Boolean(is_decimal_value(&values[0])),
+            "IsBoolean" => Value::Boolean(is_boolean_value(&values[0])),
+            "CellValue" => {
+                let reference = self.expect_text(values[0].clone(), "CellValue argument")?;
+                let value = self
+                    .document
+                    .cell_a1(&reference)?
+                    .ok_or_else(|| ExecutionError::MissingCell(reference.clone()))?;
+                Value::Text(value.to_owned())
+            }
+            "RowCount" => Value::Integer(self.document.row_count() as i64),
+            "ColumnCount" => Value::Integer(self.document.column_count() as i64),
+            "CellValueAt" => {
+                let row = self.expect_one_based_index(values[0].clone(), "CellValueAt row")?;
+                let column =
+                    self.expect_one_based_index(values[1].clone(), "CellValueAt column")?;
+                let value = self.document.cell(row - 1, column - 1).ok_or_else(|| {
+                    ExecutionError::MissingCell(format!("row {row}, column {column}"))
+                })?;
+                Value::Text(value.to_owned())
+            }
+            "SetCellValueAt" => {
+                let row = self.expect_one_based_index(values[0].clone(), "SetCellValueAt row")?;
+                let column =
+                    self.expect_one_based_index(values[1].clone(), "SetCellValueAt column")?;
+                let value = self.cell_text(values[2].clone())?;
+                self.document.set_cell(row - 1, column - 1, value.clone())?;
+                Value::Text(value)
+            }
+            "ColumnIndex" => {
+                let header = self.expect_text(values[0].clone(), "ColumnIndex header")?;
+                let column = self.document.column_index_by_header(&header)?;
+                Value::Integer((column + 1) as i64)
+            }
+            "CellValueByHeader" => {
+                let row =
+                    self.expect_one_based_index(values[0].clone(), "CellValueByHeader row")?;
+                let header = self.expect_text(values[1].clone(), "CellValueByHeader header")?;
+                let column = self.document.column_index_by_header(&header)?;
+                let value = self.document.cell(row - 1, column).ok_or_else(|| {
+                    ExecutionError::MissingCell(format!("row {row}, header {header}"))
+                })?;
+                Value::Text(value.to_owned())
+            }
+            "SetCellValueByHeader" => {
+                let row =
+                    self.expect_one_based_index(values[0].clone(), "SetCellValueByHeader row")?;
+                let header = self.expect_text(values[1].clone(), "SetCellValueByHeader header")?;
+                let column = self.document.column_index_by_header(&header)?;
+                let value = self.cell_text(values[2].clone())?;
+                self.document.set_cell(row - 1, column, value.clone())?;
+                Value::Text(value)
+            }
             _ => unreachable!(),
         }))
     }
@@ -782,10 +964,40 @@ impl<'a> Runtime<'a> {
             .ok_or_else(|| ExecutionError::ExpectedObject(format!("object#{object_id}")))
     }
 
+    fn expect_integer(&self, value: Value, context: &str) -> Result<i64, ExecutionError> {
+        match value {
+            Value::Integer(value) => Ok(value),
+            _ => Err(ExecutionError::ExpectedInteger {
+                context: context.to_owned(),
+            }),
+        }
+    }
+
+    fn expect_one_based_index(&self, value: Value, context: &str) -> Result<usize, ExecutionError> {
+        let value = self.expect_integer(value, context)?;
+        if value < 1 {
+            return Err(ExecutionError::InvalidOneBasedIndex {
+                context: context.to_owned(),
+            });
+        }
+        usize::try_from(value).map_err(|_| ExecutionError::InvalidOneBasedIndex {
+            context: context.to_owned(),
+        })
+    }
+
     fn expect_text(&self, value: Value, context: &str) -> Result<String, ExecutionError> {
         match value {
             Value::Text(value) => Ok(value),
             _ => Err(ExecutionError::ExpectedText {
+                context: context.to_owned(),
+            }),
+        }
+    }
+
+    fn expect_boolean(&self, value: Value, context: &str) -> Result<bool, ExecutionError> {
+        match value {
+            Value::Boolean(value) => Ok(value),
+            _ => Err(ExecutionError::ExpectedBoolean {
                 context: context.to_owned(),
             }),
         }
@@ -836,6 +1048,47 @@ impl<'a> Runtime<'a> {
         self.scopes
             .last_mut()
             .expect("runtime always has at least the global scope")
+    }
+}
+
+fn contains_japanese(value: &str) -> bool {
+    value.chars().any(|ch| {
+        matches!(
+            ch,
+            '\u{3040}'..='\u{309f}'
+                | '\u{30a0}'..='\u{30ff}'
+                | '\u{31f0}'..='\u{31ff}'
+                | '\u{3400}'..='\u{4dbf}'
+                | '\u{4e00}'..='\u{9fff}'
+                | '\u{f900}'..='\u{faff}'
+                | '\u{ff66}'..='\u{ff9f}'
+        )
+    })
+}
+
+fn is_integer_value(value: &Value) -> bool {
+    match value {
+        Value::Integer(_) => true,
+        Value::Text(value) => value.parse::<i64>().is_ok(),
+        _ => false,
+    }
+}
+
+fn is_decimal_value(value: &Value) -> bool {
+    match value {
+        Value::Integer(_) | Value::Decimal(_) => true,
+        Value::Text(value) => value.parse::<f64>().is_ok_and(|parsed| parsed.is_finite()),
+        _ => false,
+    }
+}
+
+fn is_boolean_value(value: &Value) -> bool {
+    match value {
+        Value::Boolean(_) => true,
+        Value::Text(value) => {
+            value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false")
+        }
+        _ => false,
     }
 }
 

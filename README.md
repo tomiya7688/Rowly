@@ -51,6 +51,11 @@ Rust コアでは次を実装済みです。
 - `Integer(...)` / `Decimal(...)` / `Boolean(...)` / `String(...)` による明示変換
 - Integer / Decimal の数値比較と、文字列の辞書順比較
 - Rowly DSL の算術式 `+` / `-` / `*` / `/`、単項 `-`、括弧、演算子優先順位
+- `Contains` / `StartsWith` / `EndsWith` / `IsJapanese` / `IsInteger` / `IsDecimal` / `IsBoolean` 組み込み判定
+- `CellValue("A2")` による CSV セル値の式読み取り
+- `For ... To ... [Step ...]` / `Next` による整数ループ
+- `RowCount()` / `ColumnCount()` / `CellValueAt(row, column)` / `SetCellValueAt(row, column, value)` による動的セル操作
+- `ColumnIndex(header)` / `CellValueByHeader(row, header)` / `SetCellValueByHeader(row, header, value)` によるヘッダー名ベース操作
 - Luau ユーザースクリプト実行アダプタ
 - process レベルの open/edit/save API
 - ヘッドレス CLI のスモークエントリポイント
@@ -93,6 +98,14 @@ End If
 文字列は辞書順、Integer / Decimal は数値として比較します。Integer と Decimal の相互比較も可能です。Boolean は等値／不等値比較のみです。CSV セルへ型付きスカラーを書き込む場合は process 境界で文字列へ変換し、CSV の正本性を維持します。
 
 算術式は `-x`、`*` / `/`、`+` / `-`、比較、`And`、`Or` の順に優先されます。Integer 同士の `+` / `-` / `*` は Integer、Integer / Decimal 混在は Decimal、`/` は常に Decimal です。0 除算、整数 overflow、非数値への算術は暗黙変換せずエラーにします。
+
+値単位の判定には `Contains` / `StartsWith` / `EndsWith` / `IsJapanese` / `IsInteger` / `IsDecimal` / `IsBoolean` を使用できます。Boolean を返す式は `If IsJapanese(value) Then` のように比較演算子なしで条件として直接使用できます。`IsJapanese` は文字列中に日本語文字を1文字以上含むかを判定します。
+
+CSV の既存セル値は `CellValue("A2")` で文字列として読み取れます。読み取りも `process::CsvDocument` を経由し、同じスクリプト内で先に行った編集結果を直後の式から参照できます。不正な A1 参照や存在しないセルは明示エラーです。
+
+全行処理には `For row = Integer("2") To RowCount()` / `Next row` を使用できます。`Step` は省略時1で、負数による降順ループにも対応します。`CellValueAt` / `SetCellValueAt` の行・列番号は1-basedです。ループ変数とループ内 `Let` はループ専用スコープに限定され、終了後は外側へ漏れません。
+
+列番号を固定したくない場合は `ColumnIndex("名前")`、`CellValueByHeader(row, "名前")`、`SetCellValueByHeader(row, "状態", value)` を使用できます。ヘッダー検索は先頭行を完全一致で検索し、見つからない場合や重複して一意に決められない場合はエラーにします。`ColumnIndex` の返り値はDSL上の1-based列番号です。
 
 オブジェクト変数は DSL ランタイム内部だけの参照です。クラスインスタンスが CSV に代わる正本になることはありません。CSV への作用は必ず process API を通します。
 

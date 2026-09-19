@@ -99,7 +99,9 @@ pub enum ExecutionError {
         expected: usize,
         actual: usize,
     },
-    #[error("constructor for class `{class_name}` expects {expected} arguments but received {actual}")]
+    #[error(
+        "constructor for class `{class_name}` expects {expected} arguments but received {actual}"
+    )]
     ConstructorArgumentCount {
         class_name: String,
         expected: usize,

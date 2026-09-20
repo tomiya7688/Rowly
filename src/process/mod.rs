@@ -2,6 +2,7 @@ mod address;
 mod column;
 mod document;
 mod history;
+mod metadata;
 
 pub use crate::data::SourceEncoding;
 pub use address::{CellRange, CellRef, ReferenceError};

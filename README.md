@@ -43,6 +43,7 @@ Rust コアでは次を実装済みです。
 - 複数編集を1回の undo/redo にまとめる process transaction API
 - 保存状態を考慮した dirty 管理
 - 先頭行を明示的にヘッダーとして扱う検索と重複検出
+- `<csv>.rowly.json` sidecar によるヘッダー単位の永続列型宣言
 - `String` / `Integer` / `Decimal` / `Boolean` の非破壊列チェック
 - 日本語文字チェックと A1 参照による結果報告
 - process API 上で動作する BASIC 風 Rowly DSL
@@ -143,10 +144,13 @@ Excel は交換経路であり、Rowly の正本にはしません。`excel_pyth
 
 詳細仕様は [`docs/EXCEL.md`](docs/EXCEL.md) を参照してください。
 
+## 列メタデータ
+
+列型宣言は CSV 本体へ埋め込まず、同じ場所の `<csv>.rowly.json` sidecar に補助情報として保存します。キーは一意なヘッダー名で、`String` / `Integer` / `Decimal` / `Boolean` を宣言できます。sidecar が無くても CSV は完全に開け、sidecar が壊れていても CSV の読み込み自体は失敗しません。
+
 ## 未実装
 
 - GUI
-- 永続的な列メタデータ／型宣言
 - より広い型推論
 - 表示上のグループ化
 

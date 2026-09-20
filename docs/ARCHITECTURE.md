@@ -125,6 +125,14 @@ Luau の transaction API も `CsvDocument` を直接仲介し、adapter 独自�
 
 Luau ユーザースクリプトは `Lua::set_interrupt` による実行時間／interrupt回数制限と、Luau VM allocator のメモリ上限を必ず設定して実行します。既定値は5秒、100万interrupt、64 MiBです。用途別の上限は `LuauLimits` で差し替えます。interrupt回数はLuau命令数そのものではありません。詳細仕様は [`LUAU.md`](LUAU.md) を正本とします。
 
+## Rowly sidecar メタデータ
+
+列型宣言など Rowly 固有の補助情報は CSV 本体へ埋め込まず、`<csv>.rowly.json` sidecar に保存します。CSV 単体で表データを完全に復元できることを不変条件とし、sidecar は正本ではありません。
+
+現時点では `version: 1` と、ヘッダー名をキーにした列型宣言だけを保持します。宣言設定時は既存の一意ヘッダー検索を使うため、重複ヘッダーは対象にできません。列順が変わってもヘッダー名で再解決します。
+
+sidecar が存在しない場合は空メタデータとして扱います。不正な JSON や未知の型・version がある場合も CSV の open 自体は成功させ、`metadata_error()` から補助情報の読み込み失敗を確認できるようにします。
+
 ## 文字コード方針
 
 - 内部表現は UTF-8 の Rust `String`。

@@ -5,8 +5,9 @@ use thiserror::Error;
 use crate::data::{SourceEncoding, Table, read_csv, write_csv_utf8};
 
 use super::{
-    CellRange, CellRef, ReferenceError,
+    CellRange, CellRef, ColumnError, ColumnType, ReferenceError,
     history::{CellChange, ColumnChange, EditCommand, EditHistory, EditOperation, RowEdit},
+    metadata::{ColumnMetadata, sidecar_path},
 };
 
 #[derive(Debug)]
@@ -15,6 +16,8 @@ pub struct CsvDocument {
     source_encoding: SourceEncoding,
     table: Table,
     history: EditHistory,
+    metadata: ColumnMetadata,
+    metadata_error: Option<String>,
 }
 
 impl CsvDocument {
@@ -33,6 +36,8 @@ impl CsvDocument {
             source_encoding: SourceEncoding::Utf8,
             table,
             history,
+            metadata: ColumnMetadata::default(),
+            metadata_error: None,
         })
     }
 
@@ -43,11 +48,18 @@ impl CsvDocument {
             message: error.to_string(),
         })?;
 
+        let (metadata, metadata_error) = match ColumnMetadata::load(&path) {
+            Ok(metadata) => (metadata, None),
+            Err(error) => (ColumnMetadata::default(), Some(error.to_string())),
+        };
+
         Ok(Self {
             path,
             source_encoding: loaded.encoding,
             table: loaded.table,
             history: EditHistory::default(),
+            metadata,
+            metadata_error,
         })
     }
 
@@ -61,6 +73,53 @@ impl CsvDocument {
 
     pub fn is_dirty(&self) -> bool {
         self.history.is_dirty()
+    }
+
+    pub fn metadata_path(&self) -> PathBuf {
+        sidecar_path(&self.path)
+    }
+
+    pub fn metadata_error(&self) -> Option<&str> {
+        self.metadata_error.as_deref()
+    }
+
+    pub fn set_column_type_declaration_by_header(
+        &mut self,
+        header: &str,
+        column_type: ColumnType,
+    ) -> Result<(), DocumentError> {
+        self.column_index_by_header(header)?;
+        self.metadata.set(header.to_owned(), column_type);
+        self.metadata_error = None;
+        Ok(())
+    }
+
+    pub fn remove_column_type_declaration_by_header(
+        &mut self,
+        header: &str,
+    ) -> Result<bool, DocumentError> {
+        self.column_index_by_header(header)?;
+        Ok(self.metadata.remove(header))
+    }
+
+    pub fn column_type_declaration_by_header(
+        &self,
+        header: &str,
+    ) -> Result<Option<ColumnType>, DocumentError> {
+        self.column_index_by_header(header)?;
+        Ok(self.metadata.get(header))
+    }
+
+    pub fn column_type_declarations(&self) -> impl Iterator<Item = (&str, ColumnType)> {
+        self.metadata.declarations()
+    }
+
+    pub fn save_metadata(&mut self) -> Result<(), DocumentError> {
+        self.metadata
+            .save(&self.path)
+            .map_err(|error| DocumentError::Metadata(error.to_string()))?;
+        self.metadata_error = None;
+        Ok(())
     }
 
     pub fn can_undo(&self) -> bool {
@@ -535,6 +594,12 @@ pub enum DocumentError {
 
     #[error("invalid transaction operation: {0}")]
     Transaction(String),
+
+    #[error("Rowly metadata operation failed: {0}")]
+    Metadata(String),
+
+    #[error(transparent)]
+    Column(#[from] ColumnError),
 }
 
 #[cfg(test)]
@@ -568,6 +633,85 @@ mod tests {
         let reopened = CsvDocument::open(&path).unwrap();
         assert_eq!(reopened.cell_a1("A2").unwrap(), Some("田中"));
         assert_eq!(reopened.cell_a1("B2").unwrap(), Some("1"));
+    }
+
+    #[test]
+    fn column_type_metadata_round_trips_without_changing_csv() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("data.csv");
+        let source = "名前,年齢\n田中,20\n山田,21\n";
+        fs::write(&path, source).unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        document
+            .set_column_type_declaration_by_header("年齢", ColumnType::Integer)
+            .unwrap();
+        document.save_metadata().unwrap();
+
+        assert_eq!(fs::read_to_string(&path).unwrap(), source);
+        assert!(document.metadata_path().exists());
+
+        let reopened = CsvDocument::open(&path).unwrap();
+        assert_eq!(
+            reopened.column_type_declaration_by_header("年齢").unwrap(),
+            Some(ColumnType::Integer)
+        );
+        assert_eq!(reopened.metadata_error(), None);
+        assert!(!reopened.is_dirty());
+    }
+
+    #[test]
+    fn column_type_metadata_follows_header_after_column_reorder() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("data.csv");
+        fs::write(&path, "名前,年齢\n田中,20\n").unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        document
+            .set_column_type_declaration_by_header("年齢", ColumnType::Integer)
+            .unwrap();
+        document.insert_columns(0, 1).unwrap();
+        document.set_cell(0, 0, "ID").unwrap();
+
+        assert_eq!(document.column_index_by_header("年齢").unwrap(), 2);
+        assert_eq!(
+            document.column_type_declaration_by_header("年齢").unwrap(),
+            Some(ColumnType::Integer)
+        );
+    }
+
+    #[test]
+    fn duplicate_header_cannot_receive_type_declaration() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("data.csv");
+        fs::write(&path, "名前,名前\n田中,山田\n").unwrap();
+
+        let mut document = CsvDocument::open(&path).unwrap();
+        assert!(matches!(
+            document.set_column_type_declaration_by_header("名前", ColumnType::String),
+            Err(DocumentError::Column(ColumnError::AmbiguousHeader { .. }))
+        ));
+    }
+
+    #[test]
+    fn invalid_sidecar_does_not_prevent_csv_open() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("data.csv");
+        fs::write(&path, "名前,年齢\n田中,20\n").unwrap();
+        fs::write(
+            sidecar_path(&path),
+            r#"{"version":1,"columns":{"年齢":{"type":"Unknown"}}}"#,
+        )
+        .unwrap();
+
+        let document = CsvDocument::open(&path).unwrap();
+
+        assert_eq!(document.cell_a1("B2").unwrap(), Some("20"));
+        assert!(document.metadata_error().is_some());
+        assert_eq!(
+            document.column_type_declaration_by_header("年齢").unwrap(),
+            None
+        );
     }
 
     #[test]

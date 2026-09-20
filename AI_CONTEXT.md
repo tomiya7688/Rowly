@@ -70,6 +70,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Header-based dynamic access must use exact first-row header lookup and preserve existing missing/ambiguous-header errors.
 - Rowly DSL transaction controls must delegate to `CsvDocument` begin/commit/rollback APIs; the DSL must not maintain a second transaction or history model.
 - Luau user scripts must run with finite execution-time, VM-interrupt-count, and VM-memory limits. The interrupt count is a VM safepoint callback count, not an exact Luau instruction count.
+- Luau transaction controls must delegate to `CsvDocument`. If a script that started with no active transaction fails while leaving its own transaction open, the adapter must roll that transaction back; pre-existing transactions and already committed edits are not auto-rolled back.
 
 ## Validation
 Use the smallest sufficient validation for the change:
@@ -105,6 +106,7 @@ Implemented:
 - header-based column lookup and row cell reads/writes without hard-coded column numbers
 - explicit Rowly DSL transaction control through `BeginTransaction()`, `CommitTransaction()`, and `RollbackTransaction()`
 - Luau execution limits for wall-clock duration, VM interrupt count, and VM memory
+- Luau process transaction controls with cleanup of script-owned uncommitted transactions on failure
 - Python/openpyxl single-sheet Excel import/export through the process boundary
 - headless CLI smoke entry point
 

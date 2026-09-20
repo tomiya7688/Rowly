@@ -58,7 +58,7 @@ Rust コアでは次を実装済みです。
 - `RowCount()` / `ColumnCount()` / `CellValueAt(row, column)` / `SetCellValueAt(row, column, value)` による動的セル操作
 - `ColumnIndex(header)` / `CellValueByHeader(row, header)` / `SetCellValueByHeader(row, header, value)` によるヘッダー名ベース操作
 - `BeginTransaction()` / `CommitTransaction()` / `RollbackTransaction()` による process transaction 操作
-- Luau ユーザースクリプト実行アダプタと実行時間・interrupt回数・メモリ量の強制制限
+- Luau ユーザースクリプト実行アダプタ、process transaction 操作、実行時間・interrupt回数・メモリ量の強制制限
 - Python / openpyxl バックエンドによる単一シート Excel (.xlsx) import/export
 - process レベルの open/edit/save API
 - ヘッドレス CLI のスモークエントリポイント
@@ -134,6 +134,7 @@ Rowly.set_range("A3:B3", "updated")
 
 Luau からも CSV コーデックや `data` 層へ直接アクセスせず、すべて `process::CsvDocument` を経由します。
 ユーザースクリプトは既定で実行時間5秒、VM interrupt 100万回、Luau VMメモリ64 MiBの上限付きで実行し、無限ループや過剰なメモリ確保を停止します。
+`Rowly.begin_transaction()` / `commit_transaction()` / `rollback_transaction()` で process transaction を明示操作できます。スクリプト自身が開始した transaction を未commitのまま実行エラーや強制停止で終了した場合は、active transaction を取り残さないよう終了処理で rollback します。
 Luau 連携の正本仕様は [`docs/LUAU.md`](docs/LUAU.md) を参照してください。
 
 ## Excel 連携

@@ -40,6 +40,8 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Core cell storage is textual CSV data. Type inference/formatting belongs above the canonical data layer unless the user explicitly edits data.
 - Internal text is UTF-8. Shift_JIS input may be decoded on open; saves are UTF-8.
 - UI, DSL, Luau, and Python adapters must enter through the process/application boundary rather than reaching into CSV I/O internals.
+- Excel import/export is an exchange adapter only. Python/openpyxl may read/write .xlsx, but canonical CSV creation/export data must pass through `CsvDocument`; Excel must not become a second source of truth.
+- Excel export must preserve canonical CSV cells as strings instead of applying implicit numeric/type inference.
 - A1/range addressing is process-layer behavior; the canonical data layer remains zero-based textual rows/cells.
 - Multi-cell edits must validate before mutation so a failed edit cannot partially modify the CSV table.
 - Structural edits are explicit data edits. Ragged rows must not be silently rectangularized merely to simplify column operations.
@@ -103,11 +105,11 @@ Implemented:
 - header-based column lookup and row cell reads/writes without hard-coded column numbers
 - explicit Rowly DSL transaction control through `BeginTransaction()`, `CommitTransaction()`, and `RollbackTransaction()`
 - Luau execution limits for wall-clock duration, VM interrupt count, and VM memory
+- Python/openpyxl single-sheet Excel import/export through the process boundary
 - headless CLI smoke entry point
 
 Not implemented yet:
 - GUI
-- Python/Excel bridge
 - persistent column metadata/type declarations
 - broader type inference
 - visual grouping

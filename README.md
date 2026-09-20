@@ -59,6 +59,7 @@ Rust コアでは次を実装済みです。
 - `ColumnIndex(header)` / `CellValueByHeader(row, header)` / `SetCellValueByHeader(row, header, value)` によるヘッダー名ベース操作
 - `BeginTransaction()` / `CommitTransaction()` / `RollbackTransaction()` による process transaction 操作
 - Luau ユーザースクリプト実行アダプタと実行時間・interrupt回数・メモリ量の強制制限
+- Python / openpyxl バックエンドによる単一シート Excel (.xlsx) import/export
 - process レベルの open/edit/save API
 - ヘッドレス CLI のスモークエントリポイント
 
@@ -135,10 +136,15 @@ Luau からも CSV コーデックや `data` 層へ直接アクセスせず、�
 ユーザースクリプトは既定で実行時間5秒、VM interrupt 100万回、Luau VMメモリ64 MiBの上限付きで実行し、無限ループや過剰なメモリ確保を停止します。
 Luau 連携の正本仕様は [`docs/LUAU.md`](docs/LUAU.md) を参照してください。
 
+## Excel 連携
+
+Excel は交換経路であり、Rowly の正本にはしません。`excel_python` アダプタは `CsvDocument` の行データを Python / openpyxl へ渡して `.xlsx` を生成し、import 時はワークシート値を Rust 側へ戻して UTF-8 CSV 正本を新規作成します。CSV の文字列を Excel 側で勝手に数値化せず、export は文字列セルとして出力します。
+
+詳細仕様は [`docs/EXCEL.md`](docs/EXCEL.md) を参照してください。
+
 ## 未実装
 
 - GUI
-- Python/Excel ブリッジ
 - 永続的な列メタデータ／型宣言
 - より広い型推論
 - 表示上のグループ化

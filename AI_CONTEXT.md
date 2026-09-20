@@ -50,6 +50,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Header lookup and column semantic checks live above the canonical data layer. The first row is only treated as a header when a process-layer header API is explicitly used.
 - Column type checks are non-mutating interpretation/validation. `String`, numeric, and boolean checks must not rewrite canonical CSV text.
 - Duplicate header names are ambiguous for singular lookup and must be reported instead of silently selecting one.
+- Persistent Rowly column metadata lives in optional `<csv>.rowly.json` sidecars keyed by unique header names. Sidecars are auxiliary only: missing or invalid metadata must never make canonical CSV data unreadable or necessary for recovery.
 - Rowly DSL is an adapter over `process`; it must not call `data` or CSV codecs directly.
 - The DSL is top-to-bottom macro execution. Extend language features through AST/parser/runtime boundaries rather than bypassing them.
 - DSL column numbers are 1-based user-facing indices; process/data indices remain zero-based.
@@ -97,6 +98,7 @@ Implemented:
 - process-layer begin/commit/rollback transactions that aggregate mixed edits into one history command
 - process-layer first-row header lookup with duplicate detection
 - non-mutating `String` / `Integer` / `Decimal` / `Boolean` column validation
+- persistent header-keyed column type declarations in optional Rowly JSON sidecars
 - Japanese-character column checks with A1 result references
 - Rowly DSL AST/parser/runtime for `If`, variables, functions, calls, return, classes, single inheritance, objects, fields, methods, `Init` constructors, arithmetic expressions, column checks, and range value assignment
 - typed Integer/Decimal arithmetic with precedence, unary minus, parentheses, and explicit arithmetic errors
@@ -112,7 +114,6 @@ Implemented:
 
 Not implemented yet:
 - GUI
-- persistent column metadata/type declarations
 - broader type inference
 - visual grouping
 

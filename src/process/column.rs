@@ -11,6 +11,25 @@ pub enum ColumnType {
 }
 
 impl ColumnType {
+    pub(crate) fn as_metadata_str(self) -> &'static str {
+        match self {
+            Self::String => "String",
+            Self::Integer => "Integer",
+            Self::Decimal => "Decimal",
+            Self::Boolean => "Boolean",
+        }
+    }
+
+    pub(crate) fn from_metadata_str(value: &str) -> Option<Self> {
+        match value {
+            "String" => Some(Self::String),
+            "Integer" => Some(Self::Integer),
+            "Decimal" => Some(Self::Decimal),
+            "Boolean" => Some(Self::Boolean),
+            _ => None,
+        }
+    }
+
     fn matches(self, value: &str) -> bool {
         match self {
             Self::String => true,

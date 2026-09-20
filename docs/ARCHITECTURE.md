@@ -115,10 +115,13 @@ Luau にはグローバル `Rowly` テーブルを公開し、現時点では次
 - `Rowly.row_count()`
 - `Rowly.column_count()`
 - `Rowly.undo()` / `Rowly.redo()`
+- `Rowly.begin_transaction()` / `Rowly.commit_transaction()` / `Rowly.rollback_transaction()`
 
 Luau から `data` や CSV codec へ直接アクセスさせません。不正な A1 参照など process 層のエラーは Luau runtime error として伝播します。
 
 Luau 側から CSV へ書き込める値は現時点では文字列だけです。table、function、userdata などを暗黙に CSV 文字列へ変換してはなりません。
+
+Luau の transaction API も `CsvDocument` を直接仲介し、adapter 独自の履歴モデルを持ちません。スクリプト開始時に transaction が無かった場合に限り、スクリプトが開始した未commit transaction を runtime error や実行制限停止時の終了処理で rollback します。外部で開始済みの transaction や commit 済み編集は自動 rollback しません。
 
 Luau ユーザースクリプトは `Lua::set_interrupt` による実行時間／interrupt回数制限と、Luau VM allocator のメモリ上限を必ず設定して実行します。既定値は5秒、100万interrupt、64 MiBです。用途別の上限は `LuauLimits` で差し替えます。interrupt回数はLuau命令数そのものではありません。詳細仕様は [`LUAU.md`](LUAU.md) を正本とします。
 

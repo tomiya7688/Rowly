@@ -70,9 +70,10 @@ pub fn execute_with_limits(
         Ok(VmState::Continue)
     });
 
+    let transaction_active_before = document.transaction_active();
     let document = RefCell::new(document);
 
-    lua.scope(|scope| {
+    let result = lua.scope(|scope| {
         let rowly = lua.create_table()?;
 
         rowly.set(
@@ -126,10 +127,48 @@ pub fn execute_with_limits(
             scope.create_function(|_, ()| document.borrow_mut().redo().map_err(runtime_error))?,
         )?;
 
+        rowly.set(
+            "begin_transaction",
+            scope.create_function(|_, ()| {
+                document
+                    .borrow_mut()
+                    .begin_transaction()
+                    .map_err(runtime_error)
+            })?,
+        )?;
+
+        rowly.set(
+            "commit_transaction",
+            scope.create_function(|_, ()| {
+                document
+                    .borrow_mut()
+                    .commit_transaction()
+                    .map_err(runtime_error)
+            })?,
+        )?;
+
+        rowly.set(
+            "rollback_transaction",
+            scope.create_function(|_, ()| {
+                document
+                    .borrow_mut()
+                    .rollback_transaction()
+                    .map_err(runtime_error)
+            })?,
+        )?;
+
         lua.globals().set("Rowly", rowly)?;
         lua.load(script).set_name("rowly-user-script").exec()
-    })
-    .map_err(LuauError::from)
+    });
+
+    if result.is_err() && !transaction_active_before && document.borrow().transaction_active() {
+        document
+            .borrow_mut()
+            .rollback_transaction()
+            .map_err(|error| LuauError::Cleanup(error.to_string()))?;
+    }
+
+    result.map_err(LuauError::from)
 }
 
 fn runtime_error(error: impl ToString) -> LuaError {
@@ -142,6 +181,8 @@ pub enum LuauError {
     Limit(String),
     #[error("Luau スクリプトのメモリ上限を超えました: {0}")]
     Memory(String),
+    #[error("Luau スクリプト失敗後の transaction rollback に失敗しました: {0}")]
+    Cleanup(String),
     #[error("Luau スクリプトの実行に失敗しました: {0}")]
     Runtime(LuaError),
 }
@@ -212,6 +253,113 @@ mod tests {
         .unwrap();
 
         assert_eq!(document.cell_a1("B2").unwrap(), Some("99"));
+    }
+
+    #[test]
+    fn luau_transaction_commit_is_one_undoable_command() {
+        let (_directory, mut document) = sample_document();
+
+        execute(
+            &mut document,
+            r#"
+                Rowly.begin_transaction()
+                Rowly.set_cell("B2", "42")
+                Rowly.set_cell("B3", "99")
+                Rowly.commit_transaction()
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(document.cell_a1("B2").unwrap(), Some("42"));
+        assert_eq!(document.cell_a1("B3").unwrap(), Some("99"));
+        assert!(!document.transaction_active());
+
+        assert!(document.undo().unwrap());
+        assert_eq!(document.cell_a1("B2").unwrap(), Some("10"));
+        assert_eq!(document.cell_a1("B3").unwrap(), Some("20"));
+        assert!(!document.can_undo());
+
+        assert!(document.redo().unwrap());
+        assert_eq!(document.cell_a1("B2").unwrap(), Some("42"));
+        assert_eq!(document.cell_a1("B3").unwrap(), Some("99"));
+    }
+
+    #[test]
+    fn luau_transaction_rollback_restores_without_history() {
+        let (_directory, mut document) = sample_document();
+
+        execute(
+            &mut document,
+            r#"
+                Rowly.begin_transaction()
+                Rowly.set_range("B2:B3", "changed")
+                Rowly.rollback_transaction()
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(document.cell_a1("B2").unwrap(), Some("10"));
+        assert_eq!(document.cell_a1("B3").unwrap(), Some("20"));
+        assert!(!document.transaction_active());
+        assert!(!document.can_undo());
+        assert!(!document.is_dirty());
+    }
+
+    #[test]
+    fn failed_luau_script_rolls_back_its_uncommitted_transaction() {
+        let (_directory, mut document) = sample_document();
+
+        let error = execute(
+            &mut document,
+            r#"
+                Rowly.begin_transaction()
+                Rowly.set_cell("B2", "42")
+                error("stop")
+            "#,
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, LuauError::Runtime(_)));
+        assert_eq!(document.cell_a1("B2").unwrap(), Some("10"));
+        assert!(!document.transaction_active());
+        assert!(!document.can_undo());
+        assert!(!document.is_dirty());
+    }
+
+    #[test]
+    fn execution_limit_rolls_back_uncommitted_luau_transaction() {
+        let (_directory, mut document) = sample_document();
+
+        let error = execute_with_limits(
+            &mut document,
+            r#"
+                Rowly.begin_transaction()
+                Rowly.set_cell("B2", "42")
+                while true do end
+            "#,
+            LuauLimits {
+                max_duration: Duration::from_secs(10),
+                max_interrupts: 100,
+                max_memory_bytes: 8 * 1024 * 1024,
+            },
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, LuauError::Limit(_)));
+        assert_eq!(document.cell_a1("B2").unwrap(), Some("10"));
+        assert!(!document.transaction_active());
+        assert!(!document.can_undo());
+        assert!(!document.is_dirty());
+    }
+
+    #[test]
+    fn luau_transaction_state_errors_are_runtime_errors() {
+        let (_directory, mut document) = sample_document();
+
+        let error = execute(&mut document, "Rowly.commit_transaction()").unwrap_err();
+
+        assert!(matches!(error, LuauError::Runtime(_)));
+        assert!(error.to_string().contains("transaction"));
     }
 
     #[test]

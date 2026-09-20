@@ -37,6 +37,9 @@ Luau スクリプトにはグローバルテーブル `Rowly` を公開する。
 - `Rowly.column_count()` — 現在の最大列数を返す。
 - `Rowly.undo()` — 1 操作戻す。戻せた場合は `true`。
 - `Rowly.redo()` — 1 操作進める。進められた場合は `true`。
+- `Rowly.begin_transaction()` — process transaction を開始する。
+- `Rowly.commit_transaction()` — transaction 内の編集を1つの履歴操作として確定する。
+- `Rowly.rollback_transaction()` — transaction 内の編集を履歴へ残さず元へ戻す。
 
 例:
 
@@ -44,7 +47,21 @@ Luau スクリプトにはグローバルテーブル `Rowly` を公開する。
 assert(Rowly.cell("A2") == "Alice")
 Rowly.set_cell("B2", "42")
 Rowly.set_range("A3:B3", "updated")
+
+Rowly.begin_transaction()
+Rowly.set_cell("B2", "42")
+Rowly.set_cell("B3", "99")
+Rowly.commit_transaction()
 ```
+
+## Transaction
+
+Luau の transaction 制御は独自実装を持たず、すべて `process::CsvDocument` の transaction API を直接呼び出す。
+commit 後は transaction 全体が1回の undo/redo 単位になり、rollback は履歴を追加せず transaction 内の編集を逆順に復元する。
+transaction のネストや active transaction がない状態での commit / rollback は process 層のエラーとして Luau runtime error へ変換する。
+
+スクリプト開始時に transaction が存在しなかった場合、そのスクリプトが開始した transaction を未commitのまま runtime error・実行時間超過・interrupt上限超過などで終了したときは、Luau アダプタが終了処理で rollback する。これにより失敗したスクリプトが active transaction を process 層へ取り残さない。
+既に外部で開始されていた transaction は自動 rollback の対象にしない。また一度 commit 済みの変更を、その後のスクリプトエラーを理由に巻き戻すこともしない。
 
 ## データ規則
 

@@ -48,6 +48,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Undo/redo for structural edits must restore exact removed row/cell values, not reconstructed approximations.
 - Process transactions group multiple cell/row/column edits into one undo/redo command. Rollback must restore edits in reverse order without creating history. Transactions are non-nestable, and undo/redo/save/save_as are unavailable while one is active.
 - Header lookup and column semantic checks live above the canonical data layer. The first row is only treated as a header when a process-layer header API is explicitly used.
+- CSV I/O follows standard quoting semantics: empty fields, quoted commas, doubled quotes, embedded quoted newlines, and LF/CRLF input must remain supported. Saving normalizes to UTF-8 with LF; byte-for-byte round trips are not required.
 - Column type checks are non-mutating interpretation/validation. `String`, numeric, and boolean checks must not rewrite canonical CSV text.
 - Duplicate header names are ambiguous for singular lookup and must be reported instead of silently selecting one.
 - Persistent Rowly column metadata lives in optional `<csv>.rowly.json` sidecars keyed by unique header names. Sidecars are auxiliary only: missing or invalid metadata must never make canonical CSV data unreadable or necessary for recovery.

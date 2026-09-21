@@ -179,6 +179,16 @@ mod tests {
     }
 
     #[test]
+    fn path_named_excel_keeps_single_path_compatibility() {
+        assert_eq!(
+            parse_command(&args(&["excel"])).unwrap(),
+            CliCommand::Inspect {
+                csv_path: PathBuf::from("excel")
+            }
+        );
+    }
+
+    #[test]
     fn parses_excel_import_with_optional_sheet() {
         assert_eq!(
             parse_command(&args(&[
@@ -239,7 +249,6 @@ mod tests {
         for values in [
             vec![],
             vec!["a.csv", "b.csv"],
-            vec!["excel"],
             vec!["excel", "unknown"],
             vec!["excel", "import", "input.xlsx"],
             vec![

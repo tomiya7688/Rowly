@@ -114,12 +114,13 @@ Luau にはグローバル `Rowly` テーブルを公開し、現時点では次
 - `Rowly.set_range(range, value)`
 - `Rowly.row_count()`
 - `Rowly.column_count()`
-- `Rowly.undo()` / `Rowly.redo()`
 - `Rowly.begin_transaction()` / `Rowly.commit_transaction()` / `Rowly.rollback_transaction()`
 
 Luau から `data` や CSV codec へ直接アクセスさせません。不正な A1 参照など process 層のエラーは Luau runtime error として伝播します。
 
 Luau 側から CSV へ書き込める値は現時点では文字列だけです。table、function、userdata などを暗黙に CSV 文字列へ変換してはなりません。
+
+Luau から `undo` / `redo` は公開せず、履歴HEADの直接操作は GUI / process 側の責務に残します。Luau の編集自体は従来どおり `CsvDocument` の履歴へ記録されるため、スクリプト終了後に process 側から Undo / Redo できます。
 
 Luau の transaction API も `CsvDocument` を直接仲介し、adapter 独自の履歴モデルを持ちません。スクリプト開始時に transaction が無かった場合に限り、スクリプトが開始した未commit transaction を runtime error や実行制限停止時の終了処理で rollback します。外部で開始済みの transaction や commit 済み編集は自動 rollback しません。
 

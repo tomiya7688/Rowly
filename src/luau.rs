@@ -118,16 +118,6 @@ pub fn execute_with_limits(
         )?;
 
         rowly.set(
-            "undo",
-            scope.create_function(|_, ()| document.borrow_mut().undo().map_err(runtime_error))?,
-        )?;
-
-        rowly.set(
-            "redo",
-            scope.create_function(|_, ()| document.borrow_mut().redo().map_err(runtime_error))?,
-        )?;
-
-        rowly.set(
             "begin_transaction",
             scope.create_function(|_, ()| {
                 document
@@ -237,21 +227,23 @@ mod tests {
     }
 
     #[test]
-    fn luau_undo_and_redo_use_document_history() {
+    fn luau_does_not_expose_undo_or_redo_but_edits_still_use_document_history() {
         let (_directory, mut document) = sample_document();
 
         execute(
             &mut document,
             r#"
+                assert(Rowly.undo == nil)
+                assert(Rowly.redo == nil)
                 Rowly.set_cell("B2", "99")
-                assert(Rowly.undo() == true)
-                assert(Rowly.cell("B2") == "10")
-                assert(Rowly.redo() == true)
-                assert(Rowly.cell("B2") == "99")
             "#,
         )
         .unwrap();
 
+        assert_eq!(document.cell_a1("B2").unwrap(), Some("99"));
+        assert!(document.undo().unwrap());
+        assert_eq!(document.cell_a1("B2").unwrap(), Some("10"));
+        assert!(document.redo().unwrap());
         assert_eq!(document.cell_a1("B2").unwrap(), Some("99"));
     }
 

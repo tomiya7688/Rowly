@@ -73,6 +73,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Rowly DSL transaction controls must delegate to `CsvDocument` begin/commit/rollback APIs; the DSL must not maintain a second transaction or history model.
 - Luau user scripts must run with finite execution-time, VM-interrupt-count, and VM-memory limits. The interrupt count is a VM safepoint callback count, not an exact Luau instruction count.
 - Luau transaction controls must delegate to `CsvDocument`. If a script that started with no active transaction fails while leaving its own transaction open, the adapter must roll that transaction back; pre-existing transactions and already committed edits are not auto-rolled back.
+- Luau must not expose `Rowly.undo` or `Rowly.redo`; script edits still record normal process history for GUI/process-side Undo/Redo.
 
 ## Validation
 Use the smallest sufficient validation for the change:

@@ -59,7 +59,10 @@ fn parse_command(arguments: &[OsString]) -> Result<CliCommand, String> {
         });
     }
 
-    if arguments.first().is_some_and(|value| value == OsStr::new("excel")) {
+    if arguments
+        .first()
+        .is_some_and(|value| value == OsStr::new("excel"))
+    {
         return parse_excel_command(&arguments[1..]);
     }
 
@@ -239,7 +242,14 @@ mod tests {
             vec!["excel"],
             vec!["excel", "unknown"],
             vec!["excel", "import", "input.xlsx"],
-            vec!["excel", "export", "input.csv", "output.xlsx", "Sheet1", "extra"],
+            vec![
+                "excel",
+                "export",
+                "input.csv",
+                "output.xlsx",
+                "Sheet1",
+                "extra",
+            ],
         ] {
             assert!(parse_command(&args(&values)).is_err(), "{values:?}");
         }

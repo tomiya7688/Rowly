@@ -35,8 +35,6 @@ Luau スクリプトにはグローバルテーブル `Rowly` を公開する。
 - `Rowly.set_range(range, value)` — A1 形式の矩形範囲へ同一文字列を書き込む。
 - `Rowly.row_count()` — 現在の行数を返す。
 - `Rowly.column_count()` — 現在の最大列数を返す。
-- `Rowly.undo()` — 1 操作戻す。戻せた場合は `true`。
-- `Rowly.redo()` — 1 操作進める。進められた場合は `true`。
 - `Rowly.begin_transaction()` — process transaction を開始する。
 - `Rowly.commit_transaction()` — transaction 内の編集を1つの履歴操作として確定する。
 - `Rowly.rollback_transaction()` — transaction 内の編集を履歴へ残さず元へ戻す。
@@ -69,7 +67,7 @@ CSV の正本データは文字列である。
 Luau からセルへ書き込む値も現時点では文字列だけを受け付ける。
 Lua/Luau のテーブル、関数、userdata などを暗黙に CSV 文字列へ変換して保存してはならない。
 
-A1 参照の解釈、範囲編集の原子性、undo/redo は `process` 層の既存規則に従う。
+A1 参照の解釈、範囲編集の原子性、履歴記録は `process` 層の既存規則に従う。Luau には `Rowly.undo` / `Rowly.redo` を公開しない。Luau から行った編集は通常の document history へ記録され、スクリプト終了後に GUI / process 側から Undo / Redo できる。
 
 ## エラー
 

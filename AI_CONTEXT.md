@@ -6,7 +6,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Name: Rowly
 - Purpose: CSV-first table viewer/editor. CSV remains the canonical data source.
 - Main language/runtime: Rust.
-- Adapters: Rowly DSL and Luau scripting are implemented in Rust; Python is planned for Excel I/O.
+- Adapters: Rowly DSL and Luau scripting are implemented in Rust; Python/openpyxl is implemented for Excel I/O.
 
 ## Source of Truth
 - Product invariants: `README.md`
@@ -112,7 +112,7 @@ Implemented:
 - Luau execution limits for wall-clock duration, VM interrupt count, and VM memory
 - Luau process transaction controls with cleanup of script-owned uncommitted transactions on failure
 - Python/openpyxl single-sheet Excel import/export through the process boundary
-- headless CLI smoke entry point
+- headless CLI Excel import/export commands plus the existing CSV smoke entry point
 
 Not implemented yet:
 - GUI

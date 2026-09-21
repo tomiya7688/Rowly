@@ -61,6 +61,23 @@ export は Rowly の CSV 文字列を数式として再解釈せず、Excel の�
 Rowly のデータモデルに merged cell は存在しない。
 Excel import 時に merged cell 固有の構造を Rowly 側へ持ち込まない。openpyxl が返すセル値を平坦な行列として取り込む。
 
+## CLI
+
+ヘッドレス CLI は既存の Rust Excel アダプタを呼び出すだけで、Python bridge や CSV codec を直接扱わない。
+
+```text
+rowly excel import <xlsx-path> <csv-path> [sheet-name]
+rowly excel export <csv-path> <xlsx-path> [sheet-name]
+```
+
+- import のシート名省略時は workbook の active sheet を使用する。
+- export のシート名省略時は `Sheet1` を使用する。
+- import 成功時は作成した CSV のパス、行数、列数を表示する。
+- export 成功時は出力 workbook、シート名、行数、列数を表示する。
+- 引数個数や subcommand が不正な場合は usage を表示して終了コード 2 とする。
+- CSV open、Python 起動、bridge、protocol の失敗はエラーを表示して失敗終了する。
+- 従来の `rowly <csv-path>` による CSV 情報表示は互換性のため維持する。
+
 ## Python 実行環境
 
 既定の Python executable は `python3`。

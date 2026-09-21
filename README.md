@@ -62,6 +62,7 @@ Rust コアでは次を実装済みです。
 - `BeginTransaction()` / `CommitTransaction()` / `RollbackTransaction()` による process transaction 操作
 - Luau ユーザースクリプト実行アダプタ、process transaction 操作、実行時間・interrupt回数・メモリ量の強制制限
 - Python / openpyxl バックエンドによる単一シート Excel (.xlsx) import/export
+- CLI からの Excel import/export
 - process レベルの open/edit/save API
 - ヘッドレス CLI のスモークエントリポイント
 
@@ -144,6 +145,15 @@ Luau 連携の正本仕様は [`docs/LUAU.md`](docs/LUAU.md) を参照してく�
 ## Excel 連携
 
 Excel は交換経路であり、Rowly の正本にはしません。`excel_python` アダプタは `CsvDocument` の行データを Python / openpyxl へ渡して `.xlsx` を生成し、import 時はワークシート値を Rust 側へ戻して UTF-8 CSV 正本を新規作成します。CSV の文字列を Excel 側で勝手に数値化せず、export は文字列セルとして出力します。
+
+CLI からは次の形で利用できます。
+
+```text
+rowly excel import input.xlsx output.csv [sheet-name]
+rowly excel export input.csv output.xlsx [sheet-name]
+```
+
+import はシート名省略時に active sheet、export は省略時に `Sheet1` を使用します。従来の `rowly <csv-path>` による CSV 情報表示も維持します。
 
 詳細仕様は [`docs/EXCEL.md`](docs/EXCEL.md) を参照してください。
 

@@ -1,3 +1,7 @@
+mod cancellation;
+
+pub use cancellation::LuauCancellationToken;
+
 use std::cell::RefCell;
 use std::sync::{
     Arc,
@@ -39,6 +43,10 @@ enum LuauLimitError {
     Interrupts,
 }
 
+#[derive(Debug, Error)]
+#[error("Luau スクリプトの実行がキャンセルされました")]
+struct LuauCancelled;
+
 /// Luau スクリプトを現在の CSV ドキュメントに対して既定の制限付きで実行する。
 ///
 /// Luau 側には `Rowly` テーブルだけをアプリケーション API として公開する。
@@ -53,13 +61,52 @@ pub fn execute_with_limits(
     script: &str,
     limits: LuauLimits,
 ) -> Result<(), LuauError> {
+    execute_with_limits_and_cancellation(document, script, limits, &LuauCancellationToken::new())
+}
+
+/// 既定の実行制限と、外部からの停止要求を受け付けるトークンで実行する。
+///
+/// この関数は同期実行する。停止を要求する側はトークンの clone を保持する。
+pub fn execute_with_cancellation(
+    document: &mut CsvDocument,
+    script: &str,
+    cancellation: &LuauCancellationToken,
+) -> Result<(), LuauError> {
+    execute_with_limits_and_cancellation(document, script, LuauLimits::default(), cancellation)
+}
+
+/// 指定した実行制限と停止トークンで実行する。
+///
+/// 停止は VM の safepoint と Rowly API の入口で確認する。実行中の Rust / C の
+/// 処理を OS スレッドごと強制終了するものではない。スクリプト開始時に
+/// transaction がなければ、失敗時に残った未確定 transaction を rollback する。
+pub fn execute_with_limits_and_cancellation(
+    document: &mut CsvDocument,
+    script: &str,
+    limits: LuauLimits,
+    cancellation: &LuauCancellationToken,
+) -> Result<(), LuauError> {
+    check_cancellation(cancellation)?;
     let lua = Lua::new();
+    execute_in_lua(&lua, document, script, limits, cancellation)
+}
+
+fn execute_in_lua(
+    lua: &Lua,
+    document: &mut CsvDocument,
+    script: &str,
+    limits: LuauLimits,
+    cancellation: &LuauCancellationToken,
+) -> Result<(), LuauError> {
+    check_cancellation(cancellation)?;
     lua.set_memory_limit(limits.max_memory_bytes)?;
 
     let started_at = Instant::now();
     let interrupts = Arc::new(AtomicU64::new(0));
     let interrupt_count = Arc::clone(&interrupts);
+    let interrupt_cancellation = cancellation.clone();
     lua.set_interrupt(move |_| {
+        check_cancellation(&interrupt_cancellation)?;
         if started_at.elapsed() >= limits.max_duration {
             return Err(LuaError::external(LuauLimitError::Duration));
         }
@@ -79,6 +126,7 @@ pub fn execute_with_limits(
         rowly.set(
             "cell",
             scope.create_function(|_, reference: String| {
+                check_cancellation(cancellation)?;
                 document
                     .borrow()
                     .cell_a1(&reference)
@@ -90,6 +138,7 @@ pub fn execute_with_limits(
         rowly.set(
             "set_cell",
             scope.create_function(|_, (reference, value): (String, String)| {
+                check_cancellation(cancellation)?;
                 document
                     .borrow_mut()
                     .set_cell_a1(&reference, value)
@@ -100,6 +149,7 @@ pub fn execute_with_limits(
         rowly.set(
             "set_range",
             scope.create_function(|_, (range, value): (String, String)| {
+                check_cancellation(cancellation)?;
                 document
                     .borrow_mut()
                     .set_range_a1(&range, value)
@@ -109,17 +159,24 @@ pub fn execute_with_limits(
 
         rowly.set(
             "row_count",
-            scope.create_function(|_, ()| Ok(document.borrow().row_count() as i64))?,
+            scope.create_function(|_, ()| {
+                check_cancellation(cancellation)?;
+                Ok(document.borrow().row_count() as i64)
+            })?,
         )?;
 
         rowly.set(
             "column_count",
-            scope.create_function(|_, ()| Ok(document.borrow().column_count() as i64))?,
+            scope.create_function(|_, ()| {
+                check_cancellation(cancellation)?;
+                Ok(document.borrow().column_count() as i64)
+            })?,
         )?;
 
         rowly.set(
             "begin_transaction",
             scope.create_function(|_, ()| {
+                check_cancellation(cancellation)?;
                 document
                     .borrow_mut()
                     .begin_transaction()
@@ -130,6 +187,7 @@ pub fn execute_with_limits(
         rowly.set(
             "commit_transaction",
             scope.create_function(|_, ()| {
+                check_cancellation(cancellation)?;
                 document
                     .borrow_mut()
                     .commit_transaction()
@@ -140,6 +198,7 @@ pub fn execute_with_limits(
         rowly.set(
             "rollback_transaction",
             scope.create_function(|_, ()| {
+                check_cancellation(cancellation)?;
                 document
                     .borrow_mut()
                     .rollback_transaction()
@@ -148,9 +207,17 @@ pub fn execute_with_limits(
         )?;
 
         lua.globals().set("Rowly", rowly)?;
+        check_cancellation(cancellation)?;
         lua.load(script).set_name("rowly-user-script").exec()
     });
 
+    // pcall / xpcall により停止エラーが捕捉されても、Rust 側では成功にしない。
+    // この確認を cleanup より先に行い、未確定 transaction を取り残さない。
+    let result = if cancellation.is_cancelled() {
+        Err(LuauError::Cancelled)
+    } else {
+        result.map_err(LuauError::from)
+    };
     if result.is_err() && !transaction_active_before && document.borrow().transaction_active() {
         document
             .borrow_mut()
@@ -158,7 +225,14 @@ pub fn execute_with_limits(
             .map_err(|error| LuauError::Cleanup(error.to_string()))?;
     }
 
-    result.map_err(LuauError::from)
+    result
+}
+
+fn check_cancellation(cancellation: &LuauCancellationToken) -> Result<(), LuaError> {
+    if cancellation.is_cancelled() {
+        return Err(LuaError::external(LuauCancelled));
+    }
+    Ok(())
 }
 
 fn runtime_error(error: impl ToString) -> LuaError {
@@ -167,6 +241,8 @@ fn runtime_error(error: impl ToString) -> LuaError {
 
 #[derive(Debug, Error)]
 pub enum LuauError {
+    #[error("Luau スクリプトの実行がキャンセルされました")]
+    Cancelled,
     #[error("Luau スクリプトが実行制限を超えました: {0}")]
     Limit(String),
     #[error("Luau スクリプトのメモリ上限を超えました: {0}")]
@@ -179,6 +255,9 @@ pub enum LuauError {
 
 impl From<LuaError> for LuauError {
     fn from(error: LuaError) -> Self {
+        if error.downcast_ref::<LuauCancelled>().is_some() {
+            return Self::Cancelled;
+        }
         if let Some(limit) = error.downcast_ref::<LuauLimitError>() {
             return Self::Limit(limit.to_string());
         }
@@ -188,6 +267,9 @@ impl From<LuaError> for LuauError {
         Self::Runtime(error)
     }
 }
+
+#[cfg(test)]
+mod tests_cancellation;
 
 #[cfg(test)]
 mod tests {

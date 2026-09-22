@@ -193,9 +193,8 @@ fn forbidden_access_fails_and_rolls_back_the_scripts_pending_transaction() {
     ] {
         let (_directory, mut document) = sample_document();
         let before = fs::read(document.path()).unwrap();
-        let script = format!(
-            "Rowly.begin_transaction()\nRowly.set_cell(\"B2\", \"pending\")\n{attempt}"
-        );
+        let script =
+            format!("Rowly.begin_transaction()\nRowly.set_cell(\"B2\", \"pending\")\n{attempt}");
         let error = execute(&mut document, &script).unwrap_err();
         assert!(matches!(error, LuauError::Runtime(_)), "{attempt}: {error}");
         assert!(!document.transaction_active());

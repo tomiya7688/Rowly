@@ -18,8 +18,8 @@ fn cell_value_reads_existing_csv_text() {
     let (_directory, mut document) = open("名前,点数\n山田,42\n");
     let report = run(
         r#"
-            Let name = CellValue("A2")
-            Let score = CellValue("B2")
+            VAR name = CellValue("A2")
+            VAR score = CellValue("B2")
         "#,
         &mut document,
     )
@@ -53,7 +53,7 @@ fn cell_value_reads_changes_made_earlier_in_same_script() {
     let report = run(
         r#"
             This.Worksheet.Editor.Cell(A2).Value.Set = "new"
-            Let current = CellValue("A2")
+            VAR current = CellValue("A2")
         "#,
         &mut document,
     )
@@ -67,7 +67,7 @@ fn cell_value_rejects_non_text_reference() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
         r#"
-            Let value = CellValue(Integer("1"))
+            VAR value = CellValue(Integer("1"))
         "#,
         &mut document,
     )
@@ -85,7 +85,7 @@ fn cell_value_reports_invalid_a1_reference() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
         r#"
-            Let value = CellValue("invalid")
+            VAR value = CellValue("invalid")
         "#,
         &mut document,
     )
@@ -99,7 +99,7 @@ fn cell_value_reports_missing_ragged_cell() {
     let (_directory, mut document) = open("a,b\nc\n");
     let error = run(
         r#"
-            Let value = CellValue("B2")
+            VAR value = CellValue("B2")
         "#,
         &mut document,
     )

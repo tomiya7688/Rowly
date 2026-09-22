@@ -41,8 +41,8 @@ fn row_and_column_count_are_one_based_loop_friendly() {
     let (_directory, mut document) = open("a,b,c\n1,2,3\n");
     let report = run(
         r#"
-            Let rows = RowCount()
-            Let columns = ColumnCount()
+            VAR rows = RowCount()
+            VAR columns = ColumnCount()
         "#,
         &mut document,
     )
@@ -101,7 +101,7 @@ fn loop_variable_does_not_leak_after_loop() {
     let report = run(
         r#"
             For row = Integer("1") To Integer("2")
-                Let current = row
+                VAR current = row
             Next row
         "#,
         &mut document,
@@ -132,7 +132,7 @@ fn dynamic_cell_indices_must_be_positive_integers() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
         r#"
-            Let value = CellValueAt(Integer("0"), Integer("1"))
+            VAR value = CellValueAt(Integer("0"), Integer("1"))
         "#,
         &mut document,
     )

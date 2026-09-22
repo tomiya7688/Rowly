@@ -25,7 +25,7 @@ fn parses_class_fields_methods_and_new_expression() {
                 End Def
             End Class
 
-            Let formatter = New Formatter()
+            VAR formatter = New Formatter()
         "#,
     )
     .unwrap();
@@ -39,7 +39,8 @@ fn parses_class_fields_methods_and_new_expression() {
     assert_eq!(class.methods()[0].name(), "Format");
     assert!(matches!(
         &program.statements()[0],
-        Statement::Let {
+        Statement::Declare {
+            kind: DeclarationKind::Var,
             value:
                 Expression::New {
                     class_name,
@@ -62,7 +63,7 @@ fn parses_single_inheritance() {
                 Field extra = "child"
             End Class
 
-            Let child = New Child()
+            VAR child = New Child()
         "#,
     )
     .unwrap();
@@ -85,9 +86,9 @@ fn inherited_fields_are_initialized_and_child_fields_override_parent_fields() {
                 Field value = "child"
             End Class
 
-            Let child = New Child()
-            Let value = child.value
-            Let inherited = child.inherited
+            VAR child = New Child()
+            VAR value = child.value
+            VAR inherited = child.inherited
         "#,
         &mut document,
     )
@@ -120,9 +121,9 @@ fn inherited_methods_are_available_and_child_methods_override_parent_methods() {
                 End Def
             End Class
 
-            Let child = New Child()
-            Let name = child.Name()
-            Let inherited = child.Inherited()
+            VAR child = New Child()
+            VAR name = child.Name()
+            VAR inherited = child.Inherited()
         "#,
         &mut document,
     )
@@ -149,7 +150,7 @@ fn inherited_init_is_used_when_child_does_not_override_it() {
                 Field extra = "child"
             End Class
 
-            Let child = New Child("from-parent")
+            VAR child = New Child("from-parent")
         "#,
         &mut document,
     )
@@ -179,8 +180,8 @@ fn super_calls_parent_method_and_keeps_self_bound_to_child_instance() {
                 End Def
             End Class
 
-            Let child = New Child()
-            Let result = child.Set("updated")
+            VAR child = New Child()
+            VAR result = child.Set("updated")
         "#,
         &mut document,
     )
@@ -221,9 +222,9 @@ fn super_resolution_starts_at_the_defining_class_parent() {
                 End Def
             End Class
 
-            Let child = New Child()
-            Let from_child = child.FromChild()
-            Let from_base = child.ParentName()
+            VAR child = New Child()
+            VAR from_child = child.FromChild()
+            VAR from_base = child.ParentName()
         "#,
         &mut document,
     )
@@ -255,7 +256,7 @@ fn super_init_can_initialize_parent_part_of_child_instance() {
                 End Def
             End Class
 
-            Let child = New Child("base", "child")
+            VAR child = New Child("base", "child")
         "#,
         &mut document,
     )
@@ -293,7 +294,7 @@ fn super_on_root_class_is_reported() {
                 End Def
             End Class
 
-            Let root = New Root()
+            VAR root = New Root()
             root.CallParent()
         "#,
         &mut document,
@@ -315,7 +316,7 @@ fn unknown_parent_class_is_reported() {
             Class Child Extends Missing
             End Class
 
-            Let child = New Child()
+            VAR child = New Child()
         "#,
         &mut document,
     )
@@ -341,7 +342,7 @@ fn inheritance_cycles_are_reported() {
             Class Second Extends First
             End Class
 
-            Let value = New First()
+            VAR value = New First()
         "#,
         &mut document,
     )
@@ -366,8 +367,8 @@ fn constructor_arguments_are_parsed_and_init_runs_automatically() {
                 End Def
             End Class
 
-            Let box = New Box("constructed")
-            Let copied = box.value
+            VAR box = New Box("constructed")
+            VAR copied = box.value
         "#,
         &mut document,
     )
@@ -399,7 +400,7 @@ fn constructor_arguments_can_use_typed_expressions() {
                 End Def
             End Class
 
-            Let counter = New Counter(Integer("2") + Integer("3"))
+            VAR counter = New Counter(Integer("2") + Integer("3"))
         "#,
         &mut document,
     )
@@ -421,7 +422,7 @@ fn constructor_argument_count_is_reported() {
                 End Def
             End Class
 
-            Let box = New Box()
+            VAR box = New Box()
         "#,
         &mut document,
     )
@@ -446,7 +447,7 @@ fn class_without_init_rejects_constructor_arguments() {
                 Field value = "initial"
             End Class
 
-            Let box = New Box("unexpected")
+            VAR box = New Box("unexpected")
         "#,
         &mut document,
     )
@@ -471,9 +472,9 @@ fn instance_fields_can_be_read_and_written() {
                 Field value = "initial"
             End Class
 
-            Let box = New Box()
+            VAR box = New Box()
             box.value = "updated"
-            Let copied = box.value
+            VAR copied = box.value
         "#,
         &mut document,
     )
@@ -505,8 +506,8 @@ fn methods_use_self_and_can_mutate_instance_fields() {
                 End Def
             End Class
 
-            Let counter = New Counter()
-            Let result = counter.Set("8")
+            VAR counter = New Counter()
+            VAR result = counter.Set("8")
         "#,
         &mut document,
     )
@@ -538,7 +539,7 @@ fn method_return_values_can_feed_csv_edits() {
                 End Def
             End Class
 
-            Let formatter = New Formatter()
+            VAR formatter = New Formatter()
             This.Worksheet.Editor.Cell(A2 To A3).Value.Set = formatter.Value()
         "#,
         &mut document,
@@ -561,10 +562,10 @@ fn object_aliases_share_instance_identity() {
                 Field value = "a"
             End Class
 
-            Let first = New Box()
-            Let second = first
+            VAR first = New Box()
+            VAR second = first
             second.value = "b"
-            Let result = first.value
+            VAR result = first.value
         "#,
         &mut document,
     )
@@ -584,7 +585,7 @@ fn unknown_method_is_reported() {
                 Field value = "a"
             End Class
 
-            Let box = New Box()
+            VAR box = New Box()
             box.Missing()
         "#,
         &mut document,
@@ -607,7 +608,7 @@ fn objects_cannot_be_written_directly_to_csv_cells() {
                 Field value = "a"
             End Class
 
-            Let box = New Box()
+            VAR box = New Box()
             This.Worksheet.Editor.Cell(A2).Value.Set = box
         "#,
         &mut document,

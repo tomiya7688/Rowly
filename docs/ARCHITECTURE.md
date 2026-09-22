@@ -73,7 +73,7 @@ transaction 中は履歴位置や保存基準を壊さないため `undo` / `red
 現在の責務:
 - `If ... Then` / `Else` / `End If` の制御構文
 - `Not` / `And` / `Or` と比較演算子
-- `Let`、トップレベル `Def ...` / `End Def`、呼び出し、引数、`Return`
+- `VAR` / `CONST` 宣言と再代入、トップレベル `Def ...` / `End Def`、呼び出し、引数、`Return`
 - `Class ...` / `End Class`、`Class Child Extends Parent` の単一継承、`Field`、method、`New ClassName(args...)`、member 読み書き
 - `Def Init(...)` を生成時に自動実行する引数付きコンストラクタ
 - global scope と関数／method ごとの local scope
@@ -85,7 +85,7 @@ transaction 中は履歴位置や保存基準を壊さないため `undo` / `red
 - `Contains` / `StartsWith` / `EndsWith` / `IsJapanese` / `IsInteger` / `IsDecimal` / `IsBoolean` の値判定
 - Boolean 値を返す式を直接 `If` 条件として評価する
 - `CellValue("A1")` による process 境界経由の現在セル値読み取り
-- `For ... To ... [Step ...]` / `Next` の整数ループとループ専用スコープ
+- `For ... To ... [Step ...]` / `Next` の整数ループと反復ごとの専用スコープ
 - `RowCount()` / `ColumnCount()` / `CellValueAt(...)` / `SetCellValueAt(...)` の1-based動的セル操作
 - `ColumnIndex(...)` / `CellValueByHeader(...)` / `SetCellValueByHeader(...)` による一意ヘッダー経由の動的セル操作
 - `BeginTransaction()` / `CommitTransaction()` / `RollbackTransaction()` による process transaction の明示操作
@@ -96,6 +96,8 @@ transaction 中は履歴位置や保存基準を壊さないため `undo` / `red
 - 上から下へ実行するマクロ semantics の維持
 
 DSL の runtime object は CSV 正本モデルの一部ではありません。CSV への作用は必ず process API を通します。型付きスカラーを CSV セルへ書く場合も process 境界で文字列へ変換します。
+
+宣言は AST の `Statement::Declare` と `DeclarationKind`、再代入は `Statement::Assign` で区別します。runtime の束縛には値と可変性を保持し、`CONST` への代入や同一スコープの再宣言を右辺評価より先に拒否します。宣言は現在のスコープへ追加し、再代入は現在見えている最も内側の束縛へ適用します。関数引数は可変ローカル束縛、`Self` は差し替え不能な暗黙束縛です。`If` は既存スコープを共有し、ループは反復ごとにスコープを作成・破棄します。詳細と旧構文からの移行は [DSL_BINDINGS.md](DSL_BINDINGS.md) を正本とします。
 
 Rowly DSL の transaction 制御も独自履歴を持たず、`CsvDocument` の transaction API を直接仲介します。commit 後は transaction 全体が1つの undo/redo 単位になり、rollback は process 層の規則に従って履歴を残さず復元します。
 

@@ -18,8 +18,8 @@ fn column_index_returns_one_based_position() {
     let (_directory, mut document) = open("ID,名前,状態\n1,山田,\n");
     let report = run(
         r#"
-            Let nameColumn = ColumnIndex("名前")
-            Let statusColumn = ColumnIndex("状態")
+            VAR nameColumn = ColumnIndex("名前")
+            VAR statusColumn = ColumnIndex("状態")
         "#,
         &mut document,
     )
@@ -58,7 +58,7 @@ fn header_access_sees_prior_edits_in_same_script() {
     let report = run(
         r#"
             SetCellValueByHeader(Integer("2"), "名前", "山田")
-            Let current = CellValueByHeader(Integer("2"), "名前")
+            VAR current = CellValueByHeader(Integer("2"), "名前")
         "#,
         &mut document,
     )
@@ -72,7 +72,7 @@ fn missing_header_is_reported() {
     let (_directory, mut document) = open("名前\n山田\n");
     let error = run(
         r#"
-            Let value = CellValueByHeader(Integer("2"), "状態")
+            VAR value = CellValueByHeader(Integer("2"), "状態")
         "#,
         &mut document,
     )
@@ -86,7 +86,7 @@ fn ambiguous_header_is_reported() {
     let (_directory, mut document) = open("名前,名前\n山田,田中\n");
     let error = run(
         r#"
-            Let column = ColumnIndex("名前")
+            VAR column = ColumnIndex("名前")
         "#,
         &mut document,
     )
@@ -100,7 +100,7 @@ fn header_argument_must_be_text() {
     let (_directory, mut document) = open("名前\n山田\n");
     let error = run(
         r#"
-            Let column = ColumnIndex(Integer("1"))
+            VAR column = ColumnIndex(Integer("1"))
         "#,
         &mut document,
     )
@@ -118,7 +118,7 @@ fn missing_ragged_cell_by_header_is_reported() {
     let (_directory, mut document) = open("名前,状態\n山田\n");
     let error = run(
         r#"
-            Let value = CellValueByHeader(Integer("2"), "状態")
+            VAR value = CellValueByHeader(Integer("2"), "状態")
         "#,
         &mut document,
     )

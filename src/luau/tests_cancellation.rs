@@ -22,10 +22,8 @@ fn cancel_after_signal(document: &mut CsvDocument, script: &str) -> LuauError {
     lua.globals()
         .set(
             "SignalReady",
-            lua.create_function(move |_, ()| {
-                ready_tx.send(()).map_err(LuaError::external)
-            })
-            .unwrap(),
+            lua.create_function(move |_, ()| ready_tx.send(()).map_err(LuaError::external))
+                .unwrap(),
         )
         .unwrap();
 
@@ -259,12 +257,15 @@ fn host_api_guards_and_final_check_work_even_between_vm_interrupts() {
             assert(not pcall(Rowly.begin_transaction))
             assert(not pcall(Rowly.commit_transaction))
             assert(not pcall(Rowly.rollback_transaction))
+            AllGuardsChecked = true
         "#,
         LuauLimits::default(),
         &cancellation,
     )
     .unwrap_err();
 
+    // 終了時の Cancelled への変換が Lua 側の assertion 失敗を隠していないこと。
+    assert!(lua.globals().get::<bool>("AllGuardsChecked").unwrap());
     assert!(matches!(error, LuauError::Cancelled));
     assert!(!document.transaction_active());
     assert!(!document.is_dirty());

@@ -1,4 +1,5 @@
 mod cancellation;
+mod sandbox;
 
 pub use cancellation::LuauCancellationToken;
 
@@ -9,7 +10,7 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-use mlua::{Error as LuaError, Lua, VmState};
+use mlua::{ChunkMode, Error as LuaError, Lua, VmState};
 use thiserror::Error;
 
 use crate::process::CsvDocument;
@@ -87,7 +88,7 @@ pub fn execute_with_limits_and_cancellation(
     cancellation: &LuauCancellationToken,
 ) -> Result<(), LuauError> {
     check_cancellation(cancellation)?;
-    let lua = Lua::new();
+    let lua = sandbox::new_vm()?;
     execute_in_lua(&lua, document, script, limits, cancellation)
 }
 
@@ -206,9 +207,16 @@ fn execute_in_lua(
             })?,
         )?;
 
+        rowly.set_readonly(true);
         lua.globals().set("Rowly", rowly)?;
+        // API 登録後に標準テーブル・組み込みメタテーブル・共有グローバルを
+        // 保護する。各実行の変数代入は Luau のローカル環境へ隔離される。
+        lua.sandbox(true)?;
         check_cancellation(cancellation)?;
-        lua.load(script).set_name("rowly-user-script").exec()
+        lua.load(script)
+            .set_name("rowly-user-script")
+            .set_mode(ChunkMode::Text)
+            .exec()
     });
 
     // pcall / xpcall により停止エラーが捕捉されても、Rust 側では成功にしない。
@@ -270,6 +278,8 @@ impl From<LuaError> for LuauError {
 
 #[cfg(test)]
 mod tests_cancellation;
+#[cfg(test)]
+mod tests_sandbox;
 
 #[cfg(test)]
 mod tests {

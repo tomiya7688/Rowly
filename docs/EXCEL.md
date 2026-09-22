@@ -80,13 +80,17 @@ rowly excel export <csv-path> <xlsx-path> [sheet-name]
 
 ## Python 実行環境
 
-既定の Python executable は `python3`。
-環境変数 `ROWLY_PYTHON` が設定されている場合はその executable を使用する。
+既定の Python executable は Windows では `python`、それ以外では `python3`。
+環境変数 `ROWLY_PYTHON` が設定されている場合はその executable を使用する。空白を含むパスも実行ファイル名として渡し、シェルコマンドとして解釈しない。
+
+Rust / Python 間の JSON 通信は UTF-8 とする。bridge の子プロセスに `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8` を設定し、OS のコードページや親プロセスの Python 標準ストリーム設定に依存しない。親プロセスの環境は変更しない。
 
 Python 依存は `python/requirements.txt` を正本とする。
 現時点では openpyxl 3 系を使用する。
 
 Python executable が起動できない場合、bridge が失敗した場合、JSON protocol が不正な場合は Rust 側で明示エラーとして返す。
+
+Windows / Ubuntu 両方で実際の CLI と Excel 往復を継続検証する。対象範囲と実行方法は [CI.md](CI.md) を参照する。
 
 ## 今回扱わないもの
 

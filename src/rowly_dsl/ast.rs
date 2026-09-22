@@ -86,6 +86,14 @@ impl FunctionDefinition {
     }
 }
 
+/// VAR は再代入可能、CONST は束縛の再代入を禁止する。
+/// オブジェクトのフィールドを再帰的に凍結する指定ではない。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeclarationKind {
+    Var,
+    Const,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Statement {
     If {
@@ -100,7 +108,12 @@ pub enum Statement {
         step: Option<Expression>,
         body: Vec<Statement>,
     },
-    Let {
+    Declare {
+        kind: DeclarationKind,
+        name: String,
+        value: Expression,
+    },
+    Assign {
         name: String,
         value: Expression,
     },

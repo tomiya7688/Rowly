@@ -521,8 +521,7 @@ fn strip_keyword<'a>(text: &'a str, keyword: &str) -> Option<&'a str> {
 fn validate_binding_name(name: &str, line: usize) -> Result<(), ParseError> {
     validate_identifier(name, line)?;
     if [
-        "self", "super", "true", "false", "var", "const", "let", "dim", "text", "number",
-        "boolean",
+        "self", "super", "true", "false", "var", "const", "let", "dim", "text", "number", "boolean",
     ]
     .iter()
     .any(|reserved| name.eq_ignore_ascii_case(reserved))

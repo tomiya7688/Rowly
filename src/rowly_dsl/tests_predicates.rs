@@ -181,7 +181,7 @@ fn old_global_predicate_builtins_are_not_available() {
         let source = format!("VAR result = {old_call}");
         let error = run(&source, &mut document).unwrap_err();
         assert!(
-            matches!(error, RunError::Execution(ExecutionError::UnknownFunction(_))),
+            matches!(error, DslError::Execute(ExecutionError::UnknownFunction(_))),
             "{old_call}: {error}"
         );
     }

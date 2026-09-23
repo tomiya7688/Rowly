@@ -4,18 +4,51 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  rust:
-    runs-on: ubuntu-latest
+  rust-matrix:
+    name: rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: actions/setup-python@v5
+        id: python
         with:
           python-version: "3.12"
-      - run: python -m pip install -r python/requirements.txt
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --all-targets --all-features -- -D warnings
-      - run: cargo test --all-targets --all-features
+      - name: Python 依存を準備
+        run: python -m pip install -r python/requirements.txt
+      - name: Rust の整形を検証
+        run: cargo fmt --all -- --check
+      - name: Rust の警告を検証
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: 全ターゲットをビルド
+        run: cargo build --all-targets --all-features
+      - name: 全テストを実行
+        env:
+          ROWLY_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: cargo test --all-targets --all-features
+
+  # 従来の required check 名を維持し、片方の OS だけの成功で通過させない。
+  rust:
+    name: rust
+    needs: rust-matrix
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Windows と Ubuntu の両方の成功を確認
+        env:
+          MATRIX_RESULT: ${{ needs.rust-matrix.result }}
+        run: test "$MATRIX_RESULT" = success

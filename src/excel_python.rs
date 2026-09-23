@@ -12,6 +12,7 @@ use thiserror::Error;
 use crate::process::{CsvDocument, DocumentError};
 
 const BRIDGE_SCRIPT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/python/excel_bridge.py");
+const DEFAULT_PYTHON: &str = if cfg!(windows) { "python" } else { "python3" };
 
 pub fn export_document(
     document: &CsvDocument,
@@ -53,10 +54,14 @@ pub fn import_workbook(
 }
 
 fn run_bridge(mode: &str, request: &Value) -> Result<Vec<u8>, ExcelError> {
-    let python = env::var_os("ROWLY_PYTHON").unwrap_or_else(|| OsString::from("python3"));
+    let python = env::var_os("ROWLY_PYTHON").unwrap_or_else(|| OsString::from(DEFAULT_PYTHON));
     let mut child = Command::new(&python)
         .arg(BRIDGE_SCRIPT)
         .arg(mode)
+        // JSON は UTF-8。Windows のコードページや親プロセスの設定に依存させない。
+        // 子プロセスだけを設定し、並列実行中の他の処理の環境は変更しない。
+        .env("PYTHONUTF8", "1")
+        .env("PYTHONIOENCODING", "utf-8")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

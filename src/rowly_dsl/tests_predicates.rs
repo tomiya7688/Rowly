@@ -237,12 +237,19 @@ fn standard_namespace_names_are_reserved_for_bindings() {
         );
 
         let error = parse(&format!("Def F({name})\nReturn \"x\"\nEnd Def")).unwrap_err();
-        assert!(error.to_string().contains("reserved binding name"), "{name}");
+        assert!(
+            error.to_string().contains("reserved binding name"),
+            "{name}"
+        );
 
-        let error =
-            parse(&format!("For {name} = Integer(\"1\") To Integer(\"1\")\nNext {name}"))
-                .unwrap_err();
-        assert!(error.to_string().contains("reserved binding name"), "{name}");
+        let error = parse(&format!(
+            "For {name} = Integer(\"1\") To Integer(\"1\")\nNext {name}"
+        ))
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("reserved binding name"),
+            "{name}"
+        );
     }
 }
 

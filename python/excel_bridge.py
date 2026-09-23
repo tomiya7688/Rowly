@@ -40,8 +40,14 @@ def import_workbook(request):
         sheet = workbook.active
     else:
         if sheet_name not in workbook.sheetnames:
+            requested_codes = [f"U+{ord(char):04X}" for char in sheet_name]
+            available_codes = [
+                [f"U+{ord(char):04X}" for char in name]
+                for name in workbook.sheetnames
+            ]
             raise ValueError(
-                f"worksheet not found: {sheet_name!r}; available: {workbook.sheetnames!r}"
+                f"worksheet not found: {sheet_name!r} {requested_codes!r}; "
+                f"available: {workbook.sheetnames!r} {available_codes!r}"
             )
         sheet = workbook[sheet_name]
 

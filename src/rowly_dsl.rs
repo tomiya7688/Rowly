@@ -5,7 +5,7 @@ mod runtime;
 pub use ast::{
     ArithmeticOperator, ClassDefinition, ColumnSelector, ComparisonOperator, Condition,
     DeclarationKind, ExecutionEvent, ExecutionReport, Expression, FieldDefinition,
-    FunctionDefinition, Program, Statement, UnaryOperator,
+    FunctionDefinition, Program, StandardNamespace, Statement, UnaryOperator,
 };
 pub use parser::ParseError;
 pub use runtime::ExecutionError;

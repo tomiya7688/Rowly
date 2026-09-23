@@ -7,8 +7,8 @@ use crate::process::{ColumnError, CsvDocument, DocumentError};
 
 use super::ast::{
     ArithmeticOperator, ColumnSelector, ComparisonOperator, Condition, DeclarationKind,
-    ExecutionEvent, ExecutionReport, Expression, Program, Statement, UnaryOperator,
-    normalize_identifier,
+    ExecutionEvent, ExecutionReport, Expression, Program, StandardNamespace, Statement,
+    UnaryOperator, normalize_identifier,
 };
 
 const MAX_CALL_DEPTH: usize = 64;
@@ -65,6 +65,11 @@ pub enum ExecutionError {
     DuplicateVariable(String),
     #[error("unknown Rowly DSL function `{0}`")]
     UnknownFunction(String),
+    #[error("unknown Rowly DSL standard function `{namespace}.{name}`")]
+    UnknownStandardFunction {
+        namespace: &'static str,
+        name: String,
+    },
     #[error("unknown Rowly DSL class `{0}`")]
     UnknownClass(String),
     #[error("class `{class_name}` extends unknown class `{parent}`")]
@@ -523,6 +528,11 @@ impl<'a> Runtime<'a> {
                 self.call_function(name, arguments)?
                     .ok_or_else(|| ExecutionError::MissingReturnValue(name.clone()))
             }
+            Expression::StandardCall {
+                namespace,
+                name,
+                arguments,
+            } => self.call_standard_namespace(*namespace, name, arguments),
             Expression::New {
                 class_name,
                 arguments,
@@ -667,6 +677,100 @@ impl<'a> Runtime<'a> {
         Ok(true)
     }
 
+    fn call_standard_namespace(
+        &mut self,
+        namespace: StandardNamespace,
+        name: &str,
+        arguments: &[Expression],
+    ) -> Result<Value, ExecutionError> {
+        let (namespace_name, canonical, expected) = match namespace {
+            StandardNamespace::Text => {
+                let canonical = if name.eq_ignore_ascii_case("contains") {
+                    Some(("Contains", 2))
+                } else if name.eq_ignore_ascii_case("startswith") {
+                    Some(("StartsWith", 2))
+                } else if name.eq_ignore_ascii_case("endswith") {
+                    Some(("EndsWith", 2))
+                } else if name.eq_ignore_ascii_case("isjapanese") {
+                    Some(("IsJapanese", 1))
+                } else {
+                    None
+                };
+                ("Text", canonical, ())
+            }
+            StandardNamespace::Number => {
+                let canonical = if name.eq_ignore_ascii_case("isinteger") {
+                    Some(("IsInteger", 1))
+                } else if name.eq_ignore_ascii_case("isdecimal") {
+                    Some(("IsDecimal", 1))
+                } else {
+                    None
+                };
+                ("Number", canonical, ())
+            }
+            StandardNamespace::Boolean => {
+                let canonical = if name.eq_ignore_ascii_case("isvalid") {
+                    Some(("IsValid", 1))
+                } else {
+                    None
+                };
+                ("Boolean", canonical, ())
+            }
+        };
+        let _ = expected;
+        let (canonical, expected) = canonical.ok_or_else(|| ExecutionError::UnknownStandardFunction {
+            namespace: namespace_name,
+            name: name.to_owned(),
+        })?;
+        let full_name = format!("{namespace_name}.{canonical}");
+        if arguments.len() != expected {
+            return Err(ExecutionError::ArgumentCount {
+                name: full_name.clone(),
+                expected,
+                actual: arguments.len(),
+            });
+        }
+
+        let values = self.evaluate_arguments(arguments)?;
+        match (namespace, canonical) {
+            (StandardNamespace::Text, "Contains") => {
+                let haystack =
+                    self.expect_text(values[0].clone(), "Text.Contains first argument")?;
+                let needle =
+                    self.expect_text(values[1].clone(), "Text.Contains second argument")?;
+                Ok(Value::Boolean(haystack.contains(&needle)))
+            }
+            (StandardNamespace::Text, "StartsWith") => {
+                let value =
+                    self.expect_text(values[0].clone(), "Text.StartsWith first argument")?;
+                let prefix =
+                    self.expect_text(values[1].clone(), "Text.StartsWith second argument")?;
+                Ok(Value::Boolean(value.starts_with(&prefix)))
+            }
+            (StandardNamespace::Text, "EndsWith") => {
+                let value =
+                    self.expect_text(values[0].clone(), "Text.EndsWith first argument")?;
+                let suffix =
+                    self.expect_text(values[1].clone(), "Text.EndsWith second argument")?;
+                Ok(Value::Boolean(value.ends_with(&suffix)))
+            }
+            (StandardNamespace::Text, "IsJapanese") => {
+                let value = self.expect_text(values[0].clone(), "Text.IsJapanese argument")?;
+                Ok(Value::Boolean(contains_japanese(&value)))
+            }
+            (StandardNamespace::Number, "IsInteger") => {
+                Ok(Value::Boolean(is_integer_value(&values[0])))
+            }
+            (StandardNamespace::Number, "IsDecimal") => {
+                Ok(Value::Boolean(is_decimal_value(&values[0])))
+            }
+            (StandardNamespace::Boolean, "IsValid") => {
+                Ok(Value::Boolean(is_boolean_value(&values[0])))
+            }
+            _ => unreachable!(),
+        }
+    }
+
     fn call_builtin(
         &mut self,
         name: &str,
@@ -680,20 +784,6 @@ impl<'a> Runtime<'a> {
             Some("Boolean")
         } else if name.eq_ignore_ascii_case("string") {
             Some("String")
-        } else if name.eq_ignore_ascii_case("contains") {
-            Some("Contains")
-        } else if name.eq_ignore_ascii_case("startswith") {
-            Some("StartsWith")
-        } else if name.eq_ignore_ascii_case("endswith") {
-            Some("EndsWith")
-        } else if name.eq_ignore_ascii_case("isjapanese") {
-            Some("IsJapanese")
-        } else if name.eq_ignore_ascii_case("isinteger") {
-            Some("IsInteger")
-        } else if name.eq_ignore_ascii_case("isdecimal") {
-            Some("IsDecimal")
-        } else if name.eq_ignore_ascii_case("isboolean") {
-            Some("IsBoolean")
         } else if name.eq_ignore_ascii_case("cellvalue") {
             Some("CellValue")
         } else if name.eq_ignore_ascii_case("rowcount") {
@@ -719,7 +809,7 @@ impl<'a> Runtime<'a> {
         };
         let expected = match canonical {
             "RowCount" | "ColumnCount" => 0,
-            "Contains" | "StartsWith" | "EndsWith" | "CellValueAt" | "CellValueByHeader" => 2,
+            "CellValueAt" | "CellValueByHeader" => 2,
             "SetCellValueAt" | "SetCellValueByHeader" => 3,
             _ => 1,
         };
@@ -737,28 +827,6 @@ impl<'a> Runtime<'a> {
             "Decimal" => self.convert_decimal(values[0].clone())?,
             "Boolean" => self.convert_boolean(values[0].clone())?,
             "String" => self.convert_string(values[0].clone())?,
-            "Contains" => {
-                let haystack = self.expect_text(values[0].clone(), "Contains first argument")?;
-                let needle = self.expect_text(values[1].clone(), "Contains second argument")?;
-                Value::Boolean(haystack.contains(&needle))
-            }
-            "StartsWith" => {
-                let value = self.expect_text(values[0].clone(), "StartsWith first argument")?;
-                let prefix = self.expect_text(values[1].clone(), "StartsWith second argument")?;
-                Value::Boolean(value.starts_with(&prefix))
-            }
-            "EndsWith" => {
-                let value = self.expect_text(values[0].clone(), "EndsWith first argument")?;
-                let suffix = self.expect_text(values[1].clone(), "EndsWith second argument")?;
-                Value::Boolean(value.ends_with(&suffix))
-            }
-            "IsJapanese" => {
-                let value = self.expect_text(values[0].clone(), "IsJapanese argument")?;
-                Value::Boolean(contains_japanese(&value))
-            }
-            "IsInteger" => Value::Boolean(is_integer_value(&values[0])),
-            "IsDecimal" => Value::Boolean(is_decimal_value(&values[0])),
-            "IsBoolean" => Value::Boolean(is_boolean_value(&values[0])),
             "CellValue" => {
                 let reference = self.expect_text(values[0].clone(), "CellValue argument")?;
                 let value = self

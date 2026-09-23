@@ -131,11 +131,6 @@ pub enum Statement {
         name: String,
         arguments: Vec<Expression>,
     },
-    StandardCall {
-        namespace: StandardNamespace,
-        name: String,
-        arguments: Vec<Expression>,
-    },
     MethodCall {
         target: String,
         name: String,
@@ -186,6 +181,11 @@ pub enum Expression {
     },
     Variable(String),
     Call {
+        name: String,
+        arguments: Vec<Expression>,
+    },
+    StandardCall {
+        namespace: StandardNamespace,
         name: String,
         arguments: Vec<Expression>,
     },

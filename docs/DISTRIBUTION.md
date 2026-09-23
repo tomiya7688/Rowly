@@ -18,11 +18,11 @@ licenses/
 
 ## 固定バージョン
 
-配布相当ビルドでは Python 3.12.14 を使用する。Excel runtime dependency は `python/requirements.txt`、packager は `python/build-requirements.txt` に完全固定する。
+配布相当ビルドでは Python 3.12.10 を使用する。Excel runtime dependency は `python/requirements.txt`、packager は `python/build-requirements.txt` に完全固定する。
 
 現行値:
 
-- Python 3.12.14
+- Python 3.12.10
 - openpyxl 3.1.5
 - et-xmlfile 2.0.0
 - PyInstaller 6.22.3

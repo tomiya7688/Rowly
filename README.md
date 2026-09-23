@@ -54,7 +54,7 @@ Rust コアでは次を実装済みです。
 - `Integer(...)` / `Decimal(...)` / `Boolean(...)` / `String(...)` による明示変換
 - Integer / Decimal の数値比較と、文字列の辞書順比較
 - Rowly DSL の算術式 `+` / `-` / `*` / `/`、単項 `-`、括弧、演算子優先順位
-- `Contains` / `StartsWith` / `EndsWith` / `IsJapanese` / `IsInteger` / `IsDecimal` / `IsBoolean` 組み込み判定
+- `Text.Contains` / `Text.StartsWith` / `Text.EndsWith` / `Text.IsJapanese` / `Number.IsInteger` / `Number.IsDecimal` / `Boolean.IsValid` の名前空間付き標準判定
 - `CellValue("A2")` による CSV セル値の式読み取り
 - `For ... To ... [Step ...]` / `Next` による整数ループ
 - `RowCount()` / `ColumnCount()` / `CellValueAt(row, column)` / `SetCellValueAt(row, column, value)` による動的セル操作
@@ -120,7 +120,7 @@ End If
 
 算術式は `-x`、`*` / `/`、`+` / `-`、比較、`And`、`Or` の順に優先されます。Integer 同士の `+` / `-` / `*` は Integer、Integer / Decimal 混在は Decimal、`/` は常に Decimal です。0 除算、整数 overflow、非数値への算術は暗黙変換せずエラーにします。
 
-値単位の判定には `Contains` / `StartsWith` / `EndsWith` / `IsJapanese` / `IsInteger` / `IsDecimal` / `IsBoolean` を使用できます。Boolean を返す式は `If IsJapanese(value) Then` のように比較演算子なしで条件として直接使用できます。`IsJapanese` は文字列中に日本語文字を1文字以上含むかを判定します。
+値単位の判定は標準名前空間から呼び出します。`Text.Contains` / `Text.StartsWith` / `Text.EndsWith` / `Text.IsJapanese`、`Number.IsInteger` / `Number.IsDecimal`、`Boolean.IsValid` を使用できます。Boolean を返す式は `If Text.IsJapanese(value) Then` のように比較演算子なしで条件として直接使用できます。旧グローバル `Contains(...)` / `IsJapanese(...)` 等は 1.0 構文ではありません。詳細は [`docs/DSL_STANDARD_LIBRARY.md`](docs/DSL_STANDARD_LIBRARY.md) を参照してください。
 
 CSV の既存セル値は `CellValue("A2")` で文字列として読み取れます。読み取りも `process::CsvDocument` を経由し、同じスクリプト内で先に行った編集結果を直後の式から参照できます。不正な A1 参照や存在しないセルは明示エラーです。
 

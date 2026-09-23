@@ -11,7 +11,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_PYTHON = (3, 12, 14)
+EXPECTED_PYTHON = (3, 12, 10)
 BRIDGE_NAME = "rowly-excel-bridge.exe" if sys.platform == "win32" else "rowly-excel-bridge"
 ROWLY_NAME = "rowly.exe" if sys.platform == "win32" else "rowly"
 

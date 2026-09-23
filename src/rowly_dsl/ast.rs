@@ -94,6 +94,13 @@ pub enum DeclarationKind {
     Const,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StandardNamespace {
+    Text,
+    Number,
+    Boolean,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Statement {
     If {
@@ -121,6 +128,11 @@ pub enum Statement {
         value: Option<Expression>,
     },
     Call {
+        name: String,
+        arguments: Vec<Expression>,
+    },
+    StandardCall {
+        namespace: StandardNamespace,
         name: String,
         arguments: Vec<Expression>,
     },

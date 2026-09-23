@@ -14,7 +14,7 @@ count = count + increment
 
 再代入は `name = expression` とする。未宣言の名前を暗黙作成しない。キーワードと識別子の英字部分は従来どおり ASCII の大文字・小文字を区別せず、`VAR` / `CONST` の直後の空白・タブを許可する。識別子は既存規則どおり、先頭が文字または `_`、後続が文字・数字・`_` である。日本語の識別子も利用できる。
 
-`Self`、`Super`、`true`、`false`、`VAR`、`CONST`、`LET`、`DIM` は変数、引数、ループ変数の名前に使えない。`Self` の代入による差し替えも構文エラーとする。`Self.value = ...` など既存フィールドの編集は別の操作である。
+`Self`、`Super`、`true`、`false`、`VAR`、`CONST`、`LET`、`DIM`、`Text`、`Number`、`Boolean` は変数、引数、ループ変数の名前に使えない。`Text` / `Number` / `Boolean` は 1.0 標準関数の名前空間として予約する。`Self` の代入による差し替えも構文エラーとする。`Self.value = ...` など既存フィールドの編集は別の操作である。
 
 ## 値の型
 

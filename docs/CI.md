@@ -13,11 +13,14 @@ Windows を公式対応 OS、Ubuntu を準対応 OS とする。CI の両 OS 実
 `rust-matrix` は OS ごとに次の処理を実行する。
 
 ```text
-Python / openpyxl 依存の準備
+固定版 Python runtime / openpyxl / PyInstaller 依存の準備
 cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo build --all-targets --all-features
 cargo test --all-targets --all-features
+release Rowly + bundled Excel bridge の配布相当成果物をビルド
+packaged Rowly だけで実 XLSX fixture を import / export
+生成 CSV を CsvDocument で再 open して値を検証
 ```
 
 `fail-fast: false` により、片方の OS が失敗しても他方の検証を打ち切らない。各 OS ジョブには20分の上限を設定する。
@@ -47,6 +50,16 @@ Excel bridge の JSON は UTF-8 とする。Rust は bridge の子プロセス�
 - 不正引数の終了コード2
 
 通信テストでは CLI 側へ意図的に `PYTHONUTF8=0` / `PYTHONIOENCODING=ascii` を渡す。bridge 側の UTF-8 固定を削除した場合にも偶然テストが成功しないようにする。環境変数は子プロセスの `Command` に設定し、テスト全体の環境を書き換えない。
+
+## 配布相当 Excel backend の実動検証
+
+CI は `tools/build_distribution.py` で release Rowly と PyInstaller 製 `rowly-excel-bridge` を同じディレクトリへ組み立てる。bridge には Python runtime / openpyxl / et-xmlfile が内包される。
+
+その後 `ROWLY_PYTHON`、`PYTHONHOME`、`PYTHONPATH` を子環境から除外し、さらに `PATH` を配布ディレクトリだけへ制限して `tools/verify_packaged_excel.py` を実行する。system Python への fallback が残っていればこの段階で成功できない。
+
+リポジトリに実物の `tests/fixtures/excel/rowly_import_fixture.xlsx` を保持し、日本語シート名、補助漢字、絵文字、先頭ゼロ、数式に見える文字列、空セル、カンマ、改行、Boolean を import する。生成した `imported.csv` と packaged Rowly による CSV → XLSX → CSV の `roundtrip.csv` は、`tests/packaged_excel_fixture.rs` で `CsvDocument::open` し、canonical 文字列を確認する。
+
+配布物そのものも CI artifact として保存する。この検証は「runner に Python が入っているから Excel が動く」ことを受け入れ条件にしない。
 
 ## ローカル検証
 

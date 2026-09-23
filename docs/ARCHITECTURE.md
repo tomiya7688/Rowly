@@ -82,7 +82,7 @@ transaction 中は履歴位置や保存基準を壊さないため `undo` / `red
 - `Integer(...)` / `Decimal(...)` / `Boolean(...)` / `String(...)` の明示変換
 - Integer / Decimal の数値比較、文字列の辞書順比較
 - `+` / `-` / `*` / `/`、単項 `-`、括弧を持つ型付き算術式と演算子優先順位
-- `Contains` / `StartsWith` / `EndsWith` / `IsJapanese` / `IsInteger` / `IsDecimal` / `IsBoolean` の値判定
+- `Text.*` / `Number.*` / `Boolean.*` 標準名前空間による値判定
 - Boolean 値を返す式を直接 `If` 条件として評価する
 - `CellValue("A1")` による process 境界経由の現在セル値読み取り
 - `For ... To ... [Step ...]` / `Next` の整数ループと反復ごとの専用スコープ
@@ -94,6 +94,8 @@ transaction 中は履歴位置や保存基準を壊さないため `undo` / `red
 - `This.Worksheet.Column(...)` / `This.Worksheet.Editor.Cell(...)` を process API へ対応付ける
 - 実行レポートの提供
 - 上から下へ実行するマクロ semantics の維持
+
+標準判定関数はユーザー class instance の method lookup と分離した専用 namespace call として AST / runtime で扱います。`Text` / `Number` / `Boolean` は binding の予約名で、`Text.Contains(...)` 等が同名変数により意味を変えないようにします。旧グローバル predicate builtin は 1.0 では提供しません。ユーザー class 自体は同名でも作成できますが、instance variable 経由の method call と標準名前空間呼び出しは別の解決経路です。詳細は [`DSL_STANDARD_LIBRARY.md`](DSL_STANDARD_LIBRARY.md) を参照してください。
 
 DSL の runtime object は CSV 正本モデルの一部ではありません。CSV への作用は必ず process API を通します。型付きスカラーを CSV セルへ書く場合も process 境界で文字列へ変換します。
 

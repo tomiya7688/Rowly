@@ -4,8 +4,8 @@ use crate::process::{CellRange, ColumnType};
 
 use super::ast::{
     ArithmeticOperator, ClassDefinition, ColumnSelector, ComparisonOperator, Condition,
-    DeclarationKind, Expression, FieldDefinition, FunctionDefinition, Program, Statement,
-    UnaryOperator,
+    DeclarationKind, Expression, FieldDefinition, FunctionDefinition, Program, StandardNamespace,
+    Statement, UnaryOperator,
 };
 
 pub fn parse(source: &str) -> Result<Program, ParseError> {
@@ -521,7 +521,8 @@ fn strip_keyword<'a>(text: &'a str, keyword: &str) -> Option<&'a str> {
 fn validate_binding_name(name: &str, line: usize) -> Result<(), ParseError> {
     validate_identifier(name, line)?;
     if [
-        "self", "super", "true", "false", "var", "const", "let", "dim",
+        "self", "super", "true", "false", "var", "const", "let", "dim", "text", "number",
+        "boolean",
     ]
     .iter()
     .any(|reserved| name.eq_ignore_ascii_case(reserved))
@@ -529,6 +530,18 @@ fn validate_binding_name(name: &str, line: usize) -> Result<(), ParseError> {
         return Err(parse_error(line, format!("reserved binding name `{name}`")));
     }
     Ok(())
+}
+
+fn parse_standard_namespace(name: &str) -> Option<StandardNamespace> {
+    if name.eq_ignore_ascii_case("Text") {
+        Some(StandardNamespace::Text)
+    } else if name.eq_ignore_ascii_case("Number") {
+        Some(StandardNamespace::Number)
+    } else if name.eq_ignore_ascii_case("Boolean") {
+        Some(StandardNamespace::Boolean)
+    } else {
+        None
+    }
 }
 
 fn parse_return_statement(line: &SourceLine) -> Result<Statement, ParseError> {
@@ -674,10 +687,18 @@ fn parse_primary_expression(text: &str, line: usize) -> Result<Expression, Parse
         validate_identifier(target, line)?;
         if looks_like_named_call(member) {
             let (name, arguments) = parse_named_call(member, line)?;
+            let arguments = parse_argument_expressions(arguments, line)?;
+            if let Some(namespace) = parse_standard_namespace(target) {
+                return Ok(Expression::StandardCall {
+                    namespace,
+                    name,
+                    arguments,
+                });
+            }
             return Ok(Expression::MethodCall {
                 target: target.to_owned(),
                 name,
-                arguments: parse_argument_expressions(arguments, line)?,
+                arguments,
             });
         }
         validate_identifier(member, line)?;

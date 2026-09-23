@@ -19,9 +19,9 @@ fn else_executes_when_condition_is_false() {
     let report = run(
         r#"
             If "a" = "b" Then
-                Let result = "then"
+                VAR result = "then"
             Else
-                Let result = "else"
+                VAR result = "else"
             End If
         "#,
         &mut document,
@@ -37,9 +37,9 @@ fn logical_precedence_is_not_then_and_then_or() {
     let report = run(
         r#"
             If Not "a" = "b" And "x" = "x" Or "z" = "q" Then
-                Let result = "yes"
+                VAR result = "yes"
             Else
-                Let result = "no"
+                VAR result = "no"
             End If
         "#,
         &mut document,
@@ -55,13 +55,13 @@ fn and_and_or_short_circuit_rhs() {
     let report = run(
         r#"
             If "a" != "a" And missing = "boom" Then
-                Let first = "bad"
+                VAR first = "bad"
             Else
-                Let first = "ok"
+                VAR first = "ok"
             End If
 
             If "a" = "a" Or missing = "boom" Then
-                Let second = "ok"
+                VAR second = "ok"
             End If
         "#,
         &mut document,
@@ -78,7 +78,7 @@ fn comparison_operators_use_text_ordering() {
     let report = run(
         r#"
             If "a" < "b" And "b" <= "b" And "c" > "b" And "c" >= "c" And "a" != "z" Then
-                Let result = "ordered"
+                VAR result = "ordered"
             End If
         "#,
         &mut document,
@@ -94,9 +94,9 @@ fn parenthesized_conditions_override_precedence() {
     let report = run(
         r#"
             If ("a" = "b" Or "x" = "x") And Not ("q" = "q") Then
-                Let result = "bad"
+                VAR result = "bad"
             Else
-                Let result = "good"
+                VAR result = "good"
             End If
         "#,
         &mut document,
@@ -123,8 +123,8 @@ fn class_methods_use_the_same_condition_evaluator() {
                 End Def
             End Class
 
-            Let choice = New Choice()
-            Let result = choice.Pick()
+            VAR choice = New Choice()
+            VAR result = choice.Pick()
         "#,
         &mut document,
     )
@@ -140,12 +140,12 @@ fn else_supports_nested_if_blocks() {
         r#"
             If "outer" = "outer" Then
                 If "inner" != "inner" Then
-                    Let result = "bad"
+                    VAR result = "bad"
                 Else
-                    Let result = "nested"
+                    VAR result = "nested"
                 End If
             Else
-                Let result = "bad"
+                VAR result = "bad"
             End If
         "#,
         &mut document,

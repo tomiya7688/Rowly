@@ -216,8 +216,8 @@ fn variables_can_feed_edits_and_conditions() {
     let (_directory, mut document) = open("名前\n田中\n山田\n");
     let report = run(
         r#"
-            Let replacement = "佐藤"
-            Let expected = "名前"
+            VAR replacement = "佐藤"
+            VAR expected = "名前"
             If expected = "名前" Then
                 This.Worksheet.Editor.Cell(A2 To A3).Value.Set = replacement
             End If
@@ -241,7 +241,7 @@ fn functions_accept_arguments_return_values_and_edit_through_process_api() {
                 Return value
             End Def
 
-            Let result = Fill("8")
+            VAR result = Fill("8")
         "#,
         &mut document,
     )
@@ -268,14 +268,14 @@ fn function_scope_does_not_overwrite_global_variables() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
         r#"
-            Let value = "global"
+            VAR value = "global"
 
             Def Echo(value)
-                Let value = "local"
+                value = "local"
                 Return value
             End Def
 
-            Let result = Echo("argument")
+            VAR result = Echo("argument")
         "#,
         &mut document,
     )
@@ -297,7 +297,7 @@ fn return_inside_nested_if_exits_function() {
                 Return "fallback"
             End Def
 
-            Let result = Choose("ok")
+            VAR result = Choose("ok")
         "#,
         &mut document,
     )
@@ -315,7 +315,7 @@ fn function_used_as_value_requires_return_value() {
                 This.Worksheet.Column(1).Type = String
             End Def
 
-            Let result = NoReturn()
+            VAR result = NoReturn()
         "#,
         &mut document,
     )

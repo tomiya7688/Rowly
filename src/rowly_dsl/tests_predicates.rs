@@ -18,7 +18,7 @@ fn string_predicates_can_be_used_directly_as_conditions() {
     let (_directory, mut document) = open("値\nold\n");
     run(
         r#"
-            Let value = "東京都"
+            VAR value = "東京都"
             If Contains(value, "東京") And StartsWith(value, "東") And EndsWith(value, "都") Then
                 This.Worksheet.Editor.Cell(A2).Value.Set = "matched"
             End If
@@ -35,8 +35,8 @@ fn is_japanese_matches_mixed_text_containing_japanese() {
     let (_directory, mut document) = open("値\nold\n");
     let report = run(
         r#"
-            Let mixed = IsJapanese("abc日本語123")
-            Let latin = IsJapanese("abc123")
+            VAR mixed = IsJapanese("abc日本語123")
+            VAR latin = IsJapanese("abc123")
         "#,
         &mut document,
     )
@@ -51,13 +51,13 @@ fn type_predicates_accept_text_and_typed_values() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
         r#"
-            Let integerText = IsInteger("42")
-            Let integerTyped = IsInteger(Integer("42"))
-            Let decimalText = IsDecimal("12.5")
-            Let decimalInteger = IsDecimal(Integer("12"))
-            Let booleanText = IsBoolean("TRUE")
-            Let badInteger = IsInteger("12.5")
-            Let badBoolean = IsBoolean("yes")
+            VAR integerText = IsInteger("42")
+            VAR integerTyped = IsInteger(Integer("42"))
+            VAR decimalText = IsDecimal("12.5")
+            VAR decimalInteger = IsDecimal(Integer("12"))
+            VAR booleanText = IsBoolean("TRUE")
+            VAR badInteger = IsInteger("12.5")
+            VAR badBoolean = IsBoolean("yes")
         "#,
         &mut document,
     )
@@ -117,7 +117,7 @@ fn string_predicates_require_text_arguments() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
         r#"
-            Let value = Contains(Integer("12"), "1")
+            VAR value = Contains(Integer("12"), "1")
         "#,
         &mut document,
     )
@@ -135,7 +135,7 @@ fn predicate_argument_count_is_validated() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
         r#"
-            Let value = Contains("abc")
+            VAR value = Contains("abc")
         "#,
         &mut document,
     )

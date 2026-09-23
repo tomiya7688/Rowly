@@ -4,8 +4,8 @@ mod runtime;
 
 pub use ast::{
     ArithmeticOperator, ClassDefinition, ColumnSelector, ComparisonOperator, Condition,
-    ExecutionEvent, ExecutionReport, Expression, FieldDefinition, FunctionDefinition, Program,
-    Statement, UnaryOperator,
+    DeclarationKind, ExecutionEvent, ExecutionReport, Expression, FieldDefinition,
+    FunctionDefinition, Program, Statement, UnaryOperator,
 };
 pub use parser::ParseError;
 pub use runtime::ExecutionError;
@@ -43,6 +43,8 @@ pub enum DslError {
 mod tests;
 #[cfg(test)]
 mod tests_arithmetic;
+#[cfg(test)]
+mod tests_bindings;
 #[cfg(test)]
 mod tests_cell_value;
 #[cfg(test)]

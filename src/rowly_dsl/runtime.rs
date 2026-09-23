@@ -6,8 +6,9 @@ use thiserror::Error;
 use crate::process::{ColumnError, CsvDocument, DocumentError};
 
 use super::ast::{
-    ArithmeticOperator, ColumnSelector, ComparisonOperator, Condition, ExecutionEvent,
-    ExecutionReport, Expression, Program, Statement, UnaryOperator, normalize_identifier,
+    ArithmeticOperator, ColumnSelector, ComparisonOperator, Condition, DeclarationKind,
+    ExecutionEvent, ExecutionReport, Expression, Program, Statement, UnaryOperator,
+    normalize_identifier,
 };
 
 const MAX_CALL_DEPTH: usize = 64;
@@ -20,6 +21,21 @@ enum Value {
     Decimal(f64),
     Boolean(bool),
     Object(ObjectId),
+}
+
+#[derive(Debug, Clone)]
+struct Binding {
+    value: Value,
+    kind: DeclarationKind,
+}
+
+impl Binding {
+    fn variable(value: Value) -> Self {
+        Self {
+            value,
+            kind: DeclarationKind::Var,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -43,6 +59,10 @@ pub enum ExecutionError {
     Document(#[from] DocumentError),
     #[error("unknown Rowly DSL variable `{0}`")]
     UnknownVariable(String),
+    #[error("cannot assign to Rowly DSL constant `{0}`")]
+    ConstantAssignment(String),
+    #[error("Rowly DSL variable `{0}` is already declared in this scope")]
+    DuplicateVariable(String),
     #[error("unknown Rowly DSL function `{0}`")]
     UnknownFunction(String),
     #[error("unknown Rowly DSL class `{0}`")]
@@ -142,7 +162,7 @@ enum Flow {
 struct Runtime<'a> {
     program: &'a Program,
     document: &'a mut CsvDocument,
-    scopes: Vec<HashMap<String, Value>>,
+    scopes: Vec<HashMap<String, Binding>>,
     objects: Vec<ObjectInstance>,
     events: Vec<ExecutionEvent>,
     call_depth: usize,
@@ -171,8 +191,8 @@ impl<'a> Runtime<'a> {
         let global = self.scopes.pop().unwrap_or_default();
         let mut variables = HashMap::new();
         let mut object_fields = HashMap::new();
-        for (name, value) in global {
-            match value {
+        for (name, binding) in global {
+            match binding.value {
                 Value::Object(object_id) => {
                     let fields = self
                         .objects
@@ -246,42 +266,64 @@ impl<'a> Runtime<'a> {
                         return Err(ExecutionError::ZeroLoopStep);
                     }
 
-                    self.scopes.push(HashMap::new());
-                    let execution = (|| -> Result<Flow, ExecutionError> {
-                        loop {
-                            let in_range = if step > 0 {
-                                current <= end
-                            } else {
-                                current >= end
-                            };
-                            if !in_range {
-                                break;
-                            }
-
-                            self.current_scope_mut()
-                                .insert(normalize_identifier(variable), Value::Integer(current));
-                            let flow = self.execute_statements(body)?;
-                            if !matches!(flow, Flow::Continue) {
-                                return Ok(flow);
-                            }
-
-                            current = current
-                                .checked_add(step)
-                                .ok_or(ExecutionError::LoopCounterOverflow)?;
+                    loop {
+                        let in_range = if step > 0 {
+                            current <= end
+                        } else {
+                            current >= end
+                        };
+                        if !in_range {
+                            break;
                         }
-                        Ok(Flow::Continue)
-                    })();
-                    self.scopes.pop();
-                    let flow = execution?;
-                    if !matches!(flow, Flow::Continue) {
-                        return Ok(flow);
+
+                        // 各反復の宣言を独立させ、CONST の再宣言や外側への漏出を防ぐ。
+                        self.scopes.push(HashMap::from([(
+                            normalize_identifier(variable),
+                            Binding::variable(Value::Integer(current)),
+                        )]));
+                        let execution = self.execute_statements(body);
+                        self.scopes.pop();
+                        let flow = execution?;
+                        if !matches!(flow, Flow::Continue) {
+                            return Ok(flow);
+                        }
+
+                        current = current
+                            .checked_add(step)
+                            .ok_or(ExecutionError::LoopCounterOverflow)?;
                     }
                 }
-                Statement::Let { name, value } => {
+                Statement::Declare { kind, name, value } => {
+                    let key = normalize_identifier(name);
+                    // RHS の関数呼び出し等による副作用より先に、宣言先を検証する。
+                    if self.current_scope_mut().contains_key(&key) {
+                        return Err(ExecutionError::DuplicateVariable(name.clone()));
+                    }
                     let value = self.evaluate_expression(value)?;
                     let event_value = self.describe_value(&value);
                     self.current_scope_mut()
-                        .insert(normalize_identifier(name), value);
+                        .insert(key, Binding { value, kind: *kind });
+                    self.events.push(ExecutionEvent::VariableSet {
+                        name: name.clone(),
+                        value: event_value,
+                    });
+                }
+                Statement::Assign { name, value } => {
+                    let key = normalize_identifier(name);
+                    let scope = self
+                        .scopes
+                        .iter()
+                        .rposition(|scope| scope.contains_key(&key))
+                        .ok_or_else(|| ExecutionError::UnknownVariable(name.clone()))?;
+                    if self.scopes[scope][&key].kind == DeclarationKind::Const {
+                        return Err(ExecutionError::ConstantAssignment(name.clone()));
+                    }
+                    let value = self.evaluate_expression(value)?;
+                    let event_value = self.describe_value(&value);
+                    self.scopes[scope]
+                        .get_mut(&key)
+                        .expect("assignment target was resolved before evaluation")
+                        .value = value;
                     self.events.push(ExecutionEvent::VariableSet {
                         name: name.clone(),
                         value: event_value,
@@ -898,7 +940,12 @@ impl<'a> Runtime<'a> {
             .parameters
             .iter()
             .zip(values.iter())
-            .map(|(parameter, value)| (normalize_identifier(parameter), value.clone()))
+            .map(|(parameter, value)| {
+                (
+                    normalize_identifier(parameter),
+                    Binding::variable(value.clone()),
+                )
+            })
             .collect();
         self.scopes.push(scope);
         self.call_depth += 1;
@@ -991,13 +1038,24 @@ impl<'a> Runtime<'a> {
         values: Vec<Value>,
     ) -> Result<Option<Value>, ExecutionError> {
         self.ensure_call_depth()?;
-        let mut scope: HashMap<String, Value> = method
+        let mut scope: HashMap<String, Binding> = method
             .parameters
             .iter()
             .zip(values.iter())
-            .map(|(parameter, value)| (normalize_identifier(parameter), value.clone()))
+            .map(|(parameter, value)| {
+                (
+                    normalize_identifier(parameter),
+                    Binding::variable(value.clone()),
+                )
+            })
             .collect();
-        scope.insert("self".to_owned(), Value::Object(object_id));
+        scope.insert(
+            "self".to_owned(),
+            Binding {
+                value: Value::Object(object_id),
+                kind: DeclarationKind::Const,
+            },
+        );
         self.scopes.push(scope);
         self.method_context.push(defining_class.to_owned());
         self.call_depth += 1;
@@ -1229,10 +1287,13 @@ impl<'a> Runtime<'a> {
 
     fn lookup_variable(&self, name: &str) -> Option<&Value> {
         let key = normalize_identifier(name);
-        self.scopes.iter().rev().find_map(|scope| scope.get(&key))
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(&key).map(|binding| &binding.value))
     }
 
-    fn current_scope_mut(&mut self) -> &mut HashMap<String, Value> {
+    fn current_scope_mut(&mut self) -> &mut HashMap<String, Binding> {
         self.scopes
             .last_mut()
             .expect("runtime always has at least the global scope")

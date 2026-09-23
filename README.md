@@ -48,7 +48,7 @@ Rust コアでは次を実装済みです。
 - `String` / `Integer` / `Decimal` / `Boolean` の非破壊列チェック
 - 日本語文字チェックと A1 参照による結果報告
 - process API 上で動作する BASIC 風 Rowly DSL
-- Rowly DSL の変数、関数、引数、戻り値、ローカルスコープ
+- Rowly DSL の `VAR` / `CONST` 宣言、再代入、関数、引数、戻り値、ローカルスコープ
 - `If` / `Else`、`Not` / `And` / `Or`、`!=` / `<` / `<=` / `>` / `>=`
 - Rowly DSL のクラス、単一継承、インスタンス、フィールド、メソッド、`Self`、`New ClassName(args...)`、`Init` コンストラクタ
 - `Integer(...)` / `Decimal(...)` / `Boolean(...)` / `String(...)` による明示変換
@@ -77,7 +77,7 @@ CSVの読み書きは独自方言を追加せず、標準的な引用符規則�
 ### Rowly DSL
 
 Rowly DSL はアプリ操作を直接表現する専用言語です。
-`If ... Then` / `Else` / `End If`、`Let`、`Def ...` / `End Def`、`Return`、関数、クラス、フィールド、メソッド、列チェック、範囲値設定を扱います。
+`If ... Then` / `Else` / `End If`、`VAR` / `CONST`、`Def ...` / `End Def`、`Return`、関数、クラス、フィールド、メソッド、列チェック、範囲値設定を扱います。
 
 ```text
 Class Formatter
@@ -88,17 +88,27 @@ Class Formatter
     End Def
 End Class
 
-Let formatter = New Formatter()
+VAR formatter = New Formatter()
 This.Worksheet.Editor.Cell(A2 To A8).Value.Set = formatter.Value()
 ```
+
+変数は `VAR`、再代入しない名前は `CONST` で初期値付き宣言を行い、再代入は宣言キーワードなしで書きます。
+
+```text
+CONST increment = Integer("2")
+VAR count = Integer("1")
+count = count + increment
+```
+
+`CONST` への再代入、未宣言名への代入、同じスコープでの再宣言は明示エラーです。禁止された代入では右辺を評価しません。`CONST` は名前の束縛を保護するもので、オブジェクトのフィールドを凍結する指定ではありません。旧 `LET` / `DIM` 宣言は構文エラーになります。移行方法とスコープ規則は [`docs/DSL_BINDINGS.md`](docs/DSL_BINDINGS.md) を日本語正本とします。
 
 明示変換により、既存の文字列リテラルの挙動を変えずに型付きランタイム値を扱えます。
 
 ```text
-Let small = Integer("2")
-Let large = Integer("10")
-Let threshold = Decimal("9.5")
-Let enabled = Boolean("true")
+VAR small = Integer("2")
+VAR large = Integer("10")
+VAR threshold = Decimal("9.5")
+VAR enabled = Boolean("true")
 
 If large > small And threshold < large Then
     This.Worksheet.Editor.Cell(A2).Value.Set = large
@@ -113,7 +123,7 @@ End If
 
 CSV の既存セル値は `CellValue("A2")` で文字列として読み取れます。読み取りも `process::CsvDocument` を経由し、同じスクリプト内で先に行った編集結果を直後の式から参照できます。不正な A1 参照や存在しないセルは明示エラーです。
 
-全行処理には `For row = Integer("2") To RowCount()` / `Next row` を使用できます。`Step` は省略時1で、負数による降順ループにも対応します。`CellValueAt` / `SetCellValueAt` の行・列番号は1-basedです。ループ変数とループ内 `Let` はループ専用スコープに限定され、終了後は外側へ漏れません。
+全行処理には `For row = Integer("2") To RowCount()` / `Next row` を使用できます。`Step` は省略時1で、負数による降順ループにも対応します。`CellValueAt` / `SetCellValueAt` の行・列番号は1-basedです。ループ変数とループ内の `VAR` / `CONST` は反復ごとの専用スコープに限定され、次の反復やループの外側へ漏れません。反復をまたぐ集計変数はループの前に `VAR` で宣言し、ループ内で再代入します。
 
 列番号を固定したくない場合は `ColumnIndex("名前")`、`CellValueByHeader(row, "名前")`、`SetCellValueByHeader(row, "状態", value)` を使用できます。ヘッダー検索は先頭行を完全一致で検索し、見つからない場合や重複して一意に決められない場合はエラーにします。`ColumnIndex` の返り値はDSL上の1-based列番号です。
 

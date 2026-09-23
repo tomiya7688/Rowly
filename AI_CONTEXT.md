@@ -11,6 +11,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 ## Source of Truth
 - Product invariants: `README.md`
 - Architecture and dependency rules: `docs/ARCHITECTURE.md`
+- DSL declarations and assignment: `docs/DSL_BINDINGS.md` (Japanese canonical specification)
 - Implementation truth: `src/` and matching tests
 - Task intent: the current issue/conversation takes priority over speculative future work
 
@@ -54,6 +55,8 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Persistent Rowly column metadata lives in optional `<csv>.rowly.json` sidecars keyed by unique header names. Sidecars are auxiliary only: missing or invalid metadata must never make canonical CSV data unreadable or necessary for recovery.
 - Rowly DSL is an adapter over `process`; it must not call `data` or CSV codecs directly.
 - The DSL is top-to-bottom macro execution. Extend language features through AST/parser/runtime boundaries rather than bypassing them.
+- DSL declarations use `VAR` / `CONST`; `LET` / `DIM` are parse errors. Assignment updates the nearest visible binding, rejects constants and unknown names before evaluating the RHS, and never implicitly declares a variable.
+- Same-scope redeclarations are errors. Outer bindings may be shadowed by local declarations; parameters are mutable local bindings. `CONST` protects a binding, not object fields. `Self` / `Super` cannot be user binding names.
 - DSL column numbers are 1-based user-facing indices; process/data indices remain zero-based.
 - Function and method calls use local scopes, may read outer/global variables, and must not leak local bindings outward.
 - Calls used as expressions require an explicit return value.
@@ -67,7 +70,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - DSL arithmetic is typed: Integer/Decimal only, with explicit promotion, division-by-zero errors, and no implicit string coercion.
 - DSL predicate builtins return Boolean values and Boolean expressions may be used directly as `If` conditions.
 - `CellValue("A1")` reads current CSV text through the process boundary; missing cells and invalid references must fail explicitly.
-- `For ... To ... [Step ...]` loops operate on Integer bounds evaluated once; loop scope does not leak outward.
+- `For ... To ... [Step ...]` loops operate on Integer bounds evaluated once; each iteration has fresh local bindings that do not leak outward. Declare cross-iteration accumulators before the loop and update them by assignment.
 - Dynamic cell builtins use 1-based row/column indices and must still route through `CsvDocument`.
 - Header-based dynamic access must use exact first-row header lookup and preserve existing missing/ambiguous-header errors.
 - Rowly DSL transaction controls must delegate to `CsvDocument` begin/commit/rollback APIs; the DSL must not maintain a second transaction or history model.
@@ -102,7 +105,7 @@ Implemented:
 - non-mutating `String` / `Integer` / `Decimal` / `Boolean` column validation
 - persistent header-keyed column type declarations in optional Rowly JSON sidecars
 - Japanese-character column checks with A1 result references
-- Rowly DSL AST/parser/runtime for `If`, variables, functions, calls, return, classes, single inheritance, objects, fields, methods, `Init` constructors, arithmetic expressions, column checks, and range value assignment
+- Rowly DSL AST/parser/runtime for `If`, `VAR` / `CONST`, assignment, functions, calls, return, classes, single inheritance, objects, fields, methods, `Init` constructors, arithmetic expressions, column checks, and range value assignment
 - typed Integer/Decimal arithmetic with precedence, unary minus, parentheses, and explicit arithmetic errors
 - value predicates for string matching, Japanese detection, and Integer/Decimal/Boolean interpretation
 - expression-level CSV cell reads through `CellValue(...)`

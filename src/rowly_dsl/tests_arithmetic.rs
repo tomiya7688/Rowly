@@ -18,11 +18,11 @@ fn arithmetic_precedence_and_parentheses_work() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
         r#"
-            Let two = Integer("2")
-            Let three = Integer("3")
-            Let four = Integer("4")
-            Let first = two + three * four
-            Let second = (two + three) * four
+            VAR two = Integer("2")
+            VAR three = Integer("3")
+            VAR four = Integer("4")
+            VAR first = two + three * four
+            VAR second = (two + three) * four
         "#,
         &mut document,
     )
@@ -37,11 +37,11 @@ fn subtraction_is_left_associative_and_unary_minus_works() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
         r#"
-            Let ten = Integer("10")
-            Let three = Integer("3")
-            Let two = Integer("2")
-            Let result = ten - three - two
-            Let negative = -result
+            VAR ten = Integer("10")
+            VAR three = Integer("3")
+            VAR two = Integer("2")
+            VAR result = ten - three - two
+            VAR negative = -result
         "#,
         &mut document,
     )
@@ -56,11 +56,11 @@ fn mixed_numeric_arithmetic_promotes_to_decimal() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
         r#"
-            Let integer = Integer("5")
-            Let decimal = Decimal("2.5")
-            Let sum = integer + decimal
-            Let product = decimal * integer
-            Let quotient = integer / Integer("2")
+            VAR integer = Integer("5")
+            VAR decimal = Decimal("2.5")
+            VAR sum = integer + decimal
+            VAR product = decimal * integer
+            VAR quotient = integer / Integer("2")
         "#,
         &mut document,
     )
@@ -76,9 +76,9 @@ fn arithmetic_can_feed_comparisons_and_csv_edits() {
     let (_directory, mut document) = open("値\nold\n");
     let report = run(
         r#"
-            Let left = Integer("6")
-            Let right = Integer("4")
-            Let total = left + right
+            VAR left = Integer("6")
+            VAR right = Integer("4")
+            VAR total = left + right
 
             If total >= Integer("10") Then
                 This.Worksheet.Editor.Cell(A2).Value.Set = total / Integer("4")
@@ -109,8 +109,8 @@ fn function_and_method_results_participate_in_arithmetic() {
                 End Def
             End Class
 
-            Let counter = New Counter()
-            Let result = Double(counter.Next()) + Integer("1")
+            VAR counter = New Counter()
+            VAR result = Double(counter.Next()) + Integer("1")
         "#,
         &mut document,
     )
@@ -124,7 +124,7 @@ fn division_by_zero_is_explicit() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
         r#"
-            Let value = Integer("10") / Integer("0")
+            VAR value = Integer("10") / Integer("0")
         "#,
         &mut document,
     )
@@ -138,7 +138,7 @@ fn arithmetic_rejects_non_numeric_values() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
         r#"
-            Let value = "10" + Integer("2")
+            VAR value = "10" + Integer("2")
         "#,
         &mut document,
     )
@@ -156,7 +156,7 @@ fn unary_minus_rejects_non_numeric_values() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
         r#"
-            Let value = -"10"
+            VAR value = -"10"
         "#,
         &mut document,
     )
@@ -174,8 +174,8 @@ fn integer_overflow_is_explicit() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
         r#"
-            Let max = Integer("9223372036854775807")
-            Let value = max + Integer("1")
+            VAR max = Integer("9223372036854775807")
+            VAR value = max + Integer("1")
         "#,
         &mut document,
     )

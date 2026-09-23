@@ -3,8 +3,9 @@ use thiserror::Error;
 use crate::process::{CellRange, ColumnType};
 
 use super::ast::{
-    ArithmeticOperator, ClassDefinition, ColumnSelector, ComparisonOperator, Condition, Expression,
-    FieldDefinition, FunctionDefinition, Program, Statement, UnaryOperator,
+    ArithmeticOperator, ClassDefinition, ColumnSelector, ComparisonOperator, Condition,
+    DeclarationKind, Expression, FieldDefinition, FunctionDefinition, Program, Statement,
+    UnaryOperator,
 };
 
 pub fn parse(source: &str) -> Result<Program, ParseError> {
@@ -227,7 +228,7 @@ impl Parser {
         let (variable, range) = split_top_level_once(rest, '=')
             .ok_or_else(|| parse_error(line.number, "expected `For name = start To end`"))?;
         let variable = variable.trim();
-        validate_identifier(variable, line.number)?;
+        validate_binding_name(variable, line.number)?;
 
         let (start_text, end_and_step) = split_keyword_top_level(range.trim(), " to ")
             .ok_or_else(|| parse_error(line.number, "expected `To` in For loop"))?;
@@ -334,7 +335,7 @@ fn parse_function_signature(line: &SourceLine) -> Result<(String, Vec<String>), 
         .into_iter()
         .map(|item| {
             let item = item.trim();
-            validate_identifier(item, line.number)?;
+            validate_binding_name(item, line.number)?;
             Ok(item.to_owned())
         })
         .collect::<Result<Vec<_>, ParseError>>()?;
@@ -435,8 +436,17 @@ fn split_comparison(text: &str) -> Option<(&str, ComparisonOperator, &str)> {
 }
 
 fn parse_statement(line: &SourceLine) -> Result<Statement, ParseError> {
-    if starts_with_ci(&line.text, "let ") {
-        return parse_let_statement(line);
+    if let Some(rest) = strip_keyword(&line.text, "var") {
+        return parse_declaration(rest, DeclarationKind::Var, line.number);
+    }
+    if let Some(rest) = strip_keyword(&line.text, "const") {
+        return parse_declaration(rest, DeclarationKind::Const, line.number);
+    }
+    if strip_keyword(&line.text, "let").is_some() || strip_keyword(&line.text, "dim").is_some() {
+        return Err(parse_error(
+            line.number,
+            "LET / DIM are not supported; use VAR or CONST",
+        ));
     }
     if eq_ci(&line.text, "return") || starts_with_ci(&line.text, "return ") {
         return parse_return_statement(line);
@@ -446,6 +456,16 @@ fn parse_statement(line: &SourceLine) -> Result<Statement, ParseError> {
     }
     if starts_with_ci(&line.text, "this.worksheet.editor.cell(") {
         return parse_cell_statement(line);
+    }
+    if let Some((name, value)) = split_top_level_once(&line.text, '=') {
+        let name = name.trim();
+        if is_identifier(name) {
+            validate_binding_name(name, line.number)?;
+            return Ok(Statement::Assign {
+                name: name.to_owned(),
+                value: parse_binding_value(value, line.number)?,
+            });
+        }
     }
     if let Some(statement) = parse_field_assignment(line)? {
         return Ok(statement);
@@ -465,16 +485,50 @@ fn parse_statement(line: &SourceLine) -> Result<Statement, ParseError> {
     }
 }
 
-fn parse_let_statement(line: &SourceLine) -> Result<Statement, ParseError> {
-    let rest = strip_prefix_ci(&line.text, "let ").unwrap();
+fn parse_declaration(
+    rest: &str,
+    kind: DeclarationKind,
+    line: usize,
+) -> Result<Statement, ParseError> {
     let (name, value) = split_top_level_once(rest, '=')
-        .ok_or_else(|| parse_error(line.number, "expected `Let name = value`"))?;
+        .ok_or_else(|| parse_error(line, "expected `VAR name = value` or `CONST name = value`"))?;
     let name = name.trim();
-    validate_identifier(name, line.number)?;
-    Ok(Statement::Let {
+    validate_binding_name(name, line)?;
+    Ok(Statement::Declare {
+        kind,
         name: name.to_owned(),
-        value: parse_expression(value.trim(), line.number)?,
+        value: parse_binding_value(value, line)?,
     })
+}
+
+fn parse_binding_value(text: &str, line: usize) -> Result<Expression, ParseError> {
+    let text = text.trim();
+    if text.starts_with('=') {
+        return Err(parse_error(line, "expected a value after a single `=`"));
+    }
+    parse_expression(text, line)
+}
+
+fn strip_keyword<'a>(text: &'a str, keyword: &str) -> Option<&'a str> {
+    let rest = strip_prefix_ci(text, keyword)?;
+    if rest.is_empty() || rest.starts_with(char::is_whitespace) {
+        Some(rest.trim_start())
+    } else {
+        None
+    }
+}
+
+fn validate_binding_name(name: &str, line: usize) -> Result<(), ParseError> {
+    validate_identifier(name, line)?;
+    if [
+        "self", "super", "true", "false", "var", "const", "let", "dim",
+    ]
+    .iter()
+    .any(|reserved| name.eq_ignore_ascii_case(reserved))
+    {
+        return Err(parse_error(line, format!("reserved binding name `{name}`")));
+    }
+    Ok(())
 }
 
 fn parse_return_statement(line: &SourceLine) -> Result<Statement, ParseError> {

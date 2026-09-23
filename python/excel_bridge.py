@@ -6,7 +6,15 @@ from openpyxl import Workbook, load_workbook
 
 
 def read_request():
-    return json.load(sys.stdin)
+    # PyInstaller executable の標準入力 encoding は Windows の code page に
+    # 依存し得るため、JSON protocol は text stream を経由せず UTF-8 bytes で固定する。
+    return json.loads(sys.stdin.buffer.read().decode("utf-8"))
+
+
+def write_response(payload):
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    sys.stdout.buffer.write(data)
+    sys.stdout.buffer.flush()
 
 
 def stringify(value):
@@ -30,7 +38,7 @@ def export_workbook(request):
             cell.number_format = "@"
 
     workbook.save(request["output_path"])
-    json.dump({"ok": True}, sys.stdout)
+    write_response({"ok": True})
 
 
 def import_workbook(request):
@@ -40,14 +48,8 @@ def import_workbook(request):
         sheet = workbook.active
     else:
         if sheet_name not in workbook.sheetnames:
-            requested_codes = [f"U+{ord(char):04X}" for char in sheet_name]
-            available_codes = [
-                [f"U+{ord(char):04X}" for char in name]
-                for name in workbook.sheetnames
-            ]
             raise ValueError(
-                f"worksheet not found: {sheet_name!r} {requested_codes!r}; "
-                f"available: {workbook.sheetnames!r} {available_codes!r}"
+                f"worksheet not found: {sheet_name!r}; available: {workbook.sheetnames!r}"
             )
         sheet = workbook[sheet_name]
 
@@ -61,7 +63,7 @@ def import_workbook(request):
     while rows and not rows[-1]:
         rows.pop()
 
-    json.dump({"rows": rows}, sys.stdout, ensure_ascii=False)
+    write_response({"rows": rows})
 
 
 def main():

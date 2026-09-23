@@ -750,8 +750,7 @@ impl<'a> Runtime<'a> {
                 Ok(Value::Boolean(value.starts_with(&prefix)))
             }
             (StandardNamespace::Text, "EndsWith") => {
-                let value =
-                    self.expect_text(values[0].clone(), "Text.EndsWith first argument")?;
+                let value = self.expect_text(values[0].clone(), "Text.EndsWith first argument")?;
                 let suffix =
                     self.expect_text(values[1].clone(), "Text.EndsWith second argument")?;
                 Ok(Value::Boolean(value.ends_with(&suffix)))

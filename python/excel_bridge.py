@@ -40,7 +40,9 @@ def import_workbook(request):
         sheet = workbook.active
     else:
         if sheet_name not in workbook.sheetnames:
-            raise ValueError(f"worksheet not found: {sheet_name}")
+            raise ValueError(
+                f"worksheet not found: {sheet_name!r}; available: {workbook.sheetnames!r}"
+            )
         sheet = workbook[sheet_name]
 
     rows = []

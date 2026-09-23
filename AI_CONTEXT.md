@@ -43,6 +43,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - UI, DSL, Luau, and Python adapters must enter through the process/application boundary rather than reaching into CSV I/O internals.
 - Excel import/export is an exchange adapter only. Python/openpyxl may read/write .xlsx, but canonical CSV creation/export data must pass through `CsvDocument`; Excel must not become a second source of truth.
 - Excel export must preserve canonical CSV cells as strings instead of applying implicit numeric/type inference.
+- Official Rowly distributions must bundle the Excel Python runtime/openpyxl backend. Release Excel I/O must not depend on system Python; ROWLY_PYTHON is a development/debug override.
 - A1/range addressing is process-layer behavior; the canonical data layer remains zero-based textual rows/cells.
 - Multi-cell edits must validate before mutation so a failed edit cannot partially modify the CSV table.
 - Structural edits are explicit data edits. Ragged rows must not be silently rectangularized merely to simplify column operations.

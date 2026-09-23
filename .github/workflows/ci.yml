@@ -11,7 +11,7 @@ jobs:
   rust-matrix:
     name: rust (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -26,9 +26,9 @@ jobs:
       - uses: actions/setup-python@v5
         id: python
         with:
-          python-version: "3.12"
-      - name: Python 依存を準備
-        run: python -m pip install -r python/requirements.txt
+          python-version: "3.12.10"
+      - name: Python runtime / build 依存を準備
+        run: python -m pip install -r python/requirements.txt -r python/build-requirements.txt
       - name: Rust の整形を検証
         run: cargo fmt --all -- --check
       - name: Rust の警告を検証
@@ -39,6 +39,28 @@ jobs:
         env:
           ROWLY_PYTHON: ${{ steps.python.outputs.python-path }}
         run: cargo test --all-targets --all-features
+      - name: 自己完結 Rowly 配布物をビルド
+        run: python tools/build_distribution.py --output target/rowly-dist
+      - name: packaged Rowly だけで実 XLSX を import / export
+        run: >
+          python tools/verify_packaged_excel.py
+          --distribution target/rowly-dist
+          --fixture tests/fixtures/excel/rowly_import_fixture.xlsx
+          --work-dir target/package-smoke
+      - name: import 結果を CsvDocument で再検証
+        env:
+          ROWLY_IMPORTED_FIXTURE: ${{ github.workspace }}/target/package-smoke/imported.csv
+          ROWLY_ROUNDTRIP_FIXTURE: ${{ github.workspace }}/target/package-smoke/roundtrip.csv
+        run: >
+          cargo test --test packaged_excel_fixture
+          packaged_fixture_matches_expected_rowly_values
+          -- --ignored --exact
+      - name: 自己完結配布物を成果物として保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: rowly-${{ matrix.os }}
+          path: target/rowly-dist
+          if-no-files-found: error
 
   # 従来の required check 名を維持し、片方の OS だけの成功で通過させない。
   rust:

@@ -2,7 +2,7 @@ use std::{
     env,
     ffi::OsString,
     io::Write,
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
 };
 
@@ -53,23 +53,87 @@ pub fn import_workbook(
     CsvDocument::create(csv_path, rows).map_err(ExcelError::Document)
 }
 
-fn run_bridge(mode: &str, request: &Value) -> Result<Vec<u8>, ExcelError> {
-    let python = env::var_os("ROWLY_PYTHON").unwrap_or_else(|| OsString::from(DEFAULT_PYTHON));
-    let mut child = Command::new(&python)
-        .arg(BRIDGE_SCRIPT)
-        .arg(mode)
-        // JSON は UTF-8。Windows のコードページや親プロセスの設定に依存させない。
-        // 子プロセスだけを設定し、並列実行中の他の処理の環境は変更しない。
+#[derive(Debug)]
+enum BridgeLauncher {
+    Bundled(PathBuf),
+    Python(OsString),
+}
+
+fn bundled_bridge_filename() -> &'static str {
+    if cfg!(windows) {
+        "rowly-excel-bridge.exe"
+    } else {
+        "rowly-excel-bridge"
+    }
+}
+
+fn bundled_bridge_path() -> Result<PathBuf, ExcelError> {
+    let executable =
+        env::current_exe().map_err(|error| ExcelError::ExecutablePath(error.to_string()))?;
+    let directory = executable.parent().ok_or_else(|| {
+        ExcelError::ExecutablePath(format!(
+            "current executable has no parent directory: {}",
+            executable.display()
+        ))
+    })?;
+    Ok(directory.join(bundled_bridge_filename()))
+}
+
+fn resolve_bridge_launcher() -> Result<BridgeLauncher, ExcelError> {
+    if let Some(python) = env::var_os("ROWLY_PYTHON") {
+        return Ok(BridgeLauncher::Python(python));
+    }
+
+    let bundled = bundled_bridge_path()?;
+    if bundled.is_file() {
+        return Ok(BridgeLauncher::Bundled(bundled));
+    }
+
+    // Source checkout / cargo test 向けの開発 fallback。正式配布は release build と
+    // sibling bridge を必須とし、ユーザー環境の Python へ暗黙 fallback しない。
+    if cfg!(debug_assertions) {
+        return Ok(BridgeLauncher::Python(OsString::from(DEFAULT_PYTHON)));
+    }
+
+    Err(ExcelError::BundledBackendMissing {
+        path: bundled.display().to_string(),
+    })
+}
+
+fn configure_bridge_command(command: &mut Command) -> &mut Command {
+    command
         .env("PYTHONUTF8", "1")
         .env("PYTHONIOENCODING", "utf-8")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| ExcelError::PythonStart {
-            executable: python.to_string_lossy().into_owned(),
-            message: error.to_string(),
-        })?;
+}
+
+fn run_bridge(mode: &str, request: &Value) -> Result<Vec<u8>, ExcelError> {
+    let launcher = resolve_bridge_launcher()?;
+    let mut command;
+    let mut child = match launcher {
+        BridgeLauncher::Bundled(executable) => {
+            command = Command::new(&executable);
+            command.arg(mode);
+            configure_bridge_command(&mut command)
+                .spawn()
+                .map_err(|error| ExcelError::BundledBackendStart {
+                    executable: executable.display().to_string(),
+                    message: error.to_string(),
+                })?
+        }
+        BridgeLauncher::Python(python) => {
+            command = Command::new(&python);
+            command.arg(BRIDGE_SCRIPT).arg(mode);
+            configure_bridge_command(&mut command)
+                .spawn()
+                .map_err(|error| ExcelError::PythonStart {
+                    executable: python.to_string_lossy().into_owned(),
+                    message: error.to_string(),
+                })?
+        }
+    };
 
     let input =
         serde_json::to_vec(request).map_err(|error| ExcelError::Protocol(error.to_string()))?;
@@ -83,7 +147,7 @@ fn run_bridge(mode: &str, request: &Value) -> Result<Vec<u8>, ExcelError> {
         })?;
 
     let output = child.wait_with_output().map_err(|error| {
-        ExcelError::Protocol(format!("failed to wait for Python bridge: {error}"))
+        ExcelError::Protocol(format!("failed to wait for Excel bridge: {error}"))
     })?;
 
     if !output.status.success() {
@@ -97,13 +161,22 @@ fn run_bridge(mode: &str, request: &Value) -> Result<Vec<u8>, ExcelError> {
 
 #[derive(Debug, Error)]
 pub enum ExcelError {
+    #[error("failed to resolve current Rowly executable path: {0}")]
+    ExecutablePath(String),
+
+    #[error("bundled Excel backend is missing at `{path}`; reinstall the Rowly distribution")]
+    BundledBackendMissing { path: String },
+
+    #[error("failed to start bundled Excel backend `{executable}`: {message}")]
+    BundledBackendStart { executable: String, message: String },
+
     #[error("failed to start Python executable `{executable}`: {message}")]
     PythonStart { executable: String, message: String },
 
-    #[error("Excel Python bridge failed with status {status:?}: {stderr}")]
+    #[error("Excel bridge failed with status {status:?}: {stderr}")]
     Bridge { status: Option<i32>, stderr: String },
 
-    #[error("invalid Excel Python bridge protocol: {0}")]
+    #[error("invalid Excel bridge protocol: {0}")]
     Protocol(String),
 
     #[error(transparent)]
@@ -124,6 +197,27 @@ mod tests {
         fs::write(&path, "Name,Value\nAlice,001\nFormula,=1+1\n日本語,田中\n").unwrap();
         let document = CsvDocument::open(path).unwrap();
         (directory, document)
+    }
+
+    #[test]
+    fn bundled_bridge_uses_platform_executable_name() {
+        assert_eq!(
+            bundled_bridge_filename(),
+            if cfg!(windows) {
+                "rowly-excel-bridge.exe"
+            } else {
+                "rowly-excel-bridge"
+            }
+        );
+    }
+
+    #[test]
+    fn bundled_bridge_is_resolved_next_to_rowly_executable() {
+        let expected_parent = env::current_exe().unwrap().parent().unwrap().to_path_buf();
+        assert_eq!(
+            bundled_bridge_path().unwrap(),
+            expected_parent.join(bundled_bridge_filename())
+        );
     }
 
     #[test]

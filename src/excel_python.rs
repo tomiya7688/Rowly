@@ -68,8 +68,8 @@ fn bundled_bridge_filename() -> &'static str {
 }
 
 fn bundled_bridge_path() -> Result<PathBuf, ExcelError> {
-    let executable = env::current_exe()
-        .map_err(|error| ExcelError::ExecutablePath(error.to_string()))?;
+    let executable =
+        env::current_exe().map_err(|error| ExcelError::ExecutablePath(error.to_string()))?;
     let directory = executable.parent().ok_or_else(|| {
         ExcelError::ExecutablePath(format!(
             "current executable has no parent directory: {}",
@@ -164,9 +164,7 @@ pub enum ExcelError {
     #[error("failed to resolve current Rowly executable path: {0}")]
     ExecutablePath(String),
 
-    #[error(
-        "bundled Excel backend is missing at `{path}`; reinstall the Rowly distribution"
-    )]
+    #[error("bundled Excel backend is missing at `{path}`; reinstall the Rowly distribution")]
     BundledBackendMissing { path: String },
 
     #[error("failed to start bundled Excel backend `{executable}`: {message}")]
@@ -215,11 +213,7 @@ mod tests {
 
     #[test]
     fn bundled_bridge_is_resolved_next_to_rowly_executable() {
-        let expected_parent = env::current_exe()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .to_path_buf();
+        let expected_parent = env::current_exe().unwrap().parent().unwrap().to_path_buf();
         assert_eq!(
             bundled_bridge_path().unwrap(),
             expected_parent.join(bundled_bridge_filename())

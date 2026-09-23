@@ -14,12 +14,12 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 }
 
 #[test]
-fn string_predicates_can_be_used_directly_as_conditions() {
+fn namespaced_string_predicates_can_be_used_directly_as_conditions() {
     let (_directory, mut document) = open("値\nold\n");
     run(
         r#"
             VAR value = "東京都"
-            If Contains(value, "東京") And StartsWith(value, "東") And EndsWith(value, "都") Then
+            If Text.Contains(value, "東京") And Text.StartsWith(value, "東") And Text.EndsWith(value, "都") Then
                 This.Worksheet.Editor.Cell(A2).Value.Set = "matched"
             End If
         "#,
@@ -31,12 +31,12 @@ fn string_predicates_can_be_used_directly_as_conditions() {
 }
 
 #[test]
-fn is_japanese_matches_mixed_text_containing_japanese() {
+fn text_is_japanese_matches_mixed_text_containing_japanese() {
     let (_directory, mut document) = open("値\nold\n");
     let report = run(
         r#"
-            VAR mixed = IsJapanese("abc日本語123")
-            VAR latin = IsJapanese("abc123")
+            VAR mixed = Text.IsJapanese("abc日本語123")
+            VAR latin = Text.IsJapanese("abc123")
         "#,
         &mut document,
     )
@@ -47,17 +47,17 @@ fn is_japanese_matches_mixed_text_containing_japanese() {
 }
 
 #[test]
-fn type_predicates_accept_text_and_typed_values() {
+fn namespaced_type_predicates_accept_text_and_typed_values() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
         r#"
-            VAR integerText = IsInteger("42")
-            VAR integerTyped = IsInteger(Integer("42"))
-            VAR decimalText = IsDecimal("12.5")
-            VAR decimalInteger = IsDecimal(Integer("12"))
-            VAR booleanText = IsBoolean("TRUE")
-            VAR badInteger = IsInteger("12.5")
-            VAR badBoolean = IsBoolean("yes")
+            VAR integerText = Number.IsInteger("42")
+            VAR integerTyped = Number.IsInteger(Integer("42"))
+            VAR decimalText = Number.IsDecimal("12.5")
+            VAR decimalInteger = Number.IsDecimal(Integer("12"))
+            VAR booleanText = Boolean.IsValid("TRUE")
+            VAR badInteger = Number.IsInteger("12.5")
+            VAR badBoolean = Boolean.IsValid("yes")
         "#,
         &mut document,
     )
@@ -73,12 +73,12 @@ fn type_predicates_accept_text_and_typed_values() {
 }
 
 #[test]
-fn boolean_return_values_can_drive_if_conditions() {
+fn boolean_return_values_from_standard_namespaces_can_drive_if_conditions() {
     let (_directory, mut document) = open("値\nold\n");
     run(
         r#"
             Def Valid(value)
-                Return IsInteger(value)
+                Return Number.IsInteger(value)
             End Def
 
             If Valid("123") Then
@@ -90,6 +90,24 @@ fn boolean_return_values_can_drive_if_conditions() {
     .unwrap();
 
     assert_eq!(document.cell_a1("A2").unwrap(), Some("ok"));
+}
+
+#[test]
+fn standard_namespaces_and_functions_are_case_insensitive() {
+    let (_directory, mut document) = open("値\n1\n");
+    let report = run(
+        r#"
+            VAR textMatch = text.contains("ABC", "B")
+            VAR numberMatch = NUMBER.isinteger("42")
+            VAR booleanMatch = boolean.ISVALID("false")
+        "#,
+        &mut document,
+    )
+    .unwrap();
+
+    assert_eq!(report.variable("textmatch"), Some("true"));
+    assert_eq!(report.variable("numbermatch"), Some("true"));
+    assert_eq!(report.variable("booleanmatch"), Some("true"));
 }
 
 #[test]
@@ -113,11 +131,11 @@ fn non_boolean_expression_condition_is_rejected() {
 }
 
 #[test]
-fn string_predicates_require_text_arguments() {
+fn namespaced_string_predicates_require_text_arguments() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
         r#"
-            VAR value = Contains(Integer("12"), "1")
+            VAR value = Text.Contains(Integer("12"), "1")
         "#,
         &mut document,
     )
@@ -126,16 +144,16 @@ fn string_predicates_require_text_arguments() {
     assert!(
         error
             .to_string()
-            .contains("Contains first argument requires a text value")
+            .contains("Text.Contains first argument requires a text value")
     );
 }
 
 #[test]
-fn predicate_argument_count_is_validated() {
+fn namespaced_predicate_argument_count_is_validated() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
         r#"
-            VAR value = Contains("abc")
+            VAR value = Text.Contains("abc")
         "#,
         &mut document,
     )
@@ -144,6 +162,73 @@ fn predicate_argument_count_is_validated() {
     assert!(
         error
             .to_string()
-            .contains("function `Contains` expects 2 arguments but received 1")
+            .contains("function `Text.Contains` expects 2 arguments but received 1")
     );
+}
+
+#[test]
+fn old_global_predicate_builtins_are_not_available() {
+    for old_call in [
+        r#"Contains("abc", "a")"#,
+        r#"StartsWith("abc", "a")"#,
+        r#"EndsWith("abc", "c")"#,
+        r#"IsJapanese("日本語")"#,
+        r#"IsInteger("1")"#,
+        r#"IsDecimal("1.5")"#,
+        r#"IsBoolean("true")"#,
+    ] {
+        let (_directory, mut document) = open("値\n1\n");
+        let source = format!("VAR result = {old_call}");
+        let error = run(&source, &mut document).unwrap_err();
+        assert!(
+            matches!(error, RunError::Execution(ExecutionError::UnknownFunction(_))),
+            "{old_call}: {error}"
+        );
+    }
+}
+
+#[test]
+fn unknown_standard_namespace_function_is_explicit() {
+    let (_directory, mut document) = open("値\n1\n");
+    let error = run(
+        r#"
+            VAR value = Text.Unknown("abc")
+        "#,
+        &mut document,
+    )
+    .unwrap_err();
+
+    assert!(error.to_string().contains("Text.Unknown"));
+    assert!(error.to_string().contains("unknown Rowly DSL standard function"));
+}
+
+#[test]
+fn standard_namespace_names_are_reserved_for_bindings() {
+    for name in ["Text", "Number", "Boolean"] {
+        let error = parse(&format!("VAR {name} = \"value\"")).unwrap_err();
+        assert!(error.to_string().contains("reserved binding name"), "{name}");
+    }
+}
+
+#[test]
+fn user_classes_with_namespace_names_do_not_replace_standard_namespaces() {
+    let (_directory, mut document) = open("値\n1\n");
+    let report = run(
+        r#"
+            Class Text
+                Def Contains(value, needle)
+                    Return "user-method"
+                End Def
+            End Class
+
+            VAR tool = New Text()
+            VAR userResult = tool.Contains("a", "b")
+            VAR standardResult = Text.Contains("abc", "b")
+        "#,
+        &mut document,
+    )
+    .unwrap();
+
+    assert_eq!(report.variable("userresult"), Some("user-method"));
+    assert_eq!(report.variable("standardresult"), Some("true"));
 }

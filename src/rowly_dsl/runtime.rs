@@ -683,9 +683,14 @@ impl<'a> Runtime<'a> {
         name: &str,
         arguments: &[Expression],
     ) -> Result<Value, ExecutionError> {
-        let (namespace_name, canonical, expected) = match namespace {
+        let namespace_name = match namespace {
+            StandardNamespace::Text => "Text",
+            StandardNamespace::Number => "Number",
+            StandardNamespace::Boolean => "Boolean",
+        };
+        let canonical = match namespace {
             StandardNamespace::Text => {
-                let canonical = if name.eq_ignore_ascii_case("contains") {
+                if name.eq_ignore_ascii_case("contains") {
                     Some(("Contains", 2))
                 } else if name.eq_ignore_ascii_case("startswith") {
                     Some(("StartsWith", 2))
@@ -695,37 +700,34 @@ impl<'a> Runtime<'a> {
                     Some(("IsJapanese", 1))
                 } else {
                     None
-                };
-                ("Text", canonical, ())
+                }
             }
             StandardNamespace::Number => {
-                let canonical = if name.eq_ignore_ascii_case("isinteger") {
+                if name.eq_ignore_ascii_case("isinteger") {
                     Some(("IsInteger", 1))
                 } else if name.eq_ignore_ascii_case("isdecimal") {
                     Some(("IsDecimal", 1))
                 } else {
                     None
-                };
-                ("Number", canonical, ())
+                }
             }
             StandardNamespace::Boolean => {
-                let canonical = if name.eq_ignore_ascii_case("isvalid") {
+                if name.eq_ignore_ascii_case("isvalid") {
                     Some(("IsValid", 1))
                 } else {
                     None
-                };
-                ("Boolean", canonical, ())
+                }
             }
         };
-        let _ = expected;
-        let (canonical, expected) = canonical.ok_or_else(|| ExecutionError::UnknownStandardFunction {
-            namespace: namespace_name,
-            name: name.to_owned(),
-        })?;
+        let (canonical, expected) =
+            canonical.ok_or_else(|| ExecutionError::UnknownStandardFunction {
+                namespace: namespace_name,
+                name: name.to_owned(),
+            })?;
         let full_name = format!("{namespace_name}.{canonical}");
         if arguments.len() != expected {
             return Err(ExecutionError::ArgumentCount {
-                name: full_name.clone(),
+                name: full_name,
                 expected,
                 actual: arguments.len(),
             });

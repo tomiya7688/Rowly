@@ -220,14 +220,21 @@ fn unknown_standard_namespace_function_is_explicit() {
     .unwrap_err();
 
     assert!(error.to_string().contains("Text.Unknown"));
-    assert!(error.to_string().contains("unknown Rowly DSL standard function"));
+    assert!(
+        error
+            .to_string()
+            .contains("unknown Rowly DSL standard function")
+    );
 }
 
 #[test]
 fn standard_namespace_names_are_reserved_for_bindings() {
     for name in ["Text", "Number", "Boolean"] {
         let error = parse(&format!("VAR {name} = \"value\"")).unwrap_err();
-        assert!(error.to_string().contains("reserved binding name"), "{name}");
+        assert!(
+            error.to_string().contains("reserved binding name"),
+            "{name}"
+        );
 
         let error = parse(&format!("Def F({name})\nReturn \"x\"\nEnd Def")).unwrap_err();
         assert!(error.to_string().contains("reserved binding name"), "{name}");

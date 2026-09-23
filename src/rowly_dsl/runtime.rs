@@ -941,7 +941,10 @@ impl<'a> Runtime<'a> {
             .iter()
             .zip(values.iter())
             .map(|(parameter, value)| {
-                (normalize_identifier(parameter), Binding::variable(value.clone()))
+                (
+                    normalize_identifier(parameter),
+                    Binding::variable(value.clone()),
+                )
             })
             .collect();
         self.scopes.push(scope);
@@ -1040,7 +1043,10 @@ impl<'a> Runtime<'a> {
             .iter()
             .zip(values.iter())
             .map(|(parameter, value)| {
-                (normalize_identifier(parameter), Binding::variable(value.clone()))
+                (
+                    normalize_identifier(parameter),
+                    Binding::variable(value.clone()),
+                )
             })
             .collect();
         scope.insert(

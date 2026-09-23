@@ -520,9 +520,11 @@ fn strip_keyword<'a>(text: &'a str, keyword: &str) -> Option<&'a str> {
 
 fn validate_binding_name(name: &str, line: usize) -> Result<(), ParseError> {
     validate_identifier(name, line)?;
-    if ["self", "super", "true", "false", "var", "const", "let", "dim"]
-        .iter()
-        .any(|reserved| name.eq_ignore_ascii_case(reserved))
+    if [
+        "self", "super", "true", "false", "var", "const", "let", "dim",
+    ]
+    .iter()
+    .any(|reserved| name.eq_ignore_ascii_case(reserved))
     {
         return Err(parse_error(line, format!("reserved binding name `{name}`")));
     }

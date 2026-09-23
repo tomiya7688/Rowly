@@ -322,7 +322,10 @@ fn const_protects_the_binding_not_the_aliased_object_fields() {
         &mut document,
     )
     .unwrap();
-    assert_eq!(report.object_field("fixed", "value"), Some("through-constant"));
+    assert_eq!(
+        report.object_field("fixed", "value"),
+        Some("through-constant")
+    );
     assert_eq!(report.object_field("alias", "value"), Some("other"));
     assert_eq!(report.object_field("other", "value"), Some("other"));
 
@@ -339,12 +342,21 @@ fn const_protects_the_binding_not_the_aliased_object_fields() {
 
 #[test]
 fn legacy_declarations_are_parse_errors_even_in_unexecuted_blocks() {
-    for declaration in ["Let value = 1", "LET\tvalue = 1", "Dim value = 1", "let", "DIM"] {
+    for declaration in [
+        "Let value = 1",
+        "LET\tvalue = 1",
+        "Dim value = 1",
+        "let",
+        "DIM",
+    ] {
         for (source, line) in [
             (format!("' comment\n{declaration}"), 2),
             (format!("Def Unused()\n{declaration}\nEnd Def"), 2),
             (format!("If \"a\" = \"b\" Then\n{declaration}\nEnd If"), 2),
-            (format!("Class Box\nDef Unused()\n{declaration}\nEnd Def\nEnd Class"), 3),
+            (
+                format!("Class Box\nDef Unused()\n{declaration}\nEnd Def\nEnd Class"),
+                3,
+            ),
         ] {
             let error = parse(&source).unwrap_err();
             assert_eq!(error.line(), line);
@@ -352,17 +364,34 @@ fn legacy_declarations_are_parse_errors_even_in_unexecuted_blocks() {
         }
     }
     let (_directory, mut document) = open();
-    let report = run("Rem Let is only a comment\nCONST text = \"Let Dim\"", &mut document).unwrap();
+    let report = run(
+        "Rem Let is only a comment\nCONST text = \"Let Dim\"",
+        &mut document,
+    )
+    .unwrap();
     assert_eq!(report.variable("text"), Some("Let Dim"));
 }
 
 #[test]
 fn malformed_declarations_and_reserved_bindings_are_rejected() {
     for source in [
-        "VAR", "CONST", "VAR name", "CONST name", "VAR name =", "CONST name =",
-        "VAR 1name = 1", "CONST = 1", "VAR name == 1", "name == 1",
-        "VAR Self = 1", "CONST super = 1", "Self = 1", "Super = 1",
-        "VAR true = 1", "CONST FALSE = 1", "VAR CONST = 1",
+        "VAR",
+        "CONST",
+        "VAR name",
+        "CONST name",
+        "VAR name =",
+        "CONST name =",
+        "VAR 1name = 1",
+        "CONST = 1",
+        "VAR name == 1",
+        "name == 1",
+        "VAR Self = 1",
+        "CONST super = 1",
+        "Self = 1",
+        "Super = 1",
+        "VAR true = 1",
+        "CONST FALSE = 1",
+        "VAR CONST = 1",
         "Def Bad(Self)\nEnd Def",
         "Class Bad\nDef Init(Super)\nEnd Def\nEnd Class",
         "For Self = Integer(\"1\") To Integer(\"2\")\nNext Self",

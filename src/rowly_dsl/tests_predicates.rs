@@ -14,6 +14,27 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 }
 
 #[test]
+fn parser_uses_dedicated_ast_for_standard_namespace_calls() {
+    let program = parse(r#"VAR result = Text.Contains("abc", "b")"#).unwrap();
+
+    match &program.statements()[0] {
+        Statement::Declare {
+            value:
+                Expression::StandardCall {
+                    namespace: StandardNamespace::Text,
+                    name,
+                    arguments,
+                },
+            ..
+        } => {
+            assert_eq!(name, "Contains");
+            assert_eq!(arguments.len(), 2);
+        }
+        other => panic!("expected namespaced standard call, got {other:?}"),
+    }
+}
+
+#[test]
 fn namespaced_string_predicates_can_be_used_directly_as_conditions() {
     let (_directory, mut document) = open("値\nold\n");
     run(
@@ -207,7 +228,33 @@ fn standard_namespace_names_are_reserved_for_bindings() {
     for name in ["Text", "Number", "Boolean"] {
         let error = parse(&format!("VAR {name} = \"value\"")).unwrap_err();
         assert!(error.to_string().contains("reserved binding name"), "{name}");
+
+        let error = parse(&format!("Def F({name})\nReturn \"x\"\nEnd Def")).unwrap_err();
+        assert!(error.to_string().contains("reserved binding name"), "{name}");
+
+        let error =
+            parse(&format!("For {name} = Integer(\"1\") To Integer(\"1\")\nNext {name}"))
+                .unwrap_err();
+        assert!(error.to_string().contains("reserved binding name"), "{name}");
     }
+}
+
+#[test]
+fn legacy_predicate_names_can_still_be_user_defined_functions() {
+    let (_directory, mut document) = open("値\n1\n");
+    let report = run(
+        r#"
+            Def IsInteger(value)
+                Return "user"
+            End Def
+
+            VAR result = IsInteger("not-a-number")
+        "#,
+        &mut document,
+    )
+    .unwrap();
+
+    assert_eq!(report.variable("result"), Some("user"));
 }
 
 #[test]

@@ -104,6 +104,10 @@ impl ColumnMetadata {
         self.declarations.remove(header).is_some()
     }
 
+    pub(super) fn clear(&mut self) {
+        self.declarations.clear();
+    }
+
     pub(super) fn get(&self, header: &str) -> Option<ColumnType> {
         self.declarations.get(header).copied()
     }

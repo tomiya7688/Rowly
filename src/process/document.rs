@@ -114,6 +114,11 @@ impl CsvDocument {
         self.metadata.declarations()
     }
 
+    pub fn clear_column_type_declarations(&mut self) {
+        self.metadata.clear();
+        self.metadata_error = None;
+    }
+
     pub fn save_metadata(&mut self) -> Result<(), DocumentError> {
         self.metadata
             .save(&self.path)

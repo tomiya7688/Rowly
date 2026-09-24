@@ -4,9 +4,10 @@
 use std::{
     collections::HashSet,
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
+use crate::process::{ColumnType, CsvDocument};
 use serde_json::{Value, json};
 use thiserror::Error;
 
@@ -222,6 +223,287 @@ impl RowlyProject {
     }
 }
 
+impl ProjectScripts {
+    /// Conventional script locations used by a new Rowly project.
+    pub fn standard() -> Self {
+        Self {
+            init: PathBuf::from("data/scripts/rowlydsl/init.rly"),
+            generated: PathBuf::from("data/scripts/rowlydsl/init/generated.rly"),
+            user: PathBuf::from("data/scripts/rowlydsl/init/user.rly"),
+            macros: PathBuf::from("data/scripts/rowlydsl/macros"),
+        }
+    }
+
+    /// Create the script layout without replacing any existing file. The init
+    /// file is a two-entry import manifest; user code is never run by this API.
+    pub fn initialize_layout(&self, project_file: impl AsRef<Path>) -> Result<(), ProjectError> {
+        let root = project_root(project_file.as_ref());
+        self.validate_script_layout()?;
+        fs::create_dir_all(&root).map_err(|error| path_error(&root, error))?;
+        let init_path = internal_script_path(&root, &self.init)?;
+        let generated_path = internal_script_path(&root, &self.generated)?;
+        let user_path = internal_script_path(&root, &self.user)?;
+        let macros_path = internal_script_path(&root, &self.macros)?;
+
+        for path in [&init_path, &generated_path, &user_path] {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).map_err(|error| path_error(parent, error))?;
+            }
+        }
+        fs::create_dir_all(&macros_path).map_err(|error| path_error(&macros_path, error))?;
+        let imports = self.expected_init_contents()?;
+        create_if_missing(&init_path, imports.as_bytes())?;
+        create_if_missing(&generated_path, b"")?;
+        create_if_missing(&user_path, b"")?;
+        Ok(())
+    }
+
+    /// Persist column-type declarations as a restricted generated init DSL.
+    /// This operation replaces only `generated.rly`; `user.rly` is untouched.
+    pub fn save_generated_column_types(
+        &self,
+        project_file: impl AsRef<Path>,
+        document: &CsvDocument,
+    ) -> Result<(), ProjectError> {
+        self.initialize_layout(&project_file)?;
+        let root = project_root(project_file.as_ref());
+        let init_path = internal_script_path(&root, &self.init)?;
+        self.validate_init_manifest(&init_path)?;
+        let generated_path = internal_script_path(&root, &self.generated)?;
+        let mut content = String::new();
+        for (header, column_type) in document.column_type_declarations() {
+            let args = serde_json::to_string(&[header, column_type.as_metadata_str()])
+                .map_err(|error| ProjectError::Schema(error.to_string()))?;
+            content.push_str("SET_COLUMN_TYPE(");
+            content.push_str(&args);
+            content.push_str(")\n");
+        }
+        fs::write(&generated_path, content.as_bytes())
+            .map_err(|error| path_error(&generated_path, error))
+    }
+
+    /// Restore only the supported generated column-type directives. Arbitrary
+    /// DSL and user macros are not parsed or executed during project loading.
+    pub fn restore_generated_column_types(
+        &self,
+        project_file: impl AsRef<Path>,
+        document: &mut CsvDocument,
+    ) -> Result<(), ProjectError> {
+        self.initialize_layout(&project_file)?;
+        let root = project_root(project_file.as_ref());
+        let init_path = internal_script_path(&root, &self.init)?;
+        self.validate_init_manifest(&init_path)?;
+        let generated_path = internal_script_path(&root, &self.generated)?;
+        let text = fs::read_to_string(&generated_path)
+            .map_err(|error| path_error(&generated_path, error))?;
+        let mut declarations = Vec::new();
+        let mut headers = HashSet::new();
+        for (line_number, line) in text.lines().enumerate() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let args = line
+                .trim()
+                .strip_prefix("SET_COLUMN_TYPE(")
+                .and_then(|value| value.strip_suffix(')'))
+                .ok_or_else(|| {
+                    ProjectError::Schema(format!(
+                        "unsupported generated init directive on line {}",
+                        line_number + 1
+                    ))
+                })?;
+            let values: Vec<String> = serde_json::from_str(args).map_err(|error| {
+                ProjectError::Schema(format!(
+                    "invalid generated init line {}: {error}",
+                    line_number + 1
+                ))
+            })?;
+            if values.len() != 2 {
+                return Err(ProjectError::Schema(format!(
+                    "SET_COLUMN_TYPE on line {} requires a header and type",
+                    line_number + 1
+                )));
+            }
+            let column_type = ColumnType::from_metadata_str(&values[1]).ok_or_else(|| {
+                ProjectError::Schema(format!("unsupported column type `{}`", values[1]))
+            })?;
+            if !headers.insert(values[0].clone()) {
+                return Err(ProjectError::Schema(format!(
+                    "generated init declares column `{}` more than once",
+                    values[0]
+                )));
+            }
+            document
+                .column_type_declaration_by_header(&values[0])
+                .map_err(|error| {
+                    ProjectError::Schema(format!(
+                        "generated column `{}` cannot be restored: {error}",
+                        values[0]
+                    ))
+                })?;
+            declarations.push((values[0].clone(), column_type));
+        }
+        document.clear_column_type_declarations();
+        for (header, column_type) in declarations {
+            document
+                .set_column_type_declaration_by_header(&header, column_type)
+                .map_err(|error| ProjectError::Schema(error.to_string()))?;
+        }
+        Ok(())
+    }
+
+    fn expected_init_contents(&self) -> Result<String, ProjectError> {
+        self.validate_script_layout()?;
+        validate_project_relative(&self.generated)?;
+        validate_project_relative(&self.user)?;
+        let generated = serde_json::to_string(&self.generated.to_string_lossy())
+            .map_err(|error| ProjectError::Schema(error.to_string()))?;
+        let user = serde_json::to_string(&self.user.to_string_lossy())
+            .map_err(|error| ProjectError::Schema(error.to_string()))?;
+        Ok(format!("IMPORT({generated})\nIMPORT({user})\n"))
+    }
+
+    fn validate_init_manifest(&self, init_path: &Path) -> Result<(), ProjectError> {
+        let current =
+            fs::read_to_string(init_path).map_err(|error| path_error(init_path, error))?;
+        if current != self.expected_init_contents()? {
+            return Err(ProjectError::Schema(format!(
+                "project init manifest `{}` contains unsupported content",
+                init_path.display()
+            )));
+        }
+        Ok(())
+    }
+
+    fn validate_script_layout(&self) -> Result<(), ProjectError> {
+        let paths = [&self.init, &self.generated, &self.user, &self.macros];
+        let mut unique = HashSet::new();
+        for path in paths {
+            validate_project_relative(path)?;
+            let normalized = normalize_project_path(path).ok_or_else(|| {
+                ProjectError::Schema(format!("invalid project script path: {}", path.display()))
+            })?;
+            if !unique.insert(normalized) {
+                return Err(ProjectError::Schema(
+                    "project script paths must be distinct".into(),
+                ));
+            }
+        }
+        let macros = normalize_project_path(&self.macros).unwrap();
+        for file in [&self.init, &self.generated, &self.user] {
+            let file = normalize_project_path(file).unwrap();
+            if file.starts_with(&macros) {
+                return Err(ProjectError::Schema(
+                    "macros directory must not contain init files".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+fn project_root(project_file: &Path) -> PathBuf {
+    project_file
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf()
+}
+
+fn validate_project_relative(path: &Path) -> Result<(), ProjectError> {
+    if path.is_absolute() {
+        return Err(ProjectError::Schema(format!(
+            "project script path must be relative: {}",
+            path.display()
+        )));
+    }
+    let mut depth = 0usize;
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(_) => depth += 1,
+            Component::ParentDir if depth > 0 => depth -= 1,
+            _ => {
+                return Err(ProjectError::Schema(format!(
+                    "project script path escapes the project: {}",
+                    path.display()
+                )));
+            }
+        }
+    }
+    if depth == 0 {
+        return Err(ProjectError::Schema(
+            "project script path must not be empty".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn normalize_project_path(path: &Path) -> Option<PathBuf> {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(part) => normalized.push(part),
+            Component::ParentDir if normalized.pop() => {}
+            _ => return None,
+        }
+    }
+    Some(normalized)
+}
+
+fn internal_script_path(root: &Path, relative: &Path) -> Result<PathBuf, ProjectError> {
+    validate_project_relative(relative)?;
+    let canonical_root = fs::canonicalize(root).map_err(|error| path_error(root, error))?;
+    let target = root.join(relative);
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        if let Component::Normal(part) = component {
+            current.push(part);
+            if let Ok(metadata) = fs::symlink_metadata(&current) {
+                if metadata.file_type().is_symlink() {
+                    return Err(ProjectError::Schema(format!(
+                        "project script path contains a symbolic link: {}",
+                        current.display()
+                    )));
+                }
+            }
+        }
+    }
+    let mut ancestor = target.as_path();
+    while !ancestor.exists() {
+        ancestor = ancestor.parent().ok_or_else(|| {
+            ProjectError::Schema(format!(
+                "project script path has no existing parent: {}",
+                target.display()
+            ))
+        })?;
+    }
+    let canonical_ancestor =
+        fs::canonicalize(ancestor).map_err(|error| path_error(ancestor, error))?;
+    if !canonical_ancestor.starts_with(canonical_root) {
+        return Err(ProjectError::Schema(format!(
+            "project script path resolves outside the project: {}",
+            target.display()
+        )));
+    }
+    Ok(target)
+}
+
+fn create_if_missing(path: &Path, contents: &[u8]) -> Result<(), ProjectError> {
+    if path.exists() {
+        return Ok(());
+    }
+    fs::write(path, contents).map_err(|error| path_error(path, error))
+}
+
+fn path_error(path: &Path, error: std::io::Error) -> ProjectError {
+    ProjectError::Io {
+        path: path.display().to_string(),
+        message: error.to_string(),
+    }
+}
+
 pub(crate) fn validate_project_value(value: Value) -> Result<(), ProjectError> {
     RowlyProject::from_value(value).map(|_| ())
 }
@@ -265,6 +547,8 @@ fn string_field<'a>(
 
 #[derive(Debug, Error)]
 pub enum ProjectError {
+    #[error("failed to access project file `{path}`: {message}")]
+    Io { path: String, message: String },
     #[error("failed to read Rowly project `{path}`: {message}")]
     Read { path: String, message: String },
     #[error("failed to parse Rowly project `{path}`: {message}")]

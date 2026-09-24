@@ -47,6 +47,7 @@ Rust コアでは次を実装済みです。
 - `<csv>.rowly.json` sidecar によるヘッダー単位の永続列型宣言
 - versioned `.rwprj` JSON manifest によるCSV source／script／history参照の保存と読込
 - `.rowlyx` ZIP互換プロジェクトのpack／open／extract
+- project generated init DSL で列型宣言を保存／復元（restricted settings loader）
 - `String` / `Integer` / `Decimal` / `Boolean` の非破壊列チェック
 - 日本語文字チェックと A1 参照による結果報告
 - process API 上で動作する BASIC 風 Rowly DSL
@@ -74,6 +75,8 @@ Rust コアでは次を実装済みです。
 `.rwprj` は project name と宣言済みの source、script、history への参照だけを保持します。CSV内容は埋め込みません。相対パスは project file のあるディレクトリを基準に解決し、source directory の中身を自動探索しません。
 
 `.rowlyx` は通常の `.rwprj` projectをZIP互換コンテナへ包装します。プロジェクト内の相対参照先だけを収録し、絶対パスの参照は外部参照として維持します。open時にarchive entryとproject定義を検証し、extract時はpath traversalとsymlinkを拒否します。
+
+project script layout は `init.rly`、`init/generated.rly`、`init/user.rly`、`macros/` を使います。Rowlyが生成する列型宣言は `generated.rly` に保存し、project open時は `SET_COLUMN_TYPE` directiveだけを復元します。`user.rly` は初期化後に上書きせず、project open時の自動実行対象にもなりません。
 
 CSVの読み書きは独自方言を追加せず、標準的な引用符規則を使用します。空値、引用符内のカンマ、`""` による引用符エスケープ、引用符内改行を値として保持し、LF/CRLFの双方を読み込めます。保存時はUTF-8/LFへ正規化します。
 

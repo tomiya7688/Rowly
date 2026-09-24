@@ -28,6 +28,16 @@ Rowly のデータモデルには結合セルを持ちません。
 
 ## 現在の実装
 
+### GUI シェル
+
+Windows / Ubuntu 向けの egui デスクトップシェルは、次のコマンドで起動できます。
+
+```text
+cargo run --features gui --bin rowly-gui
+```
+
+CSV のパスを入力して開くと、Table Editor / Text Editor / Viewer の各ワークスペースを切り替えられます。この段階では表示と基本の open / save 導線を提供し、セル編集グリッドなどは後続の実装対象です。
+
 Rust コアでは次を実装済みです。
 
 - UTF-8 CSV の読み込み／保存

@@ -222,6 +222,10 @@ impl RowlyProject {
     }
 }
 
+pub(crate) fn validate_project_value(value: Value) -> Result<(), ProjectError> {
+    RowlyProject::from_value(value).map(|_| ())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedSource {
     pub id: String,

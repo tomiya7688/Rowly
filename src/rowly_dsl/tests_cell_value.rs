@@ -35,7 +35,7 @@ fn cell_value_composes_with_predicates_and_conversions() {
 
     run(
         r#"
-            If IsJapanese(CellValue("A2")) And Integer(CellValue("B2")) >= Integer("40") Then
+            If Text.IsJapanese(CellValue("A2")) And Integer(CellValue("B2")) >= Integer("40") Then
                 This.Worksheet.Editor.Cell(B2).Value.Set = Integer(CellValue("B2")) + Integer("8")
             End If
         "#,

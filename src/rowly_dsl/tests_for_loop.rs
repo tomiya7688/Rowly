@@ -20,7 +20,7 @@ fn for_loop_walks_rows_and_updates_dynamic_cells() {
     run(
         r#"
             For row = Integer("2") To RowCount()
-                If IsJapanese(CellValueAt(row, Integer("1"))) Then
+                If Text.IsJapanese(CellValueAt(row, Integer("1"))) Then
                     SetCellValueAt(row, Integer("2"), "日本語")
                 Else
                     SetCellValueAt(row, Integer("2"), "その他")

@@ -67,13 +67,13 @@ fn var_reassignment_preserves_typed_values_and_csv_process_history() {
             count = count / Integer("2")
             SetCellValueByHeader(Integer("3"), "Score", count)
             CommitTransaction()
-            CONST text = "001"
+            CONST codeText = "001"
         "#,
         &mut document,
     )
     .unwrap();
     assert_eq!(report.variable("count"), Some("3"));
-    assert_eq!(report.variable("text"), Some("001"));
+    assert_eq!(report.variable("codetext"), Some("001"));
     assert_eq!(document.cell_a1("B2").unwrap(), Some("6"));
     assert_eq!(document.cell_a1("B3").unwrap(), Some("3"));
     assert!(document.undo().unwrap());
@@ -365,11 +365,11 @@ fn legacy_declarations_are_parse_errors_even_in_unexecuted_blocks() {
     }
     let (_directory, mut document) = open();
     let report = run(
-        "Rem Let is only a comment\nCONST text = \"Let Dim\"",
+        "Rem Let is only a comment\nCONST sampleText = \"Let Dim\"",
         &mut document,
     )
     .unwrap();
-    assert_eq!(report.variable("text"), Some("Let Dim"));
+    assert_eq!(report.variable("sampletext"), Some("Let Dim"));
 }
 
 #[test]

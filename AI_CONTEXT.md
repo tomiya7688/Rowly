@@ -69,7 +69,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - `Super.Method(...)` and `Super.Init(...)` resolve from the parent of the class that defined the currently executing method, while keeping `Self` bound to the original instance.
 - CSV cell edits require textual values; object references cannot be written directly into canonical CSV cells.
 - DSL arithmetic is typed: Integer/Decimal only, with explicit promotion, division-by-zero errors, and no implicit string coercion.
-- DSL predicate builtins return Boolean values and Boolean expressions may be used directly as `If` conditions.
+- DSL standard predicates live under reserved `Text`, `Number`, and `Boolean` namespaces and return Boolean values. They use a dedicated AST/runtime resolution path rather than user-object method lookup. Legacy global predicate names are not 1.0 builtins.
 - `CellValue("A1")` reads current CSV text through the process boundary; missing cells and invalid references must fail explicitly.
 - `For ... To ... [Step ...]` loops operate on Integer bounds evaluated once; each iteration has fresh local bindings that do not leak outward. Declare cross-iteration accumulators before the loop and update them by assignment.
 - Dynamic cell builtins use 1-based row/column indices and must still route through `CsvDocument`.
@@ -108,7 +108,7 @@ Implemented:
 - Japanese-character column checks with A1 result references
 - Rowly DSL AST/parser/runtime for `If`, `VAR` / `CONST`, assignment, functions, calls, return, classes, single inheritance, objects, fields, methods, `Init` constructors, arithmetic expressions, column checks, and range value assignment
 - typed Integer/Decimal arithmetic with precedence, unary minus, parentheses, and explicit arithmetic errors
-- value predicates for string matching, Japanese detection, and Integer/Decimal/Boolean interpretation
+- namespaced standard predicates under `Text.*`, `Number.*`, and `Boolean.*` for string matching, Japanese detection, and scalar interpretation
 - expression-level CSV cell reads through `CellValue(...)`
 - BASIC-style For loops plus row/column counts and dynamic 1-based cell reads/writes
 - header-based column lookup and row cell reads/writes without hard-coded column numbers

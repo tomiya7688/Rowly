@@ -36,7 +36,7 @@ fn header_access_integrates_with_row_loop_and_predicates() {
     run(
         r#"
             For row = Integer("2") To RowCount()
-                If IsJapanese(CellValueByHeader(row, "名前")) Then
+                If Text.IsJapanese(CellValueByHeader(row, "名前")) Then
                     SetCellValueByHeader(row, "状態", "日本語")
                 Else
                     SetCellValueByHeader(row, "状態", "その他")

@@ -45,6 +45,7 @@ Rust コアでは次を実装済みです。
 - 保存状態を考慮した dirty 管理
 - 先頭行を明示的にヘッダーとして扱う検索と重複検出
 - `<csv>.rowly.json` sidecar によるヘッダー単位の永続列型宣言
+- versioned `.rwprj` JSON manifest によるCSV source／script／history参照の保存と読込
 - `String` / `Integer` / `Decimal` / `Boolean` の非破壊列チェック
 - 日本語文字チェックと A1 参照による結果報告
 - process API 上で動作する BASIC 風 Rowly DSL
@@ -68,6 +69,8 @@ Rust コアでは次を実装済みです。
 - ヘッドレス CLI のスモークエントリポイント
 
 列型チェックは意味解釈／検証のみであり、CSV の正本文字列を書き換えません。
+
+`.rwprj` は project name と宣言済みの source、script、history への参照だけを保持します。CSV内容は埋め込みません。相対パスは project file のあるディレクトリを基準に解決し、source directory の中身を自動探索しません。
 
 CSVの読み書きは独自方言を追加せず、標準的な引用符規則を使用します。空値、引用符内のカンマ、`""` による引用符エスケープ、引用符内改行を値として保持し、LF/CRLFの双方を読み込めます。保存時はUTF-8/LFへ正規化します。
 

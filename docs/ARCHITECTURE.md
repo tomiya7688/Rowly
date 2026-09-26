@@ -8,6 +8,8 @@ Rowly は CSV-first のエディタです。表示、スクリプト、外部連
 
 `.rowlyx` は通常のproject treeをZIP互換archiveへ包装します。pack対象はmanifest内の相対参照に限り、absolute参照は外部のまま保持します。open時にarchive pathとproject manifestを検証し、安全な相対entryだけを空の展開先へ復元します。
 
+Project script settings は `generated.rly` と `user.rly` を分離します。project openで読み取るのはgenerated fileの列型宣言だけで、限定parserが `SET_COLUMN_TYPE` directive以外を拒否します。user scriptやmacroをproject open時に実行しません。GUI保存はgenerated fileだけを書き換えます。
+
 ## 依存方向
 
 ```text

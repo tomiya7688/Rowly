@@ -71,7 +71,7 @@ Rust コアでは次を実装済みです。
 
 列型チェックは意味解釈／検証のみであり、CSV の正本文字列を書き換えません。
 
-`.rwprj` は project name と宣言済みの source、script、history への参照だけを保持します。CSV内容は埋め込みません。相対パスは project file のあるディレクトリを基準に解決し、source directory の中身を自動探索しません。
+`.rwprj` は project name と宣言済みの source、script、history への参照だけを保持します。CSV内容は埋め込みません。相対パスは project file のあるディレクトリを基準に解決します。file source は任意の `search_root` と列見出し `schema` を保存できます。再紐付け探索は宣言された `search_root` の内側に限られ、元のファイル名と列見出しが一致する候補が一つだけの場合に `path` を更新します。source の `id` は維持し、複数候補は曖昧として未解決にします。`search_root` がない場合は再探索しません。
 
 `.rowlyx` は通常の `.rwprj` projectをZIP互換コンテナへ包装します。プロジェクト内の相対参照先だけを収録し、絶対パスの参照は外部参照として維持します。open時にarchive entryとproject定義を検証し、extract時はpath traversalとsymlinkを拒否します。
 

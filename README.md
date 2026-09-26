@@ -28,6 +28,16 @@ Rowly のデータモデルには結合セルを持ちません。
 
 ## 現在の実装
 
+### GUI シェル
+
+Windows / Ubuntu 向けの egui デスクトップシェルは、次のコマンドで起動できます。
+
+```text
+cargo run --features gui --bin rowly-gui
+```
+
+CSV のパスを入力して開くと、Table Editor / Text Editor / Viewer の各ワークスペースを切り替えられます。Table Editor では A1 座標のセル選択と編集、Shift+クリックによる矩形範囲選択、行・列の挿入／削除、Undo / Redo を使えます。セル値の変更は `process::CsvDocument` に記録され、表示用の行番号や列見出しはCSVへ保存されません。表示行・列を仮想化し、大きなCSVで画面外のセルwidgetを生成しないようにします。
+
 Rust コアでは次を実装済みです。
 
 - UTF-8 CSV の読み込み／保存

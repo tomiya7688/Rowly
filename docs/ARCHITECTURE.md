@@ -4,7 +4,7 @@
 
 Rowly は CSV-first のエディタです。表示、スクリプト、外部連携のコードが第二の正本を作らない構造を維持します。
 
-`.rwprj` は versioned JSON manifest として source／script／history の参照を保持します。CSV内容は含めず、relative reference は manifest の親ディレクトリから解決します。source の解決は manifest に列挙された項目に限り、directory の自動走査や source の再発見を行いません。
+`.rwprj` は versioned JSON manifest として source／script／history の参照を保持します。CSV内容は含めず、relative reference は manifest の親ディレクトリから解決します。`logical_table::LogicalProject` はmanifestに宣言されたCSV fileとdirectoryだけを読み、directoryの列挙はsourceごとのrecursive設定に従います。完全一致する順序付きheaderごとにlogical tableを作り、各rowはsource id・元file path・data-record indexを保持します。display orderはprovenanceから独立し、論理結合でCSV正本を書き換えません。
 
 `.rowlyx` は通常のproject treeをZIP互換archiveへ包装します。pack対象はmanifest内の相対参照に限り、absolute参照は外部のまま保持します。open時にarchive pathとproject manifestを検証し、安全な相対entryだけを空の展開先へ復元します。
 

@@ -27,6 +27,8 @@ pub struct LogicalTable {
     pub schema: Vec<String>,
     /// Stable project source ids that contribute files to this table.
     pub source_ids: Vec<String>,
+    /// CSV files supplied by each source id, in deterministic load order.
+    pub source_files: Vec<SourceFile>,
     /// Source selected for implicit row creation, when explicitly configured.
     pub default_write_target: Option<String>,
     /// Stable indices into `rows`; changing this order does not change row provenance.
@@ -46,6 +48,12 @@ pub struct SourceRecord {
     pub path: PathBuf,
     /// Zero-based CSV data-record index, excluding the header record.
     pub record_index: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceFile {
+    pub source_id: String,
+    pub path: PathBuf,
 }
 
 impl LogicalProject {
@@ -78,6 +86,7 @@ impl LogicalProject {
                     tables.push(LogicalTable {
                         schema,
                         source_ids: Vec::new(),
+                        source_files: Vec::new(),
                         default_write_target: None,
                         display_order: Vec::new(),
                         rows: Vec::new(),
@@ -87,6 +96,16 @@ impl LogicalProject {
                 let table = &mut tables[table_index];
                 if !table.source_ids.contains(&source.id) {
                     table.source_ids.push(source.id.clone());
+                }
+                if !table
+                    .source_files
+                    .iter()
+                    .any(|file| file.source_id == source.id && file.path == path)
+                {
+                    table.source_files.push(SourceFile {
+                        source_id: source.id.clone(),
+                        path: path.clone(),
+                    });
                 }
                 for (record_index, values) in records.enumerate() {
                     table.rows.push(LogicalRow {
@@ -141,6 +160,52 @@ impl LogicalTable {
             ));
         }
         Ok(target.to_owned())
+    }
+
+    /// Add a row to the in-memory logical table and assign it to the resolved
+    /// source. This does not write a CSV file; persistence is handled by the
+    /// source document command layer.
+    pub fn append_row(
+        &mut self,
+        values: Vec<String>,
+        explicit_source_id: Option<&str>,
+    ) -> Result<usize, LogicalTableError> {
+        if values.len() != self.schema.len() {
+            return Err(LogicalTableError::InvalidRowWidth {
+                expected: self.schema.len(),
+                actual: values.len(),
+            });
+        }
+        let source_id = self.resolve_write_target(explicit_source_id)?;
+        let mut matching_files = self
+            .source_files
+            .iter()
+            .filter(|file| file.source_id == source_id);
+        let file = matching_files
+            .next()
+            .ok_or_else(|| LogicalTableError::SourceFileUnavailable(source_id.clone()))?;
+        let path = file.path.clone();
+        if matching_files.next().is_some() {
+            return Err(LogicalTableError::AmbiguousSourceFile(source_id));
+        }
+        let record_index = self
+            .rows
+            .iter()
+            .filter(|row| row.origin.path == path)
+            .map(|row| row.origin.record_index)
+            .max()
+            .map_or(0, |index| index + 1);
+        let row_index = self.rows.len();
+        self.rows.push(LogicalRow {
+            values,
+            origin: SourceRecord {
+                source_id,
+                path,
+                record_index,
+            },
+        });
+        self.display_order.push(row_index);
+        Ok(row_index)
     }
 }
 
@@ -214,4 +279,10 @@ pub enum LogicalTableError {
     NoDefaultWriteTarget,
     #[error("source `{0}` is not part of this logical table")]
     IncompatibleWriteTarget(String),
+    #[error("row has {actual} values, but this logical table requires {expected}")]
+    InvalidRowWidth { expected: usize, actual: usize },
+    #[error("source `{0}` has no CSV file in this logical table")]
+    SourceFileUnavailable(String),
+    #[error("source `{0}` contributes multiple CSV files; row target file is ambiguous")]
+    AmbiguousSourceFile(String),
 }

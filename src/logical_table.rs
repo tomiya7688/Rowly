@@ -25,6 +25,12 @@ pub struct LogicalProject {
 pub struct LogicalTable {
     /// The exact ordered header shared by every source in this table.
     pub schema: Vec<String>,
+    /// Stable project source ids that contribute files to this table.
+    pub source_ids: Vec<String>,
+    /// CSV files supplied by each source id, in deterministic load order.
+    pub source_files: Vec<SourceFile>,
+    /// Source selected for implicit row creation, when explicitly configured.
+    pub default_write_target: Option<String>,
     /// Stable indices into `rows`; changing this order does not change row provenance.
     pub display_order: Vec<usize>,
     pub rows: Vec<LogicalRow>,
@@ -42,6 +48,12 @@ pub struct SourceRecord {
     pub path: PathBuf,
     /// Zero-based CSV data-record index, excluding the header record.
     pub record_index: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceFile {
+    pub source_id: String,
+    pub path: PathBuf,
 }
 
 impl LogicalProject {
@@ -73,12 +85,28 @@ impl LogicalProject {
                     let index = tables.len();
                     tables.push(LogicalTable {
                         schema,
+                        source_ids: Vec::new(),
+                        source_files: Vec::new(),
+                        default_write_target: None,
                         display_order: Vec::new(),
                         rows: Vec::new(),
                     });
                     index
                 });
                 let table = &mut tables[table_index];
+                if !table.source_ids.contains(&source.id) {
+                    table.source_ids.push(source.id.clone());
+                }
+                if !table
+                    .source_files
+                    .iter()
+                    .any(|file| file.source_id == source.id && file.path == path)
+                {
+                    table.source_files.push(SourceFile {
+                        source_id: source.id.clone(),
+                        path: path.clone(),
+                    });
+                }
                 for (record_index, values) in records.enumerate() {
                     table.rows.push(LogicalRow {
                         values: values.to_vec(),
@@ -96,6 +124,109 @@ impl LogicalProject {
             table.display_order = (0..table.rows.len()).collect();
         }
         Ok(Self { tables })
+    }
+}
+
+impl LogicalTable {
+    /// Select the project source that implicit row creation should target.
+    /// Only sources already contributing to this exact-schema table are valid.
+    pub fn set_default_write_target(
+        &mut self,
+        source_id: impl Into<String>,
+    ) -> Result<(), LogicalTableError> {
+        let source_id = source_id.into();
+        if !self.source_ids.contains(&source_id) {
+            return Err(LogicalTableError::IncompatibleWriteTarget(source_id));
+        }
+        self.default_write_target = Some(source_id);
+        Ok(())
+    }
+
+    pub fn clear_default_write_target(&mut self) {
+        self.default_write_target = None;
+    }
+
+    /// Resolve an explicit row target, or the configured default when omitted.
+    pub fn resolve_write_target(
+        &self,
+        explicit_source_id: Option<&str>,
+    ) -> Result<String, LogicalTableError> {
+        let target = explicit_source_id
+            .or(self.default_write_target.as_deref())
+            .ok_or(LogicalTableError::NoDefaultWriteTarget)?;
+        if !self.source_ids.iter().any(|source_id| source_id == target) {
+            return Err(LogicalTableError::IncompatibleWriteTarget(
+                target.to_owned(),
+            ));
+        }
+        Ok(target.to_owned())
+    }
+
+    /// Append a row to the resolved source CSV and update this logical table.
+    /// A source id with multiple CSV files is rejected as ambiguous.
+    pub fn append_row(
+        &mut self,
+        values: Vec<String>,
+        explicit_source_id: Option<&str>,
+    ) -> Result<usize, LogicalTableError> {
+        if values.len() != self.schema.len() {
+            return Err(LogicalTableError::InvalidRowWidth {
+                expected: self.schema.len(),
+                actual: values.len(),
+            });
+        }
+        let source_id = self.resolve_write_target(explicit_source_id)?;
+        let mut matching_files = self
+            .source_files
+            .iter()
+            .filter(|file| file.source_id == source_id);
+        let file = matching_files
+            .next()
+            .ok_or_else(|| LogicalTableError::SourceFileUnavailable(source_id.clone()))?;
+        let path = file.path.clone();
+        if matching_files.next().is_some() {
+            return Err(LogicalTableError::AmbiguousSourceFile(source_id));
+        }
+        let mut document =
+            CsvDocument::open(&path).map_err(|error| LogicalTableError::SourceDocument {
+                path: path.clone(),
+                message: error.to_string(),
+            })?;
+        let header = document.rows().next().unwrap_or_default();
+        if header != self.schema {
+            return Err(LogicalTableError::SchemaChanged(path));
+        }
+        let row_index_in_document = document.row_count();
+        let record_index = row_index_in_document.saturating_sub(1);
+        let append_result = (|| {
+            document.begin_transaction()?;
+            document.insert_rows(row_index_in_document, 1)?;
+            for (column, value) in values.iter().enumerate() {
+                document.set_cell(row_index_in_document, column, value.clone())?;
+            }
+            document.commit_transaction()?;
+            document.save()
+        })();
+        if let Err(error) = append_result {
+            if document.transaction_active() {
+                let _ = document.rollback_transaction();
+            }
+            return Err(LogicalTableError::SourceDocument {
+                path,
+                message: error.to_string(),
+            });
+        }
+        let row_index = self.rows.len();
+        self.rows.push(LogicalRow {
+            values,
+            origin: SourceRecord {
+                source_id,
+                path,
+                record_index,
+            },
+        });
+        self.display_order.push(row_index);
+        Ok(row_index)
     }
 }
 
@@ -161,4 +292,22 @@ pub enum LogicalLoadError {
     },
     #[error("failed to load CSV `{path}`: {message}")]
     Csv { path: PathBuf, message: String },
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum LogicalTableError {
+    #[error("no default write target is configured and no explicit target was provided")]
+    NoDefaultWriteTarget,
+    #[error("source `{0}` is not part of this logical table")]
+    IncompatibleWriteTarget(String),
+    #[error("row has {actual} values, but this logical table requires {expected}")]
+    InvalidRowWidth { expected: usize, actual: usize },
+    #[error("source `{0}` has no CSV file in this logical table")]
+    SourceFileUnavailable(String),
+    #[error("source `{0}` contributes multiple CSV files; row target file is ambiguous")]
+    AmbiguousSourceFile(String),
+    #[error("source CSV header changed since this logical table was loaded: {0}")]
+    SchemaChanged(PathBuf),
+    #[error("failed to update source CSV `{path}`: {message}")]
+    SourceDocument { path: PathBuf, message: String },
 }

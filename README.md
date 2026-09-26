@@ -75,6 +75,8 @@ Rust コアでは次を実装済みです。
 
 `.rowlyx` は通常の `.rwprj` projectをZIP互換コンテナへ包装します。プロジェクト内の相対参照先だけを収録し、絶対パスの参照は外部参照として維持します。open時にarchive entryとproject定義を検証し、extract時はpath traversalとsymlinkを拒否します。
 
+論理テーブルでは、参加するstable source idの中からdefault write targetを明示できます。未指定のsourceや別logical tableのsourceはtargetとして受け付けません。
+
 CSVの読み書きは独自方言を追加せず、標準的な引用符規則を使用します。空値、引用符内のカンマ、`""` による引用符エスケープ、引用符内改行を値として保持し、LF/CRLFの双方を読み込めます。保存時はUTF-8/LFへ正規化します。
 
 `CsvDocument::begin_transaction()` / `commit_transaction()` / `rollback_transaction()` で複数編集を1つの履歴操作にまとめられます。transaction 中は `undo` / `redo` / `save` / `save_as` を禁止し、rollback は履歴を増やさず変更を元へ戻します。

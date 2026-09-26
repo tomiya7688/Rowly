@@ -162,9 +162,8 @@ impl LogicalTable {
         Ok(target.to_owned())
     }
 
-    /// Add a row to the in-memory logical table and assign it to the resolved
-    /// source. This does not write a CSV file; persistence is handled by the
-    /// source document command layer.
+    /// Append a row to the resolved source CSV and update this logical table.
+    /// A source id with multiple CSV files is rejected as ambiguous.
     pub fn append_row(
         &mut self,
         values: Vec<String>,
@@ -188,13 +187,35 @@ impl LogicalTable {
         if matching_files.next().is_some() {
             return Err(LogicalTableError::AmbiguousSourceFile(source_id));
         }
-        let record_index = self
-            .rows
-            .iter()
-            .filter(|row| row.origin.path == path)
-            .map(|row| row.origin.record_index)
-            .max()
-            .map_or(0, |index| index + 1);
+        let mut document =
+            CsvDocument::open(&path).map_err(|error| LogicalTableError::SourceDocument {
+                path: path.clone(),
+                message: error.to_string(),
+            })?;
+        let header = document.rows().next().unwrap_or_default();
+        if header != self.schema {
+            return Err(LogicalTableError::SchemaChanged(path));
+        }
+        let row_index_in_document = document.row_count();
+        let record_index = row_index_in_document.saturating_sub(1);
+        let append_result = (|| {
+            document.begin_transaction()?;
+            document.insert_rows(row_index_in_document, 1)?;
+            for (column, value) in values.iter().enumerate() {
+                document.set_cell(row_index_in_document, column, value.clone())?;
+            }
+            document.commit_transaction()?;
+            document.save()
+        })();
+        if let Err(error) = append_result {
+            if document.transaction_active() {
+                let _ = document.rollback_transaction();
+            }
+            return Err(LogicalTableError::SourceDocument {
+                path,
+                message: error.to_string(),
+            });
+        }
         let row_index = self.rows.len();
         self.rows.push(LogicalRow {
             values,
@@ -285,4 +306,8 @@ pub enum LogicalTableError {
     SourceFileUnavailable(String),
     #[error("source `{0}` contributes multiple CSV files; row target file is ambiguous")]
     AmbiguousSourceFile(String),
+    #[error("source CSV header changed since this logical table was loaded: {0}")]
+    SchemaChanged(PathBuf),
+    #[error("failed to update source CSV `{path}`: {message}")]
+    SourceDocument { path: PathBuf, message: String },
 }

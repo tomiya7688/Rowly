@@ -75,7 +75,7 @@ Rust コアでは次を実装済みです。
 
 `.rowlyx` は通常の `.rwprj` projectをZIP互換コンテナへ包装します。プロジェクト内の相対参照先だけを収録し、絶対パスの参照は外部参照として維持します。open時にarchive entryとproject定義を検証し、extract時はpath traversalとsymlinkを拒否します。
 
-論理テーブルでは、参加するstable source idの中からdefault write targetを明示できます。新規rowは明示targetかdefaultへ割り当てられ、列数とsourceの曖昧さを検証します。この段階のrow追加はlogical model内で行い、CSVへの永続化はprocess command層で扱います。
+論理テーブルでは、参加するstable source idの中からdefault write targetを明示できます。新規rowは明示targetかdefaultへ割り当てられ、列数・sourceの曖昧さ・現在のCSV schemaを検証してから対象CSVへ追記します。1つのsource idに複数CSVがある場合は、暗黙にファイルを選びません。
 
 CSVの読み書きは独自方言を追加せず、標準的な引用符規則を使用します。空値、引用符内のカンマ、`""` による引用符エスケープ、引用符内改行を値として保持し、LF/CRLFの双方を読み込めます。保存時はUTF-8/LFへ正規化します。
 

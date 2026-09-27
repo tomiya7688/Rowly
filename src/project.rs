@@ -27,6 +27,10 @@ pub struct ProjectSource {
     pub kind: SourceKind,
     pub path: PathBuf,
     pub recursive: bool,
+    /// Optional boundary for a bounded relink search.
+    pub search_root: Option<PathBuf>,
+    /// Optional ordered CSV header signature used to identify a moved source.
+    pub schema: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +77,8 @@ impl RowlyProject {
                     "path": source.path,
                 });
                 if source.kind == SourceKind::Directory { item["recursive"] = json!(source.recursive); }
+                if let Some(search_root) = &source.search_root { item["search_root"] = json!(search_root); }
+                if let Some(schema) = &source.schema { item["schema"] = json!(schema); }
                 item
             }).collect::<Vec<_>>(),
             "scripts": {
@@ -102,8 +108,108 @@ impl RowlyProject {
                 kind: source.kind,
                 path: resolve_project_reference(project_path.as_ref(), &source.path),
                 recursive: source.recursive,
+                search_root: source
+                    .search_root
+                    .as_ref()
+                    .map(|path| resolve_project_reference(project_path.as_ref(), path)),
+                schema: source.schema.clone(),
             })
             .collect()
+    }
+
+    /// Resolve missing file sources only inside each source's declared search
+    /// root. A relink is applied only when filename and saved header schema
+    /// identify exactly one candidate; the stable source id is never changed.
+    pub fn resolve_source_locations(
+        &mut self,
+        project_path: impl AsRef<Path>,
+    ) -> Result<Vec<SourceResolution>, ProjectError> {
+        let project_path = project_path.as_ref();
+        let mut results = Vec::with_capacity(self.sources.len());
+        for source in &mut self.sources {
+            let path = resolve_project_reference(project_path, &source.path);
+            if source_path_exists(source.kind, &path) {
+                results.push(SourceResolution {
+                    id: source.id.clone(),
+                    status: SourceStatus::Available,
+                    path: Some(path),
+                });
+                continue;
+            }
+            if source.kind != SourceKind::File {
+                results.push(SourceResolution {
+                    id: source.id.clone(),
+                    status: SourceStatus::Missing,
+                    path: None,
+                });
+                continue;
+            }
+            let (Some(search_root), Some(schema)) = (&source.search_root, &source.schema) else {
+                results.push(SourceResolution {
+                    id: source.id.clone(),
+                    status: SourceStatus::Missing,
+                    path: None,
+                });
+                continue;
+            };
+            let search_root = resolve_project_reference(project_path, search_root);
+            if !search_root.is_dir() {
+                results.push(SourceResolution {
+                    id: source.id.clone(),
+                    status: SourceStatus::Missing,
+                    path: None,
+                });
+                continue;
+            }
+            let mut candidates = Vec::new();
+            find_matching_sources(&search_root, path.file_name(), schema, &mut candidates)?;
+            match candidates.as_slice() {
+                [candidate] => {
+                    source.path = candidate.clone();
+                    results.push(SourceResolution {
+                        id: source.id.clone(),
+                        status: SourceStatus::Relinked,
+                        path: Some(candidate.clone()),
+                    });
+                }
+                [] => results.push(SourceResolution {
+                    id: source.id.clone(),
+                    status: SourceStatus::Missing,
+                    path: None,
+                }),
+                _ => results.push(SourceResolution {
+                    id: source.id.clone(),
+                    status: SourceStatus::Ambiguous,
+                    path: None,
+                }),
+            }
+        }
+        Ok(results)
+    }
+
+    /// Snapshot CSV headers for file sources so later relink searches can
+    /// distinguish same-named files inside the declared search root.
+    pub fn capture_source_schemas(
+        &mut self,
+        project_path: impl AsRef<Path>,
+    ) -> Result<(), ProjectError> {
+        let project_path = project_path.as_ref();
+        for source in &mut self.sources {
+            if source.kind != SourceKind::File {
+                continue;
+            }
+            let path = resolve_project_reference(project_path, &source.path);
+            if !path.is_file() {
+                continue;
+            }
+            let document =
+                crate::process::CsvDocument::open(&path).map_err(|error| ProjectError::Read {
+                    path: path.display().to_string(),
+                    message: error.to_string(),
+                })?;
+            source.schema = document.rows().next().map(|row| row.to_vec());
+        }
+        Ok(())
     }
 
     fn from_value(value: Value) -> Result<Self, ProjectError> {
@@ -150,6 +256,27 @@ impl RowlyProject {
                 .get("recursive")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
+            let search_root = optional_path_field(item, "search_root")?;
+            let schema = match item.get("schema") {
+                None => None,
+                Some(Value::Array(columns)) => Some(
+                    columns
+                        .iter()
+                        .map(|column| {
+                            column.as_str().map(str::to_owned).ok_or_else(|| {
+                                ProjectError::Schema(format!(
+                                    "source `{id}` schema entries must be strings"
+                                ))
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
+                ),
+                Some(_) => {
+                    return Err(ProjectError::Schema(format!(
+                        "source `{id}` schema must be an array"
+                    )));
+                }
+            };
             if kind == SourceKind::File && recursive {
                 return Err(ProjectError::Schema(format!(
                     "file source `{id}` cannot be recursive"
@@ -160,6 +287,8 @@ impl RowlyProject {
                 kind,
                 path,
                 recursive,
+                search_root,
+                schema,
             });
         }
         let scripts = object
@@ -232,6 +361,76 @@ pub struct ResolvedSource {
     pub kind: SourceKind,
     pub path: PathBuf,
     pub recursive: bool,
+    pub search_root: Option<PathBuf>,
+    pub schema: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceStatus {
+    Available,
+    Missing,
+    Relinked,
+    Ambiguous,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceResolution {
+    pub id: String,
+    pub status: SourceStatus,
+    pub path: Option<PathBuf>,
+}
+
+fn source_path_exists(kind: SourceKind, path: &Path) -> bool {
+    match kind {
+        SourceKind::File => path.is_file(),
+        SourceKind::Directory => path.is_dir(),
+    }
+}
+
+fn find_matching_sources(
+    root: &Path,
+    filename: Option<&std::ffi::OsStr>,
+    schema: &[String],
+    matches: &mut Vec<PathBuf>,
+) -> Result<(), ProjectError> {
+    let entries = fs::read_dir(root).map_err(|error| ProjectError::Read {
+        path: root.display().to_string(),
+        message: error.to_string(),
+    })?;
+    for entry in entries {
+        let entry = entry.map_err(|error| ProjectError::Read {
+            path: root.display().to_string(),
+            message: error.to_string(),
+        })?;
+        let file_type = entry.file_type().map_err(|error| ProjectError::Read {
+            path: entry.path().display().to_string(),
+            message: error.to_string(),
+        })?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
+            find_matching_sources(&entry.path(), filename, schema, matches)?;
+        } else if file_type.is_file()
+            && filename.is_some_and(|name| entry.file_name() == name)
+            && csv_header_matches(&entry.path(), schema)
+        {
+            matches.push(entry.path());
+        }
+    }
+    Ok(())
+}
+
+fn csv_header_matches(path: &Path, schema: &[String]) -> bool {
+    crate::process::CsvDocument::open(path)
+        .ok()
+        .and_then(|document| {
+            document.rows().next().map(|row| {
+                row.iter().map(String::as_str).collect::<Vec<_>>()
+                    == schema.iter().map(String::as_str).collect::<Vec<_>>()
+            })
+        })
+        .unwrap_or(false)
 }
 
 /// Resolve any project-relative script, history, or source reference using the
@@ -261,6 +460,19 @@ fn string_field<'a>(
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| ProjectError::Schema(format!("missing or empty string `{name}`")))
+}
+
+fn optional_path_field(
+    object: &serde_json::Map<String, Value>,
+    name: &str,
+) -> Result<Option<PathBuf>, ProjectError> {
+    match object.get(name) {
+        None => Ok(None),
+        Some(Value::String(value)) if !value.trim().is_empty() => Ok(Some(PathBuf::from(value))),
+        Some(_) => Err(ProjectError::Schema(format!(
+            "`{name}` must be a non-empty string"
+        ))),
+    }
 }
 
 #[derive(Debug, Error)]

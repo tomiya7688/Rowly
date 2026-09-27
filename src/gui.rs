@@ -629,10 +629,23 @@ impl RowlyApp {
             .as_mut()
             .map(CsvDocument::refresh_if_external_change);
         let reloaded = matches!(&refresh, Some(Ok(true)));
+        let conflict_count = self
+            .document
+            .as_ref()
+            .map_or(0, |document| document.external_conflict_drafts().len());
         self.status = match refresh {
             Some(Ok(true)) => self.document.as_ref().map_or_else(
                 || "外部変更を検知しました".to_owned(),
-                |document| format!("{} の外部変更を読み込みました", document.path().display()),
+                |document| {
+                    if conflict_count == 0 {
+                        format!("{} の外部変更を同期しました", document.path().display())
+                    } else {
+                        format!(
+                            "{} の外部変更を同期しました（未解決のローカル変更を{conflict_count}件保持）",
+                            document.path().display()
+                        )
+                    }
+                },
             ),
             Some(Ok(false)) => watcher_error.as_ref().map_or_else(
                 || self.status.clone(),

@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use thiserror::Error;
 
@@ -18,10 +21,41 @@ pub struct CsvDocument {
     path: PathBuf,
     source_encoding: SourceEncoding,
     table: Table,
+    baseline: Table,
     history: EditHistory,
     metadata: ColumnMetadata,
     metadata_error: Option<String>,
     disk_fingerprint: ContentFingerprint,
+    external_conflicts: Vec<ExternalConflictDraft>,
+}
+
+/// A preserved three-way snapshot for local changes that could not be merged.
+/// The current document remains the disk version plus any safe local cell edits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalConflictDraft {
+    pub baseline: Vec<Vec<String>>,
+    pub local: Vec<Vec<String>>,
+    pub disk: Vec<Vec<String>>,
+    pub cell_conflicts: Vec<ExternalCellConflict>,
+    pub structural_conflict: Option<ExternalStructureConflict>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalCellConflict {
+    pub row: usize,
+    pub column: usize,
+    pub baseline: String,
+    pub local: String,
+    pub disk: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExternalStructureConflict {
+    RowCountChanged,
+    RowShapeChanged,
+    HeaderChanged,
+    RowOrderChanged,
+    DuplicateRowsAmbiguous,
 }
 
 impl CsvDocument {
@@ -39,11 +73,13 @@ impl CsvDocument {
         Ok(Self {
             path,
             source_encoding: SourceEncoding::Utf8,
+            baseline: table.clone(),
             table,
             history,
             metadata: ColumnMetadata::default(),
             metadata_error: None,
             disk_fingerprint,
+            external_conflicts: Vec::new(),
         })
     }
 
@@ -59,14 +95,17 @@ impl CsvDocument {
             Err(error) => (ColumnMetadata::default(), Some(error.to_string())),
         };
 
+        let baseline = loaded.table.clone();
         Ok(Self {
             path,
             source_encoding: loaded.encoding,
             table: loaded.table,
+            baseline,
             history: EditHistory::default(),
             metadata,
             metadata_error,
             disk_fingerprint: loaded.fingerprint,
+            external_conflicts: Vec::new(),
         })
     }
 
@@ -82,25 +121,17 @@ impl CsvDocument {
         self.history.is_dirty()
     }
 
-    /// Check for external edits. A clean document reloads changed content;
-    /// dirty documents report a conflict and keep their in-memory edits.
+    /// Synchronize external edits. Safe cell changes merge automatically;
+    /// overlapping or structurally ambiguous local changes are preserved as
+    /// three-way snapshots while the disk content becomes current.
     pub fn refresh_if_external_change(&mut self) -> Result<bool, DocumentError> {
         self.ensure_no_transaction("refresh external changes")?;
-        let current =
-            fingerprint_file(&self.path).map_err(|error| DocumentError::ExternalCheck {
-                path: self.path.display().to_string(),
-                message: error.to_string(),
-            })?;
-        if current == self.disk_fingerprint {
-            return Ok(false);
-        }
-        if self.is_dirty() {
-            return Err(DocumentError::ExternalModification {
-                path: self.path.display().to_string(),
-            });
-        }
-        self.reload_disk_content()?;
-        Ok(true)
+        self.merge_external_disk()
+    }
+
+    /// Preserved three-way snapshots for local changes that need later review.
+    pub fn external_conflict_drafts(&self) -> &[ExternalConflictDraft] {
+        &self.external_conflicts
     }
 
     pub fn metadata_path(&self) -> PathBuf {
@@ -403,12 +434,12 @@ impl CsvDocument {
                 message: error.to_string(),
             })?;
         if current != self.disk_fingerprint {
-            if self.is_dirty() {
-                return Err(DocumentError::ExternalModification {
-                    path: self.path.display().to_string(),
-                });
+            self.merge_external_disk()?;
+            if !self.is_dirty() {
+                return Ok(());
             }
-            self.reload_disk_content()?;
+        }
+        if !self.is_dirty() {
             return Ok(());
         }
         self.disk_fingerprint =
@@ -416,12 +447,12 @@ impl CsvDocument {
             {
                 Ok(fingerprint) => fingerprint,
                 Err(crate::data::CsvIoError::ExternalModification) => {
+                    self.merge_external_disk()?;
                     if self.is_dirty() {
                         return Err(DocumentError::ExternalModification {
                             path: self.path.display().to_string(),
                         });
                     }
-                    self.reload_disk_content()?;
                     return Ok(());
                 }
                 Err(error) => {
@@ -433,6 +464,7 @@ impl CsvDocument {
             };
 
         self.source_encoding = SourceEncoding::Utf8;
+        self.baseline = self.table.clone();
         self.history.mark_saved();
         Ok(())
     }
@@ -448,20 +480,102 @@ impl CsvDocument {
 
         self.path = path;
         self.source_encoding = SourceEncoding::Utf8;
+        self.baseline = self.table.clone();
         self.history.mark_saved();
         Ok(())
     }
 
-    fn reload_disk_content(&mut self) -> Result<(), DocumentError> {
-        let loaded = read_csv(&self.path).map_err(|error| DocumentError::Open {
+    fn merge_external_disk(&mut self) -> Result<bool, DocumentError> {
+        let loaded = read_csv(&self.path).map_err(|error| DocumentError::ExternalCheck {
             path: self.path.display().to_string(),
             message: error.to_string(),
         })?;
+        if loaded.fingerprint == self.disk_fingerprint {
+            return Ok(false);
+        }
+
+        let baseline = self.baseline.rows().to_vec();
+        let local = self.table.rows().to_vec();
+        let disk = loaded.table.rows().to_vec();
+
+        if local == baseline {
+            self.install_disk_snapshot(loaded);
+            return Ok(true);
+        }
+        if disk == baseline {
+            self.disk_fingerprint = loaded.fingerprint;
+            self.source_encoding = loaded.encoding;
+            self.baseline = loaded.table;
+            return Ok(true);
+        }
+
+        if let Some(reason) = structural_conflict(&baseline, &local, &disk) {
+            self.external_conflicts.push(ExternalConflictDraft {
+                baseline,
+                local,
+                disk,
+                cell_conflicts: Vec::new(),
+                structural_conflict: Some(reason),
+            });
+            self.install_disk_snapshot(loaded);
+            return Ok(true);
+        }
+
+        let mut safe_local_changes = Vec::new();
+        let mut conflicts = Vec::new();
+        for row in 0..baseline.len() {
+            for column in 0..baseline[row].len() {
+                let before = &baseline[row][column];
+                let local_value = &local[row][column];
+                let disk_value = &disk[row][column];
+                if local_value == before || local_value == disk_value {
+                    continue;
+                }
+                if disk_value == before {
+                    safe_local_changes.push((row, column, local_value.clone()));
+                } else {
+                    conflicts.push(ExternalCellConflict {
+                        row,
+                        column,
+                        baseline: before.clone(),
+                        local: local_value.clone(),
+                        disk: disk_value.clone(),
+                    });
+                }
+            }
+        }
+
+        if !conflicts.is_empty() {
+            self.external_conflicts.push(ExternalConflictDraft {
+                baseline,
+                local,
+                disk,
+                cell_conflicts: conflicts,
+                structural_conflict: None,
+            });
+        }
+
+        self.install_disk_snapshot(loaded);
+        if !safe_local_changes.is_empty() {
+            self.begin_transaction()?;
+            for (row, column, value) in safe_local_changes {
+                if let Err(error) = self.set_cell(row, column, value) {
+                    let _ = self.rollback_transaction();
+                    return Err(error);
+                }
+            }
+            self.commit_transaction()?;
+        }
+        Ok(true)
+    }
+
+    fn install_disk_snapshot(&mut self, loaded: crate::data::LoadedCsv) {
         self.table = loaded.table;
+        self.baseline = self.table.clone();
         self.source_encoding = loaded.encoding;
         self.disk_fingerprint = loaded.fingerprint;
         self.history = EditHistory::default();
-        Ok(())
+        self.history.mark_saved();
     }
 
     fn set_references_value(
@@ -647,6 +761,67 @@ impl CsvDocument {
 enum CommandDirection {
     Undo,
     Redo,
+}
+
+fn structural_conflict(
+    baseline: &[Vec<String>],
+    local: &[Vec<String>],
+    disk: &[Vec<String>],
+) -> Option<ExternalStructureConflict> {
+    if baseline.len() != local.len() || baseline.len() != disk.len() {
+        return Some(ExternalStructureConflict::RowCountChanged);
+    }
+    if baseline.iter().enumerate().any(|(index, row)| {
+        local.get(index).map(Vec::len) != Some(row.len())
+            || disk.get(index).map(Vec::len) != Some(row.len())
+    }) {
+        return Some(ExternalStructureConflict::RowShapeChanged);
+    }
+    if baseline
+        .first()
+        .is_some_and(|header| local.first() != Some(header) || disk.first() != Some(header))
+    {
+        return Some(ExternalStructureConflict::HeaderChanged);
+    }
+    if row_order_changed(baseline, local) || row_order_changed(baseline, disk) {
+        return Some(ExternalStructureConflict::RowOrderChanged);
+    }
+    if duplicate_rows_changed(baseline, local) || duplicate_rows_changed(baseline, disk) {
+        return Some(ExternalStructureConflict::DuplicateRowsAmbiguous);
+    }
+    None
+}
+
+fn row_order_changed(baseline: &[Vec<String>], changed: &[Vec<String>]) -> bool {
+    let baseline_counts = row_counts(baseline);
+    let mut changed_positions = HashMap::<&[String], (usize, usize)>::new();
+    for (index, row) in changed.iter().enumerate() {
+        let entry = changed_positions.entry(row.as_slice()).or_default();
+        entry.0 += 1;
+        entry.1 = index;
+    }
+    baseline.iter().enumerate().any(|(index, row)| {
+        baseline_counts.get(row.as_slice()) == Some(&1)
+            && matches!(changed_positions.get(row.as_slice()), Some((1, position)) if *position != index)
+    })
+}
+
+fn duplicate_rows_changed(baseline: &[Vec<String>], changed: &[Vec<String>]) -> bool {
+    let baseline_counts = row_counts(baseline);
+    baseline.iter().enumerate().any(|(index, row)| {
+        baseline_counts
+            .get(row.as_slice())
+            .is_some_and(|count| *count > 1)
+            && changed.get(index) != Some(row)
+    })
+}
+
+fn row_counts(rows: &[Vec<String>]) -> HashMap<&[String], usize> {
+    let mut counts = HashMap::new();
+    for row in rows {
+        *counts.entry(row.as_slice()).or_insert(0) += 1;
+    }
+    counts
 }
 
 #[derive(Debug, Error)]

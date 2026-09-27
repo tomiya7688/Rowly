@@ -23,7 +23,7 @@ UI / Rowly DSL / Luau / Python adapters
 `data` モジュールは正本となる表データと CSV／文字コード処理を担当します。
 `process` モジュールは open、edit、save、A1 参照、列の意味解釈など、ユーザーから見える操作を統括します。
 
-`CsvDocument`はopen時にraw CSVのcontent fingerprintを保持します。refresh／save時にdiskを再確認し、cleanなら外部更新をreloadし、dirtyならstale saveを拒否します。CSV書込みは同じfilesystem内へtemporary fileを完全に書いてからreplaceします。watcher notificationは早期検知用として別途追加し、save前のfingerprint確認を省略しません。
+`CsvDocument`はopen時にraw CSVのcontent fingerprintを保持します。refresh／save時にdiskを再確認し、cleanなら外部更新をreloadし、dirtyならstale saveを拒否します。CSV書込みは同じfilesystem内へtemporary fileを完全に書いてからreplaceします。GUIは対象CSVの親directoryを非再帰watchし、該当fileのeventを受けたときfingerprintを再確認します。watcherは早期通知用であり、watcher漏れや監視停止に備えてsave前のfingerprint確認を省略しません。
 `rowly_dsl` と `luau` は `process` 境界を通じて操作し、CSV コーデックへ直接アクセスしません。
 将来の UI や Python アダプタも同じ依存方向に従います。
 

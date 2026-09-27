@@ -1,7 +1,7 @@
 use eframe::egui;
 use std::path::PathBuf;
 
-use crate::process::{CellRef, CsvDocument};
+use crate::process::{CellRef, CsvDocument, CsvFileWatcher};
 
 const CELL_WIDTH: f32 = 120.0;
 const ROW_HEIGHT: f32 = 26.0;
@@ -20,6 +20,7 @@ pub struct RowlyApp {
     path_input: String,
     reference_input: String,
     document: Option<CsvDocument>,
+    file_watcher: Option<CsvFileWatcher>,
     status: String,
     zoom: f32,
     selection: CellRef,
@@ -35,6 +36,7 @@ impl Default for RowlyApp {
             path_input: String::new(),
             reference_input: "A1".to_owned(),
             document: None,
+            file_watcher: None,
             status: "CSV ファイルを開いてください".to_owned(),
             zoom: 100.0,
             selection: CellRef::new(0, 0),
@@ -46,13 +48,25 @@ impl Default for RowlyApp {
 }
 
 impl RowlyApp {
-    fn open_csv(&mut self) {
+    fn open_csv(&mut self, ctx: &egui::Context) {
         let path = PathBuf::from(self.path_input.trim());
         match CsvDocument::open(&path) {
             Ok(document) => {
-                self.status = format!("{} を開きました", path.display());
+                let repaint_context = ctx.clone();
+                let watcher = CsvFileWatcher::new(document.path(), move || {
+                    repaint_context.request_repaint();
+                });
+                self.status = match &watcher {
+                    Ok(_) => format!("{} を開きました", path.display()),
+                    Err(error) => format!(
+                        "{} を開きました（外部変更の監視を開始できません: {}; 保存時の確認は有効です）",
+                        path.display(),
+                        error
+                    ),
+                };
                 self.path_input = path.display().to_string();
                 self.document = Some(document);
+                self.file_watcher = watcher.ok();
                 self.selection = CellRef::new(0, 0);
                 self.selection_anchor = self.selection;
                 self.reference_input = self.selection.to_string();
@@ -114,7 +128,7 @@ impl RowlyApp {
             });
         });
         if open_requested {
-            self.open_csv();
+            self.open_csv(ctx);
         }
         if save_requested {
             self.save_csv();
@@ -194,7 +208,7 @@ impl RowlyApp {
             });
         });
         if open_requested {
-            self.open_csv();
+            self.open_csv(ctx);
         }
         if save_requested {
             self.save_csv();
@@ -595,10 +609,55 @@ impl RowlyApp {
             });
         });
     }
+
+    fn poll_external_changes(&mut self) {
+        let hint = self
+            .file_watcher
+            .as_mut()
+            .map(CsvFileWatcher::take_change_hint);
+        let watcher_error = match hint {
+            Some(Ok(false)) | None => return,
+            Some(Ok(true)) => None,
+            Some(Err(error)) => {
+                self.file_watcher = None;
+                Some(error.to_string())
+            }
+        };
+
+        let refresh = self
+            .document
+            .as_mut()
+            .map(CsvDocument::refresh_if_external_change);
+        let reloaded = matches!(&refresh, Some(Ok(true)));
+        self.status = match refresh {
+            Some(Ok(true)) => self.document.as_ref().map_or_else(
+                || "外部変更を検知しました".to_owned(),
+                |document| format!("{} の外部変更を読み込みました", document.path().display()),
+            ),
+            Some(Ok(false)) => watcher_error.as_ref().map_or_else(
+                || self.status.clone(),
+                |error| format!("ファイル監視を停止しました: {error}。保存時の確認は有効です"),
+            ),
+            Some(Err(error)) => error.to_string(),
+            None => return,
+        };
+        if let Some(error) = watcher_error {
+            self.status.push_str(&format!(
+                "（ファイル監視を停止しました: {error}。保存時の確認は有効です）"
+            ));
+        }
+        if reloaded {
+            self.selection = CellRef::new(0, 0);
+            self.selection_anchor = self.selection;
+            self.reference_input = self.selection.to_string();
+            self.editing = false;
+        }
+    }
 }
 
 impl eframe::App for RowlyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.poll_external_changes();
         self.handle_grid_keys(ctx);
         self.show_menu(ctx);
         self.show_toolbar(ctx);

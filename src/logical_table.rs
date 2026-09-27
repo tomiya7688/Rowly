@@ -19,6 +19,22 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogicalProject {
     pub tables: Vec<LogicalTable>,
+    /// Availability is reported separately so missing manifest entries remain intact.
+    pub source_statuses: Vec<SourceAvailability>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceAvailabilityStatus {
+    Available,
+    Missing,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceAvailability {
+    pub id: String,
+    pub kind: SourceKind,
+    pub path: PathBuf,
+    pub status: SourceAvailabilityStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,8 +81,26 @@ impl LogicalProject {
     ) -> Result<Self, LogicalLoadError> {
         let mut tables = Vec::<LogicalTable>::new();
         let mut table_by_schema = HashMap::<Vec<String>, usize>::new();
+        let mut source_statuses = Vec::new();
 
         for source in project.resolve_sources(manifest_path) {
+            let available = match source.kind {
+                SourceKind::File => source.path.is_file(),
+                SourceKind::Directory => source.path.is_dir(),
+            };
+            source_statuses.push(SourceAvailability {
+                id: source.id.clone(),
+                kind: source.kind,
+                path: source.path.clone(),
+                status: if available {
+                    SourceAvailabilityStatus::Available
+                } else {
+                    SourceAvailabilityStatus::Missing
+                },
+            });
+            if !available {
+                continue;
+            }
             let paths = match source.kind {
                 SourceKind::File => vec![source.path],
                 SourceKind::Directory => collect_csv_files(&source.path, source.recursive)?,
@@ -123,7 +157,16 @@ impl LogicalProject {
         for table in &mut tables {
             table.display_order = (0..table.rows.len()).collect();
         }
-        Ok(Self { tables })
+        Ok(Self {
+            tables,
+            source_statuses,
+        })
+    }
+
+    pub fn missing_sources(&self) -> impl Iterator<Item = &SourceAvailability> {
+        self.source_statuses
+            .iter()
+            .filter(|source| source.status == SourceAvailabilityStatus::Missing)
     }
 }
 

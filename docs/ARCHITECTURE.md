@@ -12,6 +12,8 @@ Rowly は CSV-first のエディタです。表示、スクリプト、外部連
 
 `split::SplitDefinition`はcolumn indexの組み合わせをkey ruleとして保持し、現在のlogical row valuesからsplit sheet membershipを毎回再計算します。sheet identityはdefinition idとkey valuesで表し、display nameは別フィールドとして保存します。missing値はJSON null、empty stringは空文字列のまま保ちます。外部CSV変更後はmanifestからlogical projectを再読込して評価します。
 
+logical projectはmanifestのsourceごとにAvailable / Missing statusを返します。missing sourceは設定を保持したままrowを現在のlogical tableから除外し、残存sourceだけでtableを再構築します。source復帰後の再読込ではmanifestのstable idが同じなので元のidentityへ戻ります。
+
 ## 依存方向
 
 ```text

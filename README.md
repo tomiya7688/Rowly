@@ -28,6 +28,16 @@ Rowly のデータモデルには結合セルを持ちません。
 
 ## 現在の実装
 
+### GUI シェル
+
+Windows / Ubuntu 向けの egui デスクトップシェルは、次のコマンドで起動できます。
+
+```text
+cargo run --features gui --bin rowly-gui
+```
+
+CSV のパスを入力して開くと、Table Editor / Text Editor / Viewer の各ワークスペースを切り替えられます。Table Editor では A1 座標のセル選択と編集、Shift+クリックによる矩形範囲選択、行・列の挿入／削除、Undo / Redo を使えます。セル値の変更は `process::CsvDocument` に記録され、表示用の行番号や列見出しはCSVへ保存されません。表示行・列を仮想化し、大きなCSVで画面外のセルwidgetを生成しないようにします。
+
 Rust コアでは次を実装済みです。
 
 - UTF-8 CSV の読み込み／保存
@@ -71,13 +81,14 @@ Rust コアでは次を実装済みです。
 
 列型チェックは意味解釈／検証のみであり、CSV の正本文字列を書き換えません。
 
-`.rwprj` は project name と宣言済みの source、script、history への参照だけを保持します。CSV内容は埋め込みません。相対パスは project file のあるディレクトリを基準に解決します。`LogicalProject::load` は宣言済みのCSV fileとdirectoryだけを読み、directory sourceは`recursive`設定に従ってCSVを列挙します。列名と順序が一致するsourceは同じlogical tableにまとめ、各行にstable source id・元file path・file内record indexを保持します。表示順は元sourceの識別情報から独立し、logical combineでCSVファイルを変更・結合しません。
+`.rwprj` は project name と宣言済みの source、script、history への参照だけを保持します。CSV内容は埋め込みません。相対パスは project file のあるディレクトリを基準に解決します。file source は任意の `search_root` と列見出し `schema` を保存でき、再紐付け探索は宣言された `search_root` 内に限られます。元のファイル名と列見出しが一致する候補が一つだけの場合に `path` を更新してsourceの`id`を維持し、複数候補は曖昧として変更しません。`search_root` がない場合は再探索しません。`LogicalProject::load` は宣言済みのCSV fileとdirectoryだけを読み、directory sourceは`recursive`設定に従ってCSVを列挙します。列名と順序が一致するsourceは同じlogical tableにまとめ、各rowにstable source id・元file path・file内record indexを保持します。表示順はprovenanceから独立し、logical combineでCSVファイルを変更・結合しません。
 
 `.rowlyx` は通常の `.rwprj` projectをZIP互換コンテナへ包装します。プロジェクト内の相対参照先だけを収録し、絶対パスの参照は外部参照として維持します。open時にarchive entryとproject定義を検証し、extract時はpath traversalとsymlinkを拒否します。
 
 論理テーブルでは、参加するstable source idの中からdefault write targetを明示できます。新規rowは明示targetかdefaultへ割り当てられ、列数・sourceの曖昧さ・現在のCSV schemaを検証してから対象CSVへ追記します。1つのsource idに複数CSVがある場合は、暗黙にファイルを選びません。
 
 `SplitDefinition`は1列以上のkeyでlogical tableを都度評価し、key valuesからstableなsheet identityを生成します。空文字列と欠損値は別keyとして扱い、display nameはinternal identityと独立してJSONへ保存できます。外部CSV更新を取り込むにはlogical projectを読み直してからruleを再評価します。
+同一logical table内のrowは、明示した別sourceへ移動できます。移動前に両CSVのschemaとsource recordを検証し、Undo/Redoで物理CSVとlogical provenanceを同時に戻します。
 
 CSVの読み書きは独自方言を追加せず、標準的な引用符規則を使用します。空値、引用符内のカンマ、`""` による引用符エスケープ、引用符内改行を値として保持し、LF/CRLFの双方を読み込めます。保存時はUTF-8/LFへ正規化します。
 

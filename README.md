@@ -79,6 +79,8 @@ CSVの読み書きは独自方言を追加せず、標準的な引用符規則�
 
 `CsvDocument::begin_transaction()` / `commit_transaction()` / `rollback_transaction()` で複数編集を1つの履歴操作にまとめられます。transaction 中は `undo` / `redo` / `save` / `save_as` を禁止し、rollback は履歴を増やさず変更を元へ戻します。
 
+`CsvDocument`はopen時のdisk fingerprintを保持します。cleanなdocumentで外部変更を検知すると最新CSVを再読込し、dirtyなdocumentではsave直前の再確認でstale上書きを拒否します。CSV保存は同じdirectory内のtemporary fileをatomic replaceする経路を使います。
+
 ## スクリプト
 
 ### Rowly DSL

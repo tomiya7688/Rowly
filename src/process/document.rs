@@ -2,7 +2,10 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::data::{SourceEncoding, Table, read_csv, write_csv_utf8};
+use crate::data::{
+    ContentFingerprint, SourceEncoding, Table, fingerprint_file, read_csv, write_csv_utf8,
+    write_csv_utf8_if_unchanged,
+};
 
 use super::{
     CellRange, CellRef, ColumnError, ColumnType, ReferenceError,
@@ -18,16 +21,18 @@ pub struct CsvDocument {
     history: EditHistory,
     metadata: ColumnMetadata,
     metadata_error: Option<String>,
+    disk_fingerprint: ContentFingerprint,
 }
 
 impl CsvDocument {
     pub fn create(path: impl AsRef<Path>, rows: Vec<Vec<String>>) -> Result<Self, DocumentError> {
         let path = path.as_ref().to_path_buf();
         let table = Table::new(rows);
-        write_csv_utf8(&path, &table).map_err(|error| DocumentError::Save {
-            path: path.display().to_string(),
-            message: error.to_string(),
-        })?;
+        let disk_fingerprint =
+            write_csv_utf8(&path, &table).map_err(|error| DocumentError::Save {
+                path: path.display().to_string(),
+                message: error.to_string(),
+            })?;
 
         let mut history = EditHistory::default();
         history.mark_saved();
@@ -38,6 +43,7 @@ impl CsvDocument {
             history,
             metadata: ColumnMetadata::default(),
             metadata_error: None,
+            disk_fingerprint,
         })
     }
 
@@ -60,6 +66,7 @@ impl CsvDocument {
             history: EditHistory::default(),
             metadata,
             metadata_error,
+            disk_fingerprint: loaded.fingerprint,
         })
     }
 
@@ -73,6 +80,27 @@ impl CsvDocument {
 
     pub fn is_dirty(&self) -> bool {
         self.history.is_dirty()
+    }
+
+    /// Check for external edits. A clean document reloads changed content;
+    /// dirty documents report a conflict and keep their in-memory edits.
+    pub fn refresh_if_external_change(&mut self) -> Result<bool, DocumentError> {
+        self.ensure_no_transaction("refresh external changes")?;
+        let current =
+            fingerprint_file(&self.path).map_err(|error| DocumentError::ExternalCheck {
+                path: self.path.display().to_string(),
+                message: error.to_string(),
+            })?;
+        if current == self.disk_fingerprint {
+            return Ok(false);
+        }
+        if self.is_dirty() {
+            return Err(DocumentError::ExternalModification {
+                path: self.path.display().to_string(),
+            });
+        }
+        self.reload_disk_content()?;
+        Ok(true)
     }
 
     pub fn metadata_path(&self) -> PathBuf {
@@ -369,10 +397,40 @@ impl CsvDocument {
 
     pub fn save(&mut self) -> Result<(), DocumentError> {
         self.ensure_no_transaction("save")?;
-        write_csv_utf8(&self.path, &self.table).map_err(|error| DocumentError::Save {
-            path: self.path.display().to_string(),
-            message: error.to_string(),
-        })?;
+        let current =
+            fingerprint_file(&self.path).map_err(|error| DocumentError::ExternalCheck {
+                path: self.path.display().to_string(),
+                message: error.to_string(),
+            })?;
+        if current != self.disk_fingerprint {
+            if self.is_dirty() {
+                return Err(DocumentError::ExternalModification {
+                    path: self.path.display().to_string(),
+                });
+            }
+            self.reload_disk_content()?;
+            return Ok(());
+        }
+        self.disk_fingerprint =
+            match write_csv_utf8_if_unchanged(&self.path, &self.table, Some(self.disk_fingerprint))
+            {
+                Ok(fingerprint) => fingerprint,
+                Err(crate::data::CsvIoError::ExternalModification) => {
+                    if self.is_dirty() {
+                        return Err(DocumentError::ExternalModification {
+                            path: self.path.display().to_string(),
+                        });
+                    }
+                    self.reload_disk_content()?;
+                    return Ok(());
+                }
+                Err(error) => {
+                    return Err(DocumentError::Save {
+                        path: self.path.display().to_string(),
+                        message: error.to_string(),
+                    });
+                }
+            };
 
         self.source_encoding = SourceEncoding::Utf8;
         self.history.mark_saved();
@@ -382,14 +440,27 @@ impl CsvDocument {
     pub fn save_as(&mut self, path: impl AsRef<Path>) -> Result<(), DocumentError> {
         self.ensure_no_transaction("save_as")?;
         let path = path.as_ref().to_path_buf();
-        write_csv_utf8(&path, &self.table).map_err(|error| DocumentError::Save {
-            path: path.display().to_string(),
-            message: error.to_string(),
-        })?;
+        self.disk_fingerprint =
+            write_csv_utf8(&path, &self.table).map_err(|error| DocumentError::Save {
+                path: path.display().to_string(),
+                message: error.to_string(),
+            })?;
 
         self.path = path;
         self.source_encoding = SourceEncoding::Utf8;
         self.history.mark_saved();
+        Ok(())
+    }
+
+    fn reload_disk_content(&mut self) -> Result<(), DocumentError> {
+        let loaded = read_csv(&self.path).map_err(|error| DocumentError::Open {
+            path: self.path.display().to_string(),
+            message: error.to_string(),
+        })?;
+        self.table = loaded.table;
+        self.source_encoding = loaded.encoding;
+        self.disk_fingerprint = loaded.fingerprint;
+        self.history = EditHistory::default();
         Ok(())
     }
 
@@ -591,6 +662,12 @@ pub enum DocumentError {
 
     #[error("failed to save CSV `{path}`: {message}")]
     Save { path: String, message: String },
+
+    #[error("failed to verify current CSV `{path}` before refresh/save: {message}")]
+    ExternalCheck { path: String, message: String },
+
+    #[error("CSV `{path}` changed outside Rowly after it was opened")]
+    ExternalModification { path: String },
 
     #[error("invalid transaction operation: {0}")]
     Transaction(String),

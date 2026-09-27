@@ -10,6 +10,8 @@ Rowly は CSV-first のエディタです。表示、スクリプト、外部連
 
 各logical tableは参加source idとCSV fileを保持し、default write targetはそのtable内のsourceに限定して設定します。新規rowはschema幅・source fileの一意性・現在のschemaを確認してCSVへ追記し、source idとpathをprovenanceに記録します。source間moveと複数CSVをまたぐUndo/Redo transactionは別途process層で扱います。
 
+`split::SplitDefinition`はcolumn indexの組み合わせをkey ruleとして保持し、現在のlogical row valuesからsplit sheet membershipを毎回再計算します。sheet identityはdefinition idとkey valuesで表し、display nameは別フィールドとして保存します。missing値はJSON null、empty stringは空文字列のまま保ちます。外部CSV変更後はmanifestからlogical projectを再読込して評価します。
+
 ## 依存方向
 
 ```text

@@ -77,6 +77,8 @@ Rust コアでは次を実装済みです。
 
 論理テーブルでは、参加するstable source idの中からdefault write targetを明示できます。新規rowは明示targetかdefaultへ割り当てられ、列数・sourceの曖昧さ・現在のCSV schemaを検証してから対象CSVへ追記します。1つのsource idに複数CSVがある場合は、暗黙にファイルを選びません。
 
+`SplitDefinition`は1列以上のkeyでlogical tableを都度評価し、key valuesからstableなsheet identityを生成します。空文字列と欠損値は別keyとして扱い、display nameはinternal identityと独立してJSONへ保存できます。外部CSV更新を取り込むにはlogical projectを読み直してからruleを再評価します。
+
 CSVの読み書きは独自方言を追加せず、標準的な引用符規則を使用します。空値、引用符内のカンマ、`""` による引用符エスケープ、引用符内改行を値として保持し、LF/CRLFの双方を読み込めます。保存時はUTF-8/LFへ正規化します。
 
 `CsvDocument::begin_transaction()` / `commit_transaction()` / `rollback_transaction()` で複数編集を1つの履歴操作にまとめられます。transaction 中は `undo` / `redo` / `save` / `save_as` を禁止し、rollback は履歴を増やさず変更を元へ戻します。

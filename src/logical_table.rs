@@ -1,4 +1,4 @@
-//! Read-only logical views over project CSV sources.
+//! Logical views and source-aware row operations over project CSV sources.
 //!
 //! Rows keep their source id and file-local record index as provenance. Table
 //! grouping and display order never rewrite or merge the physical CSV files.

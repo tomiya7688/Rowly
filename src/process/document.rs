@@ -502,6 +502,10 @@ impl CsvDocument {
             self.install_disk_snapshot(loaded);
             return Ok(true);
         }
+        if local == disk {
+            self.install_disk_snapshot(loaded);
+            return Ok(true);
+        }
         if disk == baseline {
             self.disk_fingerprint = loaded.fingerprint;
             self.source_encoding = loaded.encoding;
@@ -509,42 +513,40 @@ impl CsvDocument {
             return Ok(true);
         }
 
-        if baseline.len() != local.len() || baseline.len() != disk.len() {
-            match merge_row_only_changes(&baseline, &local, &disk) {
-                Ok(Some(merged)) => {
-                    self.install_disk_snapshot(loaded);
-                    if merged != self.table.rows() {
-                        self.begin_transaction()?;
-                        let removed = self
-                            .table
-                            .replace_rows(
-                                1,
-                                self.table.row_count().saturating_sub(1),
-                                merged[1..].to_vec(),
-                            )
-                            .map_err(|error| DocumentError::Edit(error.to_string()))?;
-                        self.history.record(EditOperation::Rows(RowEdit {
-                            index: 1,
-                            removed,
-                            inserted: merged[1..].to_vec(),
-                        }));
-                        self.commit_transaction()?;
-                    }
-                    return Ok(true);
+        match merge_row_only_changes(&baseline, &local, &disk) {
+            Ok(merged) => {
+                self.install_disk_snapshot(loaded);
+                if merged != self.table.rows() {
+                    self.begin_transaction()?;
+                    let removed = self
+                        .table
+                        .replace_rows(
+                            1,
+                            self.table.row_count().saturating_sub(1),
+                            merged[1..].to_vec(),
+                        )
+                        .map_err(|error| DocumentError::Edit(error.to_string()))?;
+                    self.history.record(EditOperation::Rows(RowEdit {
+                        index: 1,
+                        removed,
+                        inserted: merged[1..].to_vec(),
+                    }));
+                    self.commit_transaction()?;
                 }
-                Ok(None) => {}
-                Err(reason) => {
-                    self.external_conflicts.push(ExternalConflictDraft {
-                        baseline,
-                        local,
-                        disk,
-                        cell_conflicts: Vec::new(),
-                        structural_conflict: Some(reason),
-                    });
-                    self.install_disk_snapshot(loaded);
-                    return Ok(true);
-                }
+                return Ok(true);
             }
+            Err(reason) if baseline.len() != local.len() || baseline.len() != disk.len() => {
+                self.external_conflicts.push(ExternalConflictDraft {
+                    baseline,
+                    local,
+                    disk,
+                    cell_conflicts: Vec::new(),
+                    structural_conflict: Some(reason),
+                });
+                self.install_disk_snapshot(loaded);
+                return Ok(true);
+            }
+            Err(_) => {}
         }
 
         if let Some(reason) = structural_conflict(&baseline, &local, &disk) {
@@ -840,7 +842,7 @@ fn merge_row_only_changes(
     baseline: &[Vec<String>],
     local: &[Vec<String>],
     disk: &[Vec<String>],
-) -> Result<Option<Vec<Vec<String>>>, ExternalStructureConflict> {
+) -> Result<Vec<Vec<String>>, ExternalStructureConflict> {
     if baseline.is_empty() || local.first() != baseline.first() || disk.first() != baseline.first()
     {
         return Err(ExternalStructureConflict::HeaderChanged);
@@ -886,7 +888,7 @@ fn merge_row_only_changes(
     if let Some(rows) = insertions.get(&baseline.len()) {
         merged.extend(rows.iter().cloned());
     }
-    Ok(Some(merged))
+    Ok(merged)
 }
 
 fn analyze_row_delta(

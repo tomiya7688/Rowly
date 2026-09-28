@@ -4,9 +4,13 @@
 
 Rowly は CSV-first のエディタです。表示、スクリプト、外部連携のコードが第二の正本を作らない構造を維持します。
 
-`.rwprj` は versioned JSON manifest として source／script／history の参照を保持します。CSV内容は含めず、relative reference は manifest の親ディレクトリから解決します。file source では `search_root` とCSV列見出し `schema` を任意で保持し、source path が消失した場合はそのroot内で元ファイル名とschemaが一致する候補だけを調べます。一意の候補のみpathを更新し、stable source idは維持します。探索は宣言root内に限定され、symlinkは辿らず、候補が複数なら曖昧として変更しません。
+`.rwprj` は versioned JSON manifest として source／script／history の参照を保持します。CSV内容は含めず、relative reference は manifest の親ディレクトリから解決します。file source では `search_root` とCSV列見出し `schema` を任意で保持し、source path消失時はroot内の元ファイル名とschemaが一致する候補だけを調べます。一意の候補のみpathを更新しstable source idを維持し、探索はroot内に限定してsymlinkは辿らず、候補が複数なら変更しません。`logical_table::LogicalProject` はmanifestに宣言されたCSV fileとdirectoryだけを読み、directoryの列挙はsourceごとのrecursive設定に従います。完全一致する順序付きheaderごとにlogical tableを作り、各rowはsource id・元file path・data-record indexを保持します。display orderはprovenanceから独立し、論理結合でCSV正本を書き換えません。
 
 `.rowlyx` は通常のproject treeをZIP互換archiveへ包装します。pack対象はmanifest内の相対参照に限り、absolute参照は外部のまま保持します。open時にarchive pathとproject manifestを検証し、安全な相対entryだけを空の展開先へ復元します。
+
+各logical tableは参加source idとCSV fileを保持し、default write targetはそのtable内のsourceに限定して設定します。新規rowはschema幅・source fileの一意性・現在のschemaを確認してCSVへ追記し、source idとpathをprovenanceに記録します。source間move APIはCSV間更新とlogical provenanceのUndo/Redoを一つの操作として扱います。
+
+同じlogical tableに属するsource間row moveは明示targetを要求し、元CSVから対象recordを削除して互換schemaのCSVへ挿入します。logical provenanceとdisplay orderを分離し、move historyからUndo/Redoを適用します。
 
 ## 依存方向
 

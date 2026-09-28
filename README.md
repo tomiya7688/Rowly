@@ -40,7 +40,7 @@ CSV のパスを入力して開くと、Table Editor / Text Editor / Viewer の�
 
 開いているCSVの外部変更はファイル監視で早期検知し、Rowly側に未保存変更がなければ再読み込みします。監視イベントはヒントとして扱い、保存時のfingerprint検証も必ず行います。
 
-Baseline / Local / Diskの同形テーブルではセル単位で3-way mergeし、非競合のlocal変更を自動反映します。同一セルが異なる値へ更新された場合はDiskをcurrentにし、local変更を後から確認できるconflict draftへ保持します。行構造・header・順序が変わった場合や重複行の対応が曖昧な場合はテーブル全体をDisk優先にし、3つのsnapshotを保持します。
+Baseline / Local / Diskの同形テーブルではセル単位で3-way mergeし、非競合のlocal変更を自動反映します。baseline上で一意な行だけからなる純粋な行追加・削除も、対応位置が一意なら合成します。同一セルが異なる値へ更新された場合はDiskをcurrentにし、local変更を後から確認できるconflict draftへ保持します。同じ位置への異なる行追加、行削除と編集の可能性、header・順序変更、重複行など対応が曖昧な場合はテーブル全体をDisk優先にし、3つのsnapshotを保持します。
 
 Rust コアでは次を実装済みです。
 

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
@@ -509,6 +509,44 @@ impl CsvDocument {
             return Ok(true);
         }
 
+        if baseline.len() != local.len() || baseline.len() != disk.len() {
+            match merge_row_only_changes(&baseline, &local, &disk) {
+                Ok(Some(merged)) => {
+                    self.install_disk_snapshot(loaded);
+                    if merged != self.table.rows() {
+                        self.begin_transaction()?;
+                        let removed = self
+                            .table
+                            .replace_rows(
+                                1,
+                                self.table.row_count().saturating_sub(1),
+                                merged[1..].to_vec(),
+                            )
+                            .map_err(|error| DocumentError::Edit(error.to_string()))?;
+                        self.history.record(EditOperation::Rows(RowEdit {
+                            index: 1,
+                            removed,
+                            inserted: merged[1..].to_vec(),
+                        }));
+                        self.commit_transaction()?;
+                    }
+                    return Ok(true);
+                }
+                Ok(None) => {}
+                Err(reason) => {
+                    self.external_conflicts.push(ExternalConflictDraft {
+                        baseline,
+                        local,
+                        disk,
+                        cell_conflicts: Vec::new(),
+                        structural_conflict: Some(reason),
+                    });
+                    self.install_disk_snapshot(loaded);
+                    return Ok(true);
+                }
+            }
+        }
+
         if let Some(reason) = structural_conflict(&baseline, &local, &disk) {
             self.external_conflicts.push(ExternalConflictDraft {
                 baseline,
@@ -790,6 +828,115 @@ fn structural_conflict(
         return Some(ExternalStructureConflict::DuplicateRowsAmbiguous);
     }
     None
+}
+
+#[derive(Default)]
+struct RowDelta {
+    removed: HashSet<usize>,
+    inserted: BTreeMap<usize, Vec<Vec<String>>>,
+}
+
+fn merge_row_only_changes(
+    baseline: &[Vec<String>],
+    local: &[Vec<String>],
+    disk: &[Vec<String>],
+) -> Result<Option<Vec<Vec<String>>>, ExternalStructureConflict> {
+    if baseline.is_empty() || local.first() != baseline.first() || disk.first() != baseline.first()
+    {
+        return Err(ExternalStructureConflict::HeaderChanged);
+    }
+
+    let local_delta = analyze_row_delta(baseline, local)?;
+    let disk_delta = analyze_row_delta(baseline, disk)?;
+    let mut removed = local_delta.removed.clone();
+    removed.extend(disk_delta.removed.iter().copied());
+
+    let mut insertions = local_delta.inserted.clone();
+    for (slot, rows) in &disk_delta.inserted {
+        match insertions.get(slot) {
+            Some(local_rows) if local_rows != rows => {
+                return Err(ExternalStructureConflict::DuplicateRowsAmbiguous);
+            }
+            Some(_) => {}
+            None => {
+                insertions.insert(*slot, rows.clone());
+            }
+        }
+    }
+
+    // An insertion next to a removed baseline row may be an edited replacement.
+    if insertions.keys().any(|slot| {
+        removed.contains(slot)
+            || slot
+                .checked_sub(1)
+                .is_some_and(|index| removed.contains(&index))
+    }) {
+        return Err(ExternalStructureConflict::DuplicateRowsAmbiguous);
+    }
+
+    let mut merged = vec![baseline[0].clone()];
+    for row_index in 1..baseline.len() {
+        if let Some(rows) = insertions.get(&row_index) {
+            merged.extend(rows.iter().cloned());
+        }
+        if !removed.contains(&row_index) {
+            merged.push(baseline[row_index].clone());
+        }
+    }
+    if let Some(rows) = insertions.get(&baseline.len()) {
+        merged.extend(rows.iter().cloned());
+    }
+    Ok(Some(merged))
+}
+
+fn analyze_row_delta(
+    baseline: &[Vec<String>],
+    changed: &[Vec<String>],
+) -> Result<RowDelta, ExternalStructureConflict> {
+    if baseline.len() == changed.len()
+        && baseline
+            .iter()
+            .zip(changed)
+            .all(|(left, right)| left == right)
+    {
+        return Ok(RowDelta::default());
+    }
+    let mut baseline_positions = HashMap::new();
+    for (index, row) in baseline.iter().enumerate().skip(1) {
+        if baseline_positions.insert(row.as_slice(), index).is_some() {
+            return Err(ExternalStructureConflict::DuplicateRowsAmbiguous);
+        }
+    }
+    let mut changed_counts = HashMap::<&[String], usize>::new();
+    for row in changed.iter().skip(1) {
+        *changed_counts.entry(row.as_slice()).or_default() += 1;
+    }
+
+    let mut delta = RowDelta::default();
+    let mut next_baseline = 1;
+    let mut pending_insertions = Vec::new();
+    for row in changed.iter().skip(1) {
+        match baseline_positions.get(row.as_slice()).copied() {
+            Some(index) => {
+                if changed_counts.get(row.as_slice()) != Some(&1) || index < next_baseline {
+                    return Err(ExternalStructureConflict::RowOrderChanged);
+                }
+                if !pending_insertions.is_empty() {
+                    delta
+                        .inserted
+                        .insert(index, std::mem::take(&mut pending_insertions));
+                }
+                delta.removed.extend(next_baseline..index);
+                next_baseline = index + 1;
+            }
+            None => pending_insertions.push(row.clone()),
+        }
+    }
+    if !pending_insertions.is_empty() {
+        delta.inserted.insert(baseline.len(), pending_insertions);
+    }
+    delta.removed.extend(next_baseline..baseline.len());
+    Ok(delta)
 }
 
 fn row_order_changed(baseline: &[Vec<String>], changed: &[Vec<String>]) -> bool {

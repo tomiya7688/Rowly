@@ -280,6 +280,72 @@ impl RowlyApp {
         });
     }
 
+    fn show_external_conflicts(&mut self, ctx: &egui::Context) {
+        let draft_count = self
+            .document
+            .as_ref()
+            .map_or(0, |document| document.external_conflict_drafts().len());
+        if draft_count == 0 {
+            return;
+        }
+
+        let mut reapply_draft = None;
+        egui::TopBottomPanel::top("external_conflicts").show(ctx, |ui| {
+            ui.heading(format!("外部変更の競合 ({draft_count})"));
+            egui::ScrollArea::vertical()
+                .id_salt("external_conflict_list")
+                .max_height(190.0)
+                .show(ui, |ui| {
+                    if let Some(document) = self.document.as_ref() {
+                        for (draft_index, draft) in
+                            document.external_conflict_drafts().iter().enumerate()
+                        {
+                            egui::CollapsingHeader::new(format!("競合 {}", draft_index + 1))
+                                .id_salt(draft_index)
+                                .default_open(true)
+                                .show(ui, |ui| {
+                                    if let Some(reason) = draft.structural_conflict {
+                                        ui.label(format!(
+                                            "行構造の競合: {reason:?}。Disk を現在値として使っています。"
+                                        ));
+                                        ui.label(format!(
+                                            "Baseline {} 行 / Local {} 行 / Disk {} 行",
+                                            draft.baseline.len(),
+                                            draft.local.len(),
+                                            draft.disk.len()
+                                        ));
+                                    }
+                                    for conflict in &draft.cell_conflicts {
+                                        let cell = CellRef::new(conflict.row, conflict.column);
+                                        ui.monospace(format!(
+                                            "{cell}: B={:?}  L={:?}  D={:?}",
+                                            conflict.baseline, conflict.local, conflict.disk
+                                        ));
+                                    }
+                                    if !draft.cell_conflicts.is_empty()
+                                        && ui.button("Local の競合値を再適用").clicked()
+                                    {
+                                        reapply_draft = Some(draft_index);
+                                    }
+                                });
+                        }
+                    }
+                });
+        });
+
+        if let Some(draft_index) = reapply_draft {
+            self.status = match self
+                .document
+                .as_mut()
+                .expect("conflict panel requires an open document")
+                .reapply_local_cell_conflicts(draft_index)
+            {
+                Ok(count) => format!("Local の競合値を {count} セル再適用しました"),
+                Err(error) => error.to_string(),
+            };
+        }
+    }
+
     fn show_editor_grid(&mut self, ui: &mut egui::Ui) {
         let document = self.document.as_ref().expect("document checked above");
         let row_count = document.row_count();
@@ -674,6 +740,7 @@ impl eframe::App for RowlyApp {
         self.handle_grid_keys(ctx);
         self.show_menu(ctx);
         self.show_toolbar(ctx);
+        self.show_external_conflicts(ctx);
         self.show_status(ctx);
         self.show_workspace(ctx);
     }

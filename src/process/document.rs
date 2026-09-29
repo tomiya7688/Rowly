@@ -134,6 +134,60 @@ impl CsvDocument {
         &self.external_conflicts
     }
 
+    /// Reapply the Local side of cell conflicts in a preserved draft.
+    /// Structural conflicts require review and are not reapplied automatically.
+    pub fn reapply_local_cell_conflicts(
+        &mut self,
+        draft_index: usize,
+    ) -> Result<usize, DocumentError> {
+        self.ensure_no_transaction("reapply conflict draft")?;
+        let draft = self.external_conflicts.get(draft_index).ok_or_else(|| {
+            DocumentError::ConflictDraft(format!("draft {draft_index} does not exist"))
+        })?;
+        if draft.structural_conflict.is_some() {
+            return Err(DocumentError::ConflictDraft(
+                "structural conflicts require manual review".into(),
+            ));
+        }
+
+        let conflicts = draft.cell_conflicts.clone();
+        let mut changes = Vec::new();
+        for conflict in conflicts {
+            let current = self
+                .table
+                .cell(conflict.row, conflict.column)
+                .ok_or_else(|| {
+                    DocumentError::ConflictDraft(format!(
+                        "cell {},{} no longer exists",
+                        conflict.row, conflict.column
+                    ))
+                })?;
+            if current == conflict.local {
+                continue;
+            }
+            if current != conflict.disk {
+                return Err(DocumentError::ConflictDraft(format!(
+                    "cell {},{} changed after the conflict was recorded",
+                    conflict.row, conflict.column
+                )));
+            }
+            changes.push((conflict.row, conflict.column, conflict.local));
+        }
+
+        if changes.is_empty() {
+            return Ok(0);
+        }
+        self.begin_transaction()?;
+        for (row, column, value) in &changes {
+            if let Err(error) = self.set_cell(*row, *column, value.clone()) {
+                let _ = self.rollback_transaction();
+                return Err(error);
+            }
+        }
+        self.commit_transaction()?;
+        Ok(changes.len())
+    }
+
     pub fn metadata_path(&self) -> PathBuf {
         sidecar_path(&self.path)
     }
@@ -992,6 +1046,9 @@ pub enum DocumentError {
 
     #[error("CSV `{path}` changed outside Rowly after it was opened")]
     ExternalModification { path: String },
+
+    #[error("cannot reapply external conflict draft: {0}")]
+    ConflictDraft(String),
 
     #[error("invalid transaction operation: {0}")]
     Transaction(String),

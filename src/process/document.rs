@@ -188,6 +188,51 @@ impl CsvDocument {
         Ok(changes.len())
     }
 
+    /// Replace the current table with a structural draft's Local snapshot.
+    /// This is only allowed while the current table still matches that draft's Disk snapshot.
+    pub fn reapply_local_structural_draft(
+        &mut self,
+        draft_index: usize,
+    ) -> Result<usize, DocumentError> {
+        self.ensure_no_transaction("reapply structural conflict draft")?;
+        let draft = self.external_conflicts.get(draft_index).ok_or_else(|| {
+            DocumentError::ConflictDraft(format!("draft {draft_index} does not exist"))
+        })?;
+        if draft.structural_conflict.is_none() {
+            return Err(DocumentError::ConflictDraft(
+                "draft does not contain a structural conflict".into(),
+            ));
+        }
+        if self.table.rows() != draft.disk {
+            return Err(DocumentError::ConflictDraft(
+                "the current table changed after the structural conflict was recorded".into(),
+            ));
+        }
+
+        let local = draft.local.clone();
+        if local == self.table.rows() {
+            return Ok(0);
+        }
+        self.begin_transaction()?;
+        let removed = match self
+            .table
+            .replace_rows(0, self.table.row_count(), local.clone())
+        {
+            Ok(removed) => removed,
+            Err(error) => {
+                let _ = self.rollback_transaction();
+                return Err(DocumentError::Edit(error.to_string()));
+            }
+        };
+        self.history.record(EditOperation::Rows(RowEdit {
+            index: 0,
+            removed,
+            inserted: local.clone(),
+        }));
+        self.commit_transaction()?;
+        Ok(local.len())
+    }
+
     pub fn metadata_path(&self) -> PathBuf {
         sidecar_path(&self.path)
     }
@@ -890,6 +935,7 @@ fn structural_conflict(
 struct RowDelta {
     removed: HashSet<usize>,
     inserted: BTreeMap<usize, Vec<Vec<String>>>,
+    cell_changes: BTreeMap<(usize, usize), String>,
 }
 
 fn merge_row_only_changes(
@@ -931,16 +977,31 @@ fn merge_row_only_changes(
     }
 
     let mut merged = vec![baseline[0].clone()];
+    let mut mapped_rows = HashMap::new();
     for row_index in 1..baseline.len() {
         if let Some(rows) = insertions.get(&row_index) {
             merged.extend(rows.iter().cloned());
         }
         if !removed.contains(&row_index) {
+            mapped_rows.insert(row_index, merged.len());
             merged.push(baseline[row_index].clone());
         }
     }
     if let Some(rows) = insertions.get(&baseline.len()) {
         merged.extend(rows.iter().cloned());
+    }
+    for (&(row, column), value) in local_delta
+        .cell_changes
+        .iter()
+        .chain(disk_delta.cell_changes.iter())
+    {
+        let Some(&merged_row) = mapped_rows.get(&row) else {
+            return Err(ExternalStructureConflict::DuplicateRowsAmbiguous);
+        };
+        let cell = merged[merged_row]
+            .get_mut(column)
+            .ok_or(ExternalStructureConflict::RowShapeChanged)?;
+        *cell = value.clone();
     }
     Ok(merged)
 }
@@ -956,6 +1017,25 @@ fn analyze_row_delta(
             .all(|(left, right)| left == right)
     {
         return Ok(RowDelta::default());
+    }
+    if baseline.len() == changed.len() {
+        if row_order_changed(baseline, changed) || duplicate_rows_changed(baseline, changed) {
+            return Err(ExternalStructureConflict::RowOrderChanged);
+        }
+        let mut delta = RowDelta::default();
+        for (row_index, (before, after)) in baseline.iter().zip(changed).enumerate().skip(1) {
+            if before.len() != after.len() {
+                return Err(ExternalStructureConflict::RowShapeChanged);
+            }
+            for (column, (before, after)) in before.iter().zip(after).enumerate() {
+                if before != after {
+                    delta
+                        .cell_changes
+                        .insert((row_index, column), after.clone());
+                }
+            }
+        }
+        return Ok(delta);
     }
     let mut baseline_positions = HashMap::new();
     for (index, row) in baseline.iter().enumerate().skip(1) {

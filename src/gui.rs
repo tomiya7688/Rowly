@@ -314,6 +314,30 @@ impl RowlyApp {
                                             draft.local.len(),
                                             draft.disk.len()
                                         ));
+                                        egui::ScrollArea::vertical()
+                                            .id_salt(("structural_diff", draft_index))
+                                            .max_height(100.0)
+                                            .show(ui, |ui| {
+                                                let row_count = draft
+                                                    .baseline
+                                                    .len()
+                                                    .max(draft.local.len())
+                                                    .max(draft.disk.len());
+                                                for row in 0..row_count {
+                                                    let baseline = draft.baseline.get(row);
+                                                    let local = draft.local.get(row);
+                                                    let disk = draft.disk.get(row);
+                                                    if baseline != local || baseline != disk {
+                                                        ui.monospace(format!(
+                                                            "行 {}: B={baseline:?}  L={local:?}  D={disk:?}",
+                                                            row + 1
+                                                        ));
+                                                    }
+                                                }
+                                            });
+                                        if ui.button("Local の表全体を再適用").clicked() {
+                                            reapply_draft = Some((draft_index, true));
+                                        }
                                     }
                                     for conflict in &draft.cell_conflicts {
                                         let cell = CellRef::new(conflict.row, conflict.column);
@@ -325,7 +349,7 @@ impl RowlyApp {
                                     if !draft.cell_conflicts.is_empty()
                                         && ui.button("Local の競合値を再適用").clicked()
                                     {
-                                        reapply_draft = Some(draft_index);
+                                        reapply_draft = Some((draft_index, false));
                                     }
                                 });
                         }
@@ -333,15 +357,21 @@ impl RowlyApp {
                 });
         });
 
-        if let Some(draft_index) = reapply_draft {
-            self.status = match self
+        if let Some((draft_index, structural)) = reapply_draft {
+            let document = self
                 .document
                 .as_mut()
-                .expect("conflict panel requires an open document")
-                .reapply_local_cell_conflicts(draft_index)
-            {
-                Ok(count) => format!("Local の競合値を {count} セル再適用しました"),
-                Err(error) => error.to_string(),
+                .expect("conflict panel requires an open document");
+            self.status = if structural {
+                match document.reapply_local_structural_draft(draft_index) {
+                    Ok(count) => format!("Local の表を {count} 行で再適用しました"),
+                    Err(error) => error.to_string(),
+                }
+            } else {
+                match document.reapply_local_cell_conflicts(draft_index) {
+                    Ok(count) => format!("Local の競合値を {count} セル再適用しました"),
+                    Err(error) => error.to_string(),
+                }
             };
         }
     }

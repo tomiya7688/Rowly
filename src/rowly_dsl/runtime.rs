@@ -736,40 +736,59 @@ impl<'a> Runtime<'a> {
             });
         }
 
-        let values = self.evaluate_arguments(arguments)?;
+        let mut values = self.evaluate_arguments(arguments)?.into_iter();
         match (namespace, canonical) {
             (StandardNamespace::Text, "Contains") => {
-                let haystack =
-                    self.expect_text(values[0].clone(), "Text.Contains first argument")?;
-                let needle =
-                    self.expect_text(values[1].clone(), "Text.Contains second argument")?;
+                let haystack = self.expect_text(
+                    values.next().expect("validated standard function arity"),
+                    "Text.Contains first argument",
+                )?;
+                let needle = self.expect_text(
+                    values.next().expect("validated standard function arity"),
+                    "Text.Contains second argument",
+                )?;
                 Ok(Value::Boolean(haystack.contains(&needle)))
             }
             (StandardNamespace::Text, "StartsWith") => {
-                let value =
-                    self.expect_text(values[0].clone(), "Text.StartsWith first argument")?;
-                let prefix =
-                    self.expect_text(values[1].clone(), "Text.StartsWith second argument")?;
+                let value = self.expect_text(
+                    values.next().expect("validated standard function arity"),
+                    "Text.StartsWith first argument",
+                )?;
+                let prefix = self.expect_text(
+                    values.next().expect("validated standard function arity"),
+                    "Text.StartsWith second argument",
+                )?;
                 Ok(Value::Boolean(value.starts_with(&prefix)))
             }
             (StandardNamespace::Text, "EndsWith") => {
-                let value = self.expect_text(values[0].clone(), "Text.EndsWith first argument")?;
-                let suffix =
-                    self.expect_text(values[1].clone(), "Text.EndsWith second argument")?;
+                let value = self.expect_text(
+                    values.next().expect("validated standard function arity"),
+                    "Text.EndsWith first argument",
+                )?;
+                let suffix = self.expect_text(
+                    values.next().expect("validated standard function arity"),
+                    "Text.EndsWith second argument",
+                )?;
                 Ok(Value::Boolean(value.ends_with(&suffix)))
             }
             (StandardNamespace::Text, "IsJapanese") => {
-                let value = self.expect_text(values[0].clone(), "Text.IsJapanese argument")?;
+                let value = self.expect_text(
+                    values.next().expect("validated standard function arity"),
+                    "Text.IsJapanese argument",
+                )?;
                 Ok(Value::Boolean(contains_japanese(&value)))
             }
             (StandardNamespace::Number, "IsInteger") => {
-                Ok(Value::Boolean(is_integer_value(&values[0])))
+                let value = values.next().expect("validated standard function arity");
+                Ok(Value::Boolean(is_integer_value(&value)))
             }
             (StandardNamespace::Number, "IsDecimal") => {
-                Ok(Value::Boolean(is_decimal_value(&values[0])))
+                let value = values.next().expect("validated standard function arity");
+                Ok(Value::Boolean(is_decimal_value(&value)))
             }
             (StandardNamespace::Boolean, "IsValid") => {
-                Ok(Value::Boolean(is_boolean_value(&values[0])))
+                let value = values.next().expect("validated standard function arity");
+                Ok(Value::Boolean(is_boolean_value(&value)))
             }
             _ => unreachable!(),
         }
@@ -825,48 +844,79 @@ impl<'a> Runtime<'a> {
             });
         }
 
-        let values = self.evaluate_arguments(arguments)?;
+        let mut values = self.evaluate_arguments(arguments)?.into_iter();
         Ok(Some(match canonical {
-            "Integer" => self.convert_integer(values[0].clone())?,
-            "Decimal" => self.convert_decimal(values[0].clone())?,
-            "Boolean" => self.convert_boolean(values[0].clone())?,
-            "String" => self.convert_string(values[0].clone())?,
+            "Integer" => {
+                self.convert_integer(values.next().expect("validated builtin function arity"))?
+            }
+            "Decimal" => {
+                self.convert_decimal(values.next().expect("validated builtin function arity"))?
+            }
+            "Boolean" => {
+                self.convert_boolean(values.next().expect("validated builtin function arity"))?
+            }
+            "String" => {
+                self.convert_string(values.next().expect("validated builtin function arity"))?
+            }
             "CellValue" => {
-                let reference = self.expect_text(values[0].clone(), "CellValue argument")?;
+                let reference = self.expect_text(
+                    values.next().expect("validated builtin function arity"),
+                    "CellValue argument",
+                )?;
                 let value = self
                     .document
                     .cell_a1(&reference)?
-                    .ok_or_else(|| ExecutionError::MissingCell(reference.clone()))?;
-                Value::Text(value.to_owned())
+                    .map(str::to_owned)
+                    .ok_or(ExecutionError::MissingCell(reference))?;
+                Value::Text(value)
             }
             "RowCount" => Value::Integer(self.document.row_count() as i64),
             "ColumnCount" => Value::Integer(self.document.column_count() as i64),
             "CellValueAt" => {
-                let row = self.expect_one_based_index(values[0].clone(), "CellValueAt row")?;
-                let column =
-                    self.expect_one_based_index(values[1].clone(), "CellValueAt column")?;
+                let row = self.expect_one_based_index(
+                    values.next().expect("validated builtin function arity"),
+                    "CellValueAt row",
+                )?;
+                let column = self.expect_one_based_index(
+                    values.next().expect("validated builtin function arity"),
+                    "CellValueAt column",
+                )?;
                 let value = self.document.cell(row - 1, column - 1).ok_or_else(|| {
                     ExecutionError::MissingCell(format!("row {row}, column {column}"))
                 })?;
                 Value::Text(value.to_owned())
             }
             "SetCellValueAt" => {
-                let row = self.expect_one_based_index(values[0].clone(), "SetCellValueAt row")?;
-                let column =
-                    self.expect_one_based_index(values[1].clone(), "SetCellValueAt column")?;
-                let value = self.cell_text(values[2].clone())?;
+                let row = self.expect_one_based_index(
+                    values.next().expect("validated builtin function arity"),
+                    "SetCellValueAt row",
+                )?;
+                let column = self.expect_one_based_index(
+                    values.next().expect("validated builtin function arity"),
+                    "SetCellValueAt column",
+                )?;
+                let value =
+                    self.cell_text(values.next().expect("validated builtin function arity"))?;
                 self.document.set_cell(row - 1, column - 1, value.clone())?;
                 Value::Text(value)
             }
             "ColumnIndex" => {
-                let header = self.expect_text(values[0].clone(), "ColumnIndex header")?;
+                let header = self.expect_text(
+                    values.next().expect("validated builtin function arity"),
+                    "ColumnIndex header",
+                )?;
                 let column = self.document.column_index_by_header(&header)?;
                 Value::Integer((column + 1) as i64)
             }
             "CellValueByHeader" => {
-                let row =
-                    self.expect_one_based_index(values[0].clone(), "CellValueByHeader row")?;
-                let header = self.expect_text(values[1].clone(), "CellValueByHeader header")?;
+                let row = self.expect_one_based_index(
+                    values.next().expect("validated builtin function arity"),
+                    "CellValueByHeader row",
+                )?;
+                let header = self.expect_text(
+                    values.next().expect("validated builtin function arity"),
+                    "CellValueByHeader header",
+                )?;
                 let column = self.document.column_index_by_header(&header)?;
                 let value = self.document.cell(row - 1, column).ok_or_else(|| {
                     ExecutionError::MissingCell(format!("row {row}, header {header}"))
@@ -874,11 +924,17 @@ impl<'a> Runtime<'a> {
                 Value::Text(value.to_owned())
             }
             "SetCellValueByHeader" => {
-                let row =
-                    self.expect_one_based_index(values[0].clone(), "SetCellValueByHeader row")?;
-                let header = self.expect_text(values[1].clone(), "SetCellValueByHeader header")?;
+                let row = self.expect_one_based_index(
+                    values.next().expect("validated builtin function arity"),
+                    "SetCellValueByHeader row",
+                )?;
+                let header = self.expect_text(
+                    values.next().expect("validated builtin function arity"),
+                    "SetCellValueByHeader header",
+                )?;
                 let column = self.document.column_index_by_header(&header)?;
-                let value = self.cell_text(values[2].clone())?;
+                let value =
+                    self.cell_text(values.next().expect("validated builtin function arity"))?;
                 self.document.set_cell(row - 1, column, value.clone())?;
                 Value::Text(value)
             }

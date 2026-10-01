@@ -1064,16 +1064,15 @@ impl<'a> Runtime<'a> {
             });
         }
         let values = self.evaluate_arguments(arguments)?;
+        let argument_descriptions = values
+            .iter()
+            .map(|value| self.describe_value(value))
+            .collect();
         let scope = function
             .parameters
             .iter()
-            .zip(values.iter())
-            .map(|(parameter, value)| {
-                (
-                    normalize_identifier(parameter),
-                    Binding::variable(value.clone()),
-                )
-            })
+            .zip(values)
+            .map(|(parameter, value)| (normalize_identifier(parameter), Binding::variable(value)))
             .collect();
         self.scopes.push(scope);
         self.call_depth += 1;
@@ -1086,10 +1085,7 @@ impl<'a> Runtime<'a> {
         };
         self.events.push(ExecutionEvent::FunctionCalled {
             name: function.name,
-            arguments: values
-                .iter()
-                .map(|value| self.describe_value(value))
-                .collect(),
+            arguments: argument_descriptions,
             return_value: return_value
                 .as_ref()
                 .map(|value| self.describe_value(value)),
@@ -1166,16 +1162,15 @@ impl<'a> Runtime<'a> {
         values: Vec<Value>,
     ) -> Result<Option<Value>, ExecutionError> {
         self.ensure_call_depth()?;
+        let argument_descriptions = values
+            .iter()
+            .map(|value| self.describe_value(value))
+            .collect();
         let mut scope: HashMap<String, Binding> = method
             .parameters
             .iter()
-            .zip(values.iter())
-            .map(|(parameter, value)| {
-                (
-                    normalize_identifier(parameter),
-                    Binding::variable(value.clone()),
-                )
-            })
+            .zip(values)
+            .map(|(parameter, value)| (normalize_identifier(parameter), Binding::variable(value)))
             .collect();
         scope.insert(
             "self".to_owned(),
@@ -1198,10 +1193,7 @@ impl<'a> Runtime<'a> {
         self.events.push(ExecutionEvent::MethodCalled {
             class_name: defining_class.to_owned(),
             name: method.name.clone(),
-            arguments: values
-                .iter()
-                .map(|value| self.describe_value(value))
-                .collect(),
+            arguments: argument_descriptions,
             return_value: return_value
                 .as_ref()
                 .map(|value| self.describe_value(value)),

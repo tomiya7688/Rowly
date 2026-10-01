@@ -188,8 +188,11 @@ impl<'a> Runtime<'a> {
     }
 
     fn execute(mut self) -> Result<ExecutionReport, ExecutionError> {
-        let statements = self.program.statements.clone();
-        if !matches!(self.execute_statements(&statements)?, Flow::Continue) {
+        let program = self.program;
+        if !matches!(
+            self.execute_statements(&program.statements)?,
+            Flow::Continue
+        ) {
             return Err(ExecutionError::ReturnOutsideFunction);
         }
 

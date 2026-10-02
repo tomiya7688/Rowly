@@ -1,4 +1,6 @@
-use super::CellRef;
+use std::collections::BTreeMap;
+
+use super::{CellRef, ValidationRule, ValidationTarget};
 
 #[derive(Debug, Clone)]
 pub(super) struct CellChange {
@@ -27,6 +29,14 @@ pub(super) enum EditOperation {
     Cells(Vec<CellChange>),
     Rows(RowEdit),
     Columns(Vec<ColumnChange>),
+    Contents {
+        before: Vec<Vec<String>>,
+        after: Vec<Vec<String>>,
+    },
+    ValidationRules {
+        before: BTreeMap<ValidationTarget, ValidationRule>,
+        after: BTreeMap<ValidationTarget, ValidationRule>,
+    },
     Batch(Vec<EditOperation>),
 }
 
@@ -36,7 +46,20 @@ impl EditOperation {
             Self::Cells(changes) => changes.is_empty(),
             Self::Rows(edit) => edit.removed.is_empty() && edit.inserted.is_empty(),
             Self::Columns(changes) => changes.is_empty(),
+            Self::Contents { before, after } => before == after,
+            Self::ValidationRules { before, after } => before == after,
             Self::Batch(operations) => operations.iter().all(Self::is_empty),
+        }
+    }
+
+    fn affects_csv(&self) -> bool {
+        match self {
+            Self::Cells(changes) => !changes.is_empty(),
+            Self::Rows(edit) => !edit.removed.is_empty() || !edit.inserted.is_empty(),
+            Self::Columns(changes) => !changes.is_empty(),
+            Self::Contents { before, after } => before != after,
+            Self::ValidationRules { .. } => false,
+            Self::Batch(operations) => operations.iter().any(Self::affects_csv),
         }
     }
 }
@@ -46,6 +69,8 @@ pub(super) struct EditCommand {
     pub(super) operation: EditOperation,
     before_state_id: u64,
     after_state_id: u64,
+    before_csv_state_id: u64,
+    after_csv_state_id: u64,
 }
 
 #[derive(Debug, Default)]
@@ -53,18 +78,21 @@ pub(super) struct EditHistory {
     undo: Vec<EditCommand>,
     redo: Vec<EditCommand>,
     current_state_id: u64,
-    saved_state_id: u64,
     next_state_id: u64,
+    current_csv_state_id: u64,
+    saved_csv_state_id: u64,
+    next_csv_state_id: u64,
     transaction: Option<Vec<EditOperation>>,
 }
 
 impl EditHistory {
     pub(super) fn is_dirty(&self) -> bool {
-        self.current_state_id != self.saved_state_id
-            || self
-                .transaction
-                .as_ref()
-                .is_some_and(|operations| operations.iter().any(|operation| !operation.is_empty()))
+        self.current_csv_state_id != self.saved_csv_state_id
+            || self.transaction.as_ref().is_some_and(|operations| {
+                operations
+                    .iter()
+                    .any(|operation| !operation.is_empty() && operation.affects_csv())
+            })
     }
 
     pub(super) fn can_undo(&self) -> bool {
@@ -122,11 +150,18 @@ impl EditHistory {
     }
 
     fn record_committed(&mut self, operation: EditOperation) {
+        let before_csv_state_id = self.current_csv_state_id;
+        if operation.affects_csv() {
+            self.next_csv_state_id = self.next_csv_state_id.saturating_add(1);
+            self.current_csv_state_id = self.next_csv_state_id;
+        }
         self.next_state_id = self.next_state_id.saturating_add(1);
         let command = EditCommand {
             operation,
             before_state_id: self.current_state_id,
             after_state_id: self.next_state_id,
+            before_csv_state_id,
+            after_csv_state_id: self.current_csv_state_id,
         };
         self.current_state_id = command.after_state_id;
         self.undo.push(command);
@@ -139,6 +174,7 @@ impl EditHistory {
 
     pub(super) fn commit_undo(&mut self, command: EditCommand) {
         self.current_state_id = command.before_state_id;
+        self.current_csv_state_id = command.before_csv_state_id;
         self.redo.push(command);
     }
 
@@ -152,6 +188,7 @@ impl EditHistory {
 
     pub(super) fn commit_redo(&mut self, command: EditCommand) {
         self.current_state_id = command.after_state_id;
+        self.current_csv_state_id = command.after_csv_state_id;
         self.undo.push(command);
     }
 
@@ -160,6 +197,6 @@ impl EditHistory {
     }
 
     pub(super) fn mark_saved(&mut self) {
-        self.saved_state_id = self.current_state_id;
+        self.saved_csv_state_id = self.current_csv_state_id;
     }
 }

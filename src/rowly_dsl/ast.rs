@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use crate::process::{CellRange, ColumnType, ColumnTypeReport, JapaneseCheckReport};
 
+pub use crate::process::{ValidationExpression, ValidationOperand, ValidationRule};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
     pub(super) classes: Vec<ClassDefinition>,
@@ -242,92 +244,6 @@ pub enum Condition {
 pub enum ColumnSelector {
     Index(usize),
     Header(String),
-}
-
-/// A pure validation rule declared by a DSL `SET` statement.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ValidationRule {
-    AllowedValues(Vec<String>),
-    Expression(ValidationExpression),
-}
-
-impl ValidationRule {
-    /// Returns whether a candidate text value satisfies this rule.
-    pub fn matches(&self, candidate: &str) -> bool {
-        match self {
-            Self::AllowedValues(values) => values.iter().any(|value| value == candidate),
-            Self::Expression(expression) => expression.evaluate(candidate),
-        }
-    }
-
-    pub fn allowed_values(&self) -> Option<&[String]> {
-        match self {
-            Self::AllowedValues(values) => Some(values),
-            Self::Expression(_) => None,
-        }
-    }
-
-    pub fn expression(&self) -> Option<&ValidationExpression> {
-        match self {
-            Self::AllowedValues(_) => None,
-            Self::Expression(expression) => Some(expression),
-        }
-    }
-}
-
-/// Boolean expression over the candidate `Value` and string literals only.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ValidationExpression {
-    Compare {
-        left: ValidationOperand,
-        operator: ComparisonOperator,
-        right: ValidationOperand,
-    },
-    Not(Box<ValidationExpression>),
-    And(Box<ValidationExpression>, Box<ValidationExpression>),
-    Or(Box<ValidationExpression>, Box<ValidationExpression>),
-}
-
-impl ValidationExpression {
-    pub fn evaluate(&self, candidate: &str) -> bool {
-        match self {
-            Self::Compare {
-                left,
-                operator,
-                right,
-            } => {
-                let left = left.value(candidate);
-                let right = right.value(candidate);
-                let ordering = left.cmp(right);
-                match operator {
-                    ComparisonOperator::Equal => ordering.is_eq(),
-                    ComparisonOperator::NotEqual => !ordering.is_eq(),
-                    ComparisonOperator::Less => ordering.is_lt(),
-                    ComparisonOperator::LessOrEqual => !ordering.is_gt(),
-                    ComparisonOperator::Greater => ordering.is_gt(),
-                    ComparisonOperator::GreaterOrEqual => !ordering.is_lt(),
-                }
-            }
-            Self::Not(inner) => !inner.evaluate(candidate),
-            Self::And(left, right) => left.evaluate(candidate) && right.evaluate(candidate),
-            Self::Or(left, right) => left.evaluate(candidate) || right.evaluate(candidate),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ValidationOperand {
-    Value,
-    Literal(String),
-}
-
-impl ValidationOperand {
-    fn value<'a>(&'a self, candidate: &'a str) -> &'a str {
-        match self {
-            Self::Value => candidate,
-            Self::Literal(value) => value,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

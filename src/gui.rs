@@ -1,7 +1,7 @@
 use eframe::egui;
 use std::path::PathBuf;
 
-use crate::process::{CellRef, CsvDocument, CsvFileWatcher};
+use crate::process::{CellRef, CsvDocument, CsvFileWatcher, DocumentError, ValidationViolation};
 
 #[path = "gui_help.rs"]
 mod help;
@@ -25,6 +25,8 @@ pub struct RowlyApp {
     help_return_mode: WorkspaceMode,
     path_input: String,
     reference_input: String,
+    code_buffer: String,
+    code_buffer_dirty: bool,
     document: Option<CsvDocument>,
     file_watcher: Option<CsvFileWatcher>,
     status: String,
@@ -43,6 +45,8 @@ impl Default for RowlyApp {
             help_return_mode: WorkspaceMode::TableEditor,
             path_input: String::new(),
             reference_input: "A1".to_owned(),
+            code_buffer: String::new(),
+            code_buffer_dirty: false,
             document: None,
             file_watcher: None,
             status: "CSV ファイルを開いてください".to_owned(),
@@ -61,6 +65,13 @@ impl RowlyApp {
         let path = PathBuf::from(self.path_input.trim());
         match CsvDocument::open(&path) {
             Ok(document) => {
+                let code_buffer = match document.csv_text() {
+                    Ok(text) => text,
+                    Err(error) => {
+                        self.status = error.to_string();
+                        return;
+                    }
+                };
                 let repaint_context = ctx.clone();
                 let watcher = CsvFileWatcher::new(document.path(), move || {
                     repaint_context.request_repaint();
@@ -74,6 +85,8 @@ impl RowlyApp {
                     ),
                 };
                 self.path_input = path.display().to_string();
+                self.code_buffer = code_buffer;
+                self.code_buffer_dirty = false;
                 self.document = Some(document);
                 self.file_watcher = watcher.ok();
                 self.selection = CellRef::new(0, 0);
@@ -177,6 +190,8 @@ impl RowlyApp {
         let mut insert_column_requested = false;
         let mut delete_column_requested = false;
         let mut navigate_requested = false;
+        let mut apply_code_requested = false;
+        let previous_mode = self.mode;
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.label("CSV");
@@ -189,10 +204,21 @@ impl RowlyApp {
                     open_requested = true;
                 }
                 if ui
-                    .add_enabled(self.document.is_some(), egui::Button::new("Save"))
+                    .add_enabled(
+                        self.document.is_some()
+                            && !(self.mode == WorkspaceMode::TextEditor && self.code_buffer_dirty),
+                        egui::Button::new("Save"),
+                    )
                     .clicked()
                 {
                     save_requested = true;
+                }
+                if self.mode == WorkspaceMode::TextEditor
+                    && ui
+                        .add_enabled(self.document.is_some(), egui::Button::new("Apply Code"))
+                        .clicked()
+                {
+                    apply_code_requested = true;
                 }
                 let can_undo = self.document.as_ref().is_some_and(CsvDocument::can_undo);
                 let can_redo = self.document.as_ref().is_some_and(CsvDocument::can_redo);
@@ -266,6 +292,15 @@ impl RowlyApp {
         if navigate_requested {
             self.navigate_to_cell();
         }
+        if previous_mode != WorkspaceMode::TextEditor
+            && self.mode == WorkspaceMode::TextEditor
+            && !self.code_buffer_dirty
+        {
+            self.refresh_code_buffer();
+        }
+        if apply_code_requested {
+            self.apply_code_buffer();
+        }
     }
 
     fn show_workspace(&mut self, ctx: &egui::Context) {
@@ -291,23 +326,25 @@ impl RowlyApp {
                     self.show_editor_grid(ui);
                 }
                 WorkspaceMode::TextEditor => {
-                    let document = self.document.as_ref().expect("document checked above");
                     ui.heading("Text Editor");
-                    ui.label("テキスト編集領域はこのシェルでは表示用です。");
-                    let mut text = document
-                        .rows()
-                        .map(|row| row.join(","))
-                        .collect::<Vec<_>>()
-                        .join("\n");
+                    ui.label("CSVテキストを編集し、Apply Codeで入力規則を確認して反映します。");
+                    if self.code_buffer_dirty {
+                        ui.weak("未適用のコード変更があります");
+                    }
+                    let mut changed = false;
                     egui::ScrollArea::both().show(ui, |ui| {
-                        ui.add(
-                            egui::TextEdit::multiline(&mut text)
-                                .font(egui::TextStyle::Monospace)
-                                .interactive(false)
-                                .desired_width(f32::INFINITY)
-                                .desired_rows(20),
-                        );
+                        changed = ui
+                            .add(
+                                egui::TextEdit::multiline(&mut self.code_buffer)
+                                    .font(egui::TextStyle::Monospace)
+                                    .desired_width(f32::INFINITY)
+                                    .desired_rows(20),
+                            )
+                            .changed();
                     });
+                    if changed {
+                        self.code_buffer_dirty = true;
+                    }
                 }
                 WorkspaceMode::Viewer => {
                     let document = self.document.as_ref().expect("document checked above");
@@ -483,6 +520,41 @@ impl RowlyApp {
         }
     }
 
+    fn refresh_code_buffer(&mut self) {
+        let Some(document) = self.document.as_ref() else {
+            self.code_buffer.clear();
+            self.code_buffer_dirty = false;
+            return;
+        };
+        match document.csv_text() {
+            Ok(text) => {
+                self.code_buffer = text;
+                self.code_buffer_dirty = false;
+            }
+            Err(error) => self.status = error.to_string(),
+        }
+    }
+
+    fn apply_code_buffer(&mut self) {
+        let Some(document) = self.document.as_mut() else {
+            self.status = "適用する CSV がありません".to_owned();
+            return;
+        };
+        let result = document.apply_csv_text(&self.code_buffer);
+        match result {
+            Ok(()) => {
+                self.code_buffer_dirty = false;
+                self.status = "Code changes applied".to_owned();
+                self.refresh_code_buffer();
+                self.clamp_selection();
+            }
+            Err(DocumentError::ValidationRejected { violations }) => {
+                self.status = format_validation_violations(&violations);
+            }
+            Err(error) => self.status = error.to_string(),
+        }
+    }
+
     fn set_selection(&mut self, reference: CellRef, extend: bool) {
         let (row_count, column_count) = self.document.as_ref().map_or((0, 0), |document| {
             (document.row_count(), document.column_count())
@@ -509,6 +581,9 @@ impl RowlyApp {
         };
         match document.set_cell(row, column, value) {
             Ok(()) => self.status = format!("Cell updated ({})", self.selection),
+            Err(DocumentError::ValidationRejected { violations }) => {
+                self.status = format_validation_violations(&violations)
+            }
             Err(error) => self.status = error.to_string(),
         }
     }
@@ -644,7 +719,9 @@ impl RowlyApp {
                         document.row_count(),
                         document.column_count()
                     ));
-                    ui.label(if document.is_dirty() {
+                    ui.label(if self.code_buffer_dirty {
+                        "Code buffer modified"
+                    } else if document.is_dirty() {
                         "Modified"
                     } else {
                         "Saved"
@@ -700,6 +777,19 @@ impl RowlyApp {
             self.selection_anchor = self.selection;
             self.reference_input = self.selection.to_string();
             self.editing = false;
+            if !self.code_buffer_dirty {
+                self.refresh_code_buffer();
+            }
+            if let Some(document) = self.document.as_ref() {
+                let report = document.validation_report();
+                if !report.is_valid() {
+                    self.status = format!(
+                        "{}。{}",
+                        self.status,
+                        format_validation_violations(report.violations())
+                    );
+                }
+            }
         }
     }
 }
@@ -724,6 +814,29 @@ fn column_label(mut column: usize) -> String {
         column = (column - 1) / 26;
     }
     letters.iter().rev().collect()
+}
+
+fn format_validation_violations(violations: &[ValidationViolation]) -> String {
+    let details = violations
+        .iter()
+        .take(3)
+        .map(|violation| {
+            format!(
+                "record {}, {} value {:?} rejected by {:?}",
+                violation.cell().row(),
+                column_label(violation.cell().column()),
+                violation.value(),
+                violation.rule()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    let remaining = violations.len().saturating_sub(3);
+    if remaining == 0 {
+        format!("入力規則違反のため適用できません: {details}")
+    } else {
+        format!("入力規則違反のため適用できません: {details}; and {remaining} more")
+    }
 }
 
 fn cell_range(first: CellRef, second: CellRef) -> (usize, usize, usize, usize) {

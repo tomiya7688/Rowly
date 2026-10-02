@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::process::{CellRange, ColumnType};
+use crate::process::{CellRange, ColumnType, ValidationComparisonOperator};
 
 use super::ast::{
     ArithmeticOperator, ClassDefinition, ColumnSelector, ComparisonOperator, Condition,
@@ -620,7 +620,16 @@ fn compile_validation_expression(
             *uses_value = true;
             Ok(ValidationExpression::Compare {
                 left,
-                operator: *operator,
+                operator: match operator {
+                    ComparisonOperator::Equal => ValidationComparisonOperator::Equal,
+                    ComparisonOperator::NotEqual => ValidationComparisonOperator::NotEqual,
+                    ComparisonOperator::Less => ValidationComparisonOperator::Less,
+                    ComparisonOperator::LessOrEqual => ValidationComparisonOperator::LessOrEqual,
+                    ComparisonOperator::Greater => ValidationComparisonOperator::Greater,
+                    ComparisonOperator::GreaterOrEqual => {
+                        ValidationComparisonOperator::GreaterOrEqual
+                    }
+                },
                 right,
             })
         }

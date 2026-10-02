@@ -99,6 +99,7 @@ transaction 中は履歴位置や保存基準を壊さないため `undo` / `red
 - `RowCount()` / `ColumnCount()` / `CellValueAt(...)` / `SetCellValueAt(...)` の1-based動的セル操作
 - `ColumnIndex(...)` / `CellValueByHeader(...)` / `SetCellValueByHeader(...)` による一意ヘッダー経由の動的セル操作
 - `BeginTransaction()` / `CommitTransaction()` / `RollbackTransaction()` による process transaction の明示操作
+- `SET ...Validation.AllowedValues / .Expression` による純粋な列入力規則宣言と、実行レポートへの順序付き設定出力
 - `Return` のネスト制御フロー伝播
 - 暴走再帰を防ぐ call depth 上限
 - `This.Worksheet.Column(...)` / `This.Worksheet.Editor.Cell(...)` を process API へ対応付ける
@@ -108,6 +109,8 @@ transaction 中は履歴位置や保存基準を壊さないため `undo` / `red
 標準判定関数はユーザー class instance の method lookup と分離した専用 namespace call として AST / runtime で扱います。`Text` / `Number` / `Boolean` は binding の予約名で、`Text.Contains(...)` 等が同名変数により意味を変えないようにします。旧グローバル predicate builtin は 1.0 では提供しません。ユーザー class 自体は同名でも作成できますが、instance variable 経由の method call と標準名前空間呼び出しは別の解決経路です。詳細は [`DSL_STANDARD_LIBRARY.md`](DSL_STANDARD_LIBRARY.md) を参照してください。
 
 DSL の runtime object は CSV 正本モデルの一部ではありません。CSV への作用は必ず process API を通します。型付きスカラーを CSV セルへ書く場合も process 境界で文字列へ変換します。
+
+入力規則のDSL宣言は既存列を解決し、AllowedValuesまたは候補値 `Value` のみを参照するBoolean式を、実行順の設定イベントとして報告します。この段階ではCSV編集・設定永続化・undo/redo履歴の変更は行わず、適用側が設定コマンドとして扱える情報を返します。
 
 宣言は AST の `Statement::Declare` と `DeclarationKind`、再代入は `Statement::Assign` で区別します。runtime の束縛には値と可変性を保持し、`CONST` への代入や同一スコープの再宣言を右辺評価より先に拒否します。宣言は現在のスコープへ追加し、再代入は現在見えている最も内側の束縛へ適用します。関数引数は可変ローカル束縛、`Self` は差し替え不能な暗黙束縛です。`If` は既存スコープを共有し、ループは反復ごとにスコープを作成・破棄します。詳細と旧構文からの移行は [DSL_BINDINGS.md](DSL_BINDINGS.md) を正本とします。
 

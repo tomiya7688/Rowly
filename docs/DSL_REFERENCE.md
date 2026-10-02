@@ -13,7 +13,7 @@
 - [関数定義・呼び出し](#functions)、[Return](#return)
 - [Class / Field / Method / New](#classes)、[Self / Init](#self-init)、[継承 / Super](#inheritance)
 - [標準名前空間](#standard-functions)
-- [A1セル・範囲](#cells)、[行列数・動的座標](#dimensions)、[ヘッダー名](#headers)、[列チェック](#column-checks)
+- [A1セル・範囲](#cells)、[行列数・動的座標](#dimensions)、[ヘッダー名](#headers)、[列チェック](#column-checks)、[入力規則](#validation-rules)
 - [transaction](#transactions)、[CSV書き込みと制限](#limits)、[未実装構文との境界](#unsupported)
 
 明示したアンカーIDはアプリ内Helpからの参照用です。見出しの文言変更時もIDを維持してください。
@@ -29,7 +29,7 @@ Alice,完了,20,
 <a id="source"></a>
 ## 行・コメント・識別子
 
-原則1行に1文を書き、ブロックの開始と終了も別行に置きます。空行と前後の空白は読み飛ばします。行頭の `'`、`Rem` 単独、`Rem ` で始まる行はコメントです。行末コメント、行継続、セミコロンによる複数文は提供しません。
+原則1行に1文を書き、ブロックの開始と終了も別行に置きます。空行と前後の空白は読み飛ばします。行頭の `'`、`Rem` 単独、`Rem ` で始まる行はコメントです。一般的な行継続、行末コメント、セミコロンによる複数文は提供しません。入力規則のAllowedValuesリストと未完了のExpression論理式のみ、次の行へ続けて記述できます。
 
 ```rowly
 ' 名前は実行ごとの変数
@@ -405,6 +405,24 @@ RollbackTransaction()
 
 DSL実行エラー時にtransactionを自動rollbackする仕組みではありません。呼び出し側がtransaction状態を確認し、必要ならprocessの `rollback_transaction()` で復元してください。通常の編集も、それ以前の成功分を実行エラーだけで巻き戻しません。
 
+<a id="validation-rules"></a>
+## 入力規則の宣言
+
+`SET` は列の `.Validation.AllowedValues` または `.Validation.Expression` に限って使えます。列セレクターは既存列の1-based番号または一意なヘッダー名です。AllowedValuesは文字列リテラルのリスト、Expressionは各比較に候補値 `Value` を含み、文字列リテラルだけを組み合わせるBoolean式です。比較・`Not`・`And`・`Or` を使えます。関数呼び出し、別の変数、セル参照などは使えません。
+
+```rowly
+SET This.Worksheet.Editor.Column("状態").Validation.AllowedValues = [
+    "未着手",
+    "進行中",
+    "完了"
+]
+
+SET This.Worksheet.Editor.Column("状態").Validation.Expression =
+    Value = "未着手" OR Value = "進行中" OR Value = "完了"
+```
+
+DSL実行時に列の存在・一意性を確認し、設定宣言をソース順の `ExecutionReport.validation_rules()` と `ValidationRuleSet` イベントで返します。`ValidationRule::matches(candidate)` はAllowedValuesとExpressionの両方を評価できます。この宣言処理自体はCSVを変更せず、保存・編集時の検証エンジンや永続設定は別の機能層が適用します。
+
 <a id="limits"></a>
 ## CSVへ書き込める値と主要制限
 
@@ -421,6 +439,6 @@ This.Worksheet.Editor.Cell(D2).Value.Set = Boolean("true")
 <a id="unsupported"></a>
 ## 現在の構文と将来仕様の境界
 
-本書の実行例は現在のparser/runtimeの形式です。Issueの概念例にある `SET target = value`、`CHECK ... IS ...`、`WITH`、`FOR EACH`、`WHERE`、`SAVE`、入力規則DSL等を、現在使える命令として扱いません。標準関数・セル・列・transactionは本書の対応構文で記述してください。
+本書の実行例は現在のparser/runtimeの形式です。入力規則以外の一般的な `SET target = value`、`CHECK ... IS ...`、`WITH`、`FOR EACH`、`WHERE`、`SAVE` は対応していません。標準関数・セル・列・transactionは本書の対応構文で記述してください。
 
 実装との照合先: [parser](../src/rowly_dsl/parser.rs)、[runtime](../src/rowly_dsl/runtime.rs)、[AST](../src/rowly_dsl/ast.rs)。`tests/dsl_reference_examples.rs` は本書の独立した最小例を共通CSV上で解析・実行し、実装との整合を確認します。

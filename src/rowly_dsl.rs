@@ -5,7 +5,8 @@ mod runtime;
 pub use ast::{
     ArithmeticOperator, ClassDefinition, ColumnSelector, ComparisonOperator, Condition,
     DeclarationKind, ExecutionEvent, ExecutionReport, Expression, FieldDefinition,
-    FunctionDefinition, Program, StandardNamespace, Statement, UnaryOperator,
+    FunctionDefinition, Program, StandardNamespace, Statement, UnaryOperator, ValidationExpression,
+    ValidationOperand, ValidationRule, ValidationRuleDefinition,
 };
 pub use parser::ParseError;
 pub use runtime::ExecutionError;
@@ -59,3 +60,5 @@ mod tests_header_access;
 mod tests_predicates;
 #[cfg(test)]
 mod tests_typed_values;
+#[cfg(test)]
+mod tests_validation_rules;

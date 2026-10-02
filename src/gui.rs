@@ -3,6 +3,10 @@ use std::path::PathBuf;
 
 use crate::process::{CellRef, CsvDocument, CsvFileWatcher};
 
+#[path = "gui_help.rs"]
+mod help;
+pub use help::{HelpDocument, HelpTarget};
+
 const CELL_WIDTH: f32 = 120.0;
 const ROW_HEIGHT: f32 = 26.0;
 const GUTTER_WIDTH: f32 = 56.0;
@@ -13,10 +17,12 @@ enum WorkspaceMode {
     TableEditor,
     TextEditor,
     Viewer,
+    Help,
 }
 
 pub struct RowlyApp {
     mode: WorkspaceMode,
+    help_return_mode: WorkspaceMode,
     path_input: String,
     reference_input: String,
     document: Option<CsvDocument>,
@@ -27,12 +33,14 @@ pub struct RowlyApp {
     selection_anchor: CellRef,
     editing: bool,
     edit_value: String,
+    help: help::HelpViewer,
 }
 
 impl Default for RowlyApp {
     fn default() -> Self {
         Self {
             mode: WorkspaceMode::TableEditor,
+            help_return_mode: WorkspaceMode::TableEditor,
             path_input: String::new(),
             reference_input: "A1".to_owned(),
             document: None,
@@ -43,6 +51,7 @@ impl Default for RowlyApp {
             selection_anchor: CellRef::new(0, 0),
             editing: false,
             edit_value: String::new(),
+            help: help::HelpViewer::default(),
         }
     }
 }
@@ -90,6 +99,7 @@ impl RowlyApp {
     fn show_menu(&mut self, ctx: &egui::Context) {
         let mut open_requested = false;
         let mut save_requested = false;
+        let mut help_target = None;
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.menu_button("File", |ui| {
@@ -123,6 +133,22 @@ impl RowlyApp {
                 ui.menu_button("View", |ui| {
                     ui.label("Choose a workspace mode from the toolbar.");
                 });
+                ui.menu_button("Help", |ui| {
+                    if ui.button("DSL 文法リファレンス").clicked() {
+                        help_target = Some(help::HelpTarget::new(
+                            help::HelpDocument::Reference,
+                            "source",
+                        ));
+                        ui.close_menu();
+                    }
+                    if ui.button("DSL チュートリアル").clicked() {
+                        help_target = Some(help::HelpTarget::new(
+                            help::HelpDocument::Tutorial,
+                            "tutorial-getting-started",
+                        ));
+                        ui.close_menu();
+                    }
+                });
                 ui.separator();
                 ui.label("Rowly");
             });
@@ -133,9 +159,15 @@ impl RowlyApp {
         if save_requested {
             self.save_csv();
         }
+        if let Some(target) = help_target {
+            self.open_help_target(target);
+        }
     }
 
     fn show_toolbar(&mut self, ctx: &egui::Context) {
+        if self.mode == WorkspaceMode::Help {
+            return;
+        }
         let mut open_requested = false;
         let mut save_requested = false;
         let mut undo_requested = false;
@@ -237,6 +269,12 @@ impl RowlyApp {
     }
 
     fn show_workspace(&mut self, ctx: &egui::Context) {
+        if self.mode == WorkspaceMode::Help {
+            if self.help.show(ctx) {
+                self.mode = self.help_return_mode;
+            }
+            return;
+        }
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.document.is_none() {
                 ui.vertical_centered(|ui| {
@@ -276,8 +314,17 @@ impl RowlyApp {
                     ui.heading("Viewer");
                     self.show_table_preview(ui, document, true);
                 }
+                WorkspaceMode::Help => unreachable!("handled before workspace rendering"),
             }
         });
+    }
+
+    pub fn open_help_target(&mut self, target: help::HelpTarget) {
+        if self.mode != WorkspaceMode::Help {
+            self.help_return_mode = self.mode;
+        }
+        self.help.open(target);
+        self.mode = WorkspaceMode::Help;
     }
 
     fn show_editor_grid(&mut self, ui: &mut egui::Ui) {
@@ -604,7 +651,9 @@ impl RowlyApp {
                     });
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add(egui::Slider::new(&mut self.zoom, 50.0..=200.0).suffix("%"));
+                    if self.mode != WorkspaceMode::Help {
+                        ui.add(egui::Slider::new(&mut self.zoom, 50.0..=200.0).suffix("%"));
+                    }
                 });
             });
         });

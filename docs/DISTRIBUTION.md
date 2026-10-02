@@ -14,6 +14,8 @@ THIRD_PARTY_NOTICES.md
 licenses/
 ```
 
+GUIのDSL Helpは `docs/DSL_REFERENCE.md`、`docs/DSL_TUTORIAL.md` と関連DSL文書をビルド時に実行ファイルへ埋め込む。文書ファイルを配布先へ別途コピーせず、インターネット接続なしでHelpを閲覧できる。
+
 `rowly-excel-bridge` は PyInstaller の one-file executable とし、Python runtime、openpyxl、et-xmlfile、Rowly の Excel bridge code を内包する。ユーザー環境の Python / pip / openpyxl を通常動作の前提にしない。
 
 ## 固定バージョン

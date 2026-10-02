@@ -1003,7 +1003,7 @@ impl<'a> Runtime<'a> {
         class_name: &str,
         arguments: &[Expression],
     ) -> Result<Value, ExecutionError> {
-        let class = self.class_by_name(class_name)?.clone();
+        let class = self.class_by_name(class_name)?;
         let lineage = self.class_lineage(&class.name)?;
         let constructor = self.find_method_in_hierarchy(&class.name, "Init")?;
         let expected = constructor
@@ -1012,7 +1012,7 @@ impl<'a> Runtime<'a> {
             .unwrap_or(0);
         if expected != arguments.len() {
             return Err(ExecutionError::ConstructorArgumentCount {
-                class_name: class.name,
+                class_name: class.name.clone(),
                 expected,
                 actual: arguments.len(),
             });
@@ -1037,7 +1037,7 @@ impl<'a> Runtime<'a> {
 
         if let Some((defining_class, constructor)) = constructor {
             let _ =
-                self.invoke_method_with_values(object_id, &defining_class, &constructor, values)?;
+                self.invoke_method_with_values(object_id, defining_class, constructor, values)?;
         }
 
         Ok(Value::Object(object_id))
@@ -1049,16 +1049,15 @@ impl<'a> Runtime<'a> {
         arguments: &[Expression],
     ) -> Result<Option<Value>, ExecutionError> {
         self.ensure_call_depth()?;
-        let function = self
-            .program
+        let program = self.program;
+        let function = program
             .functions
             .iter()
             .find(|function| function.name.eq_ignore_ascii_case(name))
-            .cloned()
             .ok_or_else(|| ExecutionError::UnknownFunction(name.to_owned()))?;
         if function.parameters.len() != arguments.len() {
             return Err(ExecutionError::ArgumentCount {
-                name: function.name,
+                name: function.name.clone(),
                 expected: function.parameters.len(),
                 actual: arguments.len(),
             });
@@ -1084,7 +1083,7 @@ impl<'a> Runtime<'a> {
             Flow::Return(value) => value,
         };
         self.events.push(ExecutionEvent::FunctionCalled {
-            name: function.name,
+            name: function.name.clone(),
             arguments: argument_descriptions,
             return_value: return_value
                 .as_ref()
@@ -1109,13 +1108,13 @@ impl<'a> Runtime<'a> {
         if method.parameters.len() != arguments.len() {
             return Err(ExecutionError::MethodArgumentCount {
                 class_name,
-                name: method.name,
+                name: method.name.clone(),
                 expected: method.parameters.len(),
                 actual: arguments.len(),
             });
         }
         let values = self.evaluate_arguments(arguments)?;
-        self.invoke_method_with_values(object_id, &defining_class, &method, values)
+        self.invoke_method_with_values(object_id, defining_class, method, values)
     }
 
     fn call_super_method(
@@ -1131,27 +1130,27 @@ impl<'a> Runtime<'a> {
         let parent = self
             .class_by_name(&current_class)?
             .parent
-            .clone()
+            .as_deref()
             .ok_or_else(|| ExecutionError::NoSuperClass {
                 class_name: current_class.clone(),
             })?;
         let object_id = self.resolve_object("Self")?;
         let (defining_class, method) =
-            self.find_method_in_hierarchy(&parent, name)?
+            self.find_method_in_hierarchy(parent, name)?
                 .ok_or_else(|| ExecutionError::UnknownSuperMethod {
                     class_name: current_class,
                     method: name.to_owned(),
                 })?;
         if method.parameters.len() != arguments.len() {
             return Err(ExecutionError::MethodArgumentCount {
-                class_name: defining_class.clone(),
-                name: method.name,
+                class_name: defining_class.to_owned(),
+                name: method.name.clone(),
                 expected: method.parameters.len(),
                 actual: arguments.len(),
             });
         }
         let values = self.evaluate_arguments(arguments)?;
-        self.invoke_method_with_values(object_id, &defining_class, &method, values)
+        self.invoke_method_with_values(object_id, defining_class, method, values)
     }
 
     fn invoke_method_with_values(
@@ -1201,7 +1200,7 @@ impl<'a> Runtime<'a> {
         Ok(return_value)
     }
 
-    fn class_by_name(&self, name: &str) -> Result<&super::ast::ClassDefinition, ExecutionError> {
+    fn class_by_name(&self, name: &str) -> Result<&'a super::ast::ClassDefinition, ExecutionError> {
         self.program
             .classes
             .iter()
@@ -1212,18 +1211,18 @@ impl<'a> Runtime<'a> {
     fn class_lineage(
         &self,
         class_name: &str,
-    ) -> Result<Vec<super::ast::ClassDefinition>, ExecutionError> {
+    ) -> Result<Vec<&'a super::ast::ClassDefinition>, ExecutionError> {
         let mut lineage = Vec::new();
         let mut seen = Vec::new();
-        let mut current = self.class_by_name(class_name)?.clone();
+        let mut current = self.class_by_name(class_name)?;
 
         loop {
             let key = normalize_identifier(&current.name);
             if seen.iter().any(|name| name == &key) {
-                return Err(ExecutionError::InheritanceCycle(current.name));
+                return Err(ExecutionError::InheritanceCycle(current.name.clone()));
             }
             seen.push(key);
-            lineage.push(current.clone());
+            lineage.push(current);
 
             let Some(parent_name) = current.parent.as_deref() else {
                 break;
@@ -1233,7 +1232,6 @@ impl<'a> Runtime<'a> {
                 .classes
                 .iter()
                 .find(|class| class.name.eq_ignore_ascii_case(parent_name))
-                .cloned()
                 .ok_or_else(|| ExecutionError::UnknownParentClass {
                     class_name: current.name.clone(),
                     parent: parent_name.to_owned(),
@@ -1248,15 +1246,14 @@ impl<'a> Runtime<'a> {
         &self,
         class_name: &str,
         method_name: &str,
-    ) -> Result<Option<(String, super::ast::FunctionDefinition)>, ExecutionError> {
+    ) -> Result<Option<(&'a str, &'a super::ast::FunctionDefinition)>, ExecutionError> {
         let lineage = self.class_lineage(class_name)?;
         Ok(lineage.iter().rev().find_map(|class| {
             class
                 .methods
                 .iter()
                 .find(|method| method.name.eq_ignore_ascii_case(method_name))
-                .cloned()
-                .map(|method| (class.name.clone(), method))
+                .map(|method| (class.name.as_str(), method))
         }))
     }
 

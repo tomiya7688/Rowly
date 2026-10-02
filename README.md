@@ -102,7 +102,7 @@ CSVの読み書きは独自方言を追加せず、標準的な引用符規則�
 ### Rowly DSL
 
 Rowly DSL はアプリ操作を直接表現する専用言語です。
-現在実装済みの構文・最小例・エラー条件は、日本語正本の[文法リファレンス](docs/DSL_REFERENCE.md)から参照できます。
+現在実装済みの構文・最小例・エラー条件は、日本語正本の[文法リファレンス](docs/DSL_REFERENCE.md)から参照できます。初めて使う場合は[DSLチュートリアル](docs/DSL_TUTORIAL.md)から始めてください。
 `If ... Then` / `Else` / `End If`、`VAR` / `CONST`、`Def ...` / `End Def`、`Return`、関数、クラス、フィールド、メソッド、列チェック、範囲値設定を扱います。
 
 ```text

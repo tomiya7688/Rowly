@@ -223,6 +223,15 @@ impl CsvDocument {
         self.validation_rules.iter()
     }
 
+    /// Return the ordered allowed values for the active rule on a column.
+    pub fn allowed_values_for_column(&self, column: usize) -> Option<&[String]> {
+        self.validation_rules.iter().find_map(|(target, rule)| {
+            (self.resolve_validation_target(target).ok() == Some(column))
+                .then(|| rule.allowed_values())
+                .flatten()
+        })
+    }
+
     /// Inspect current data without rejecting it. This also reports legacy or
     /// externally supplied values that do not satisfy their session rules.
     pub fn validation_report(&self) -> ValidationReport {

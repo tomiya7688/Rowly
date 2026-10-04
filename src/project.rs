@@ -3,12 +3,16 @@
 
 use std::{
     collections::HashSet,
-    fs,
+    fs::{self, OpenOptions},
+    io::{self, Write},
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde_json::{Value, json};
 use thiserror::Error;
+
+use crate::data::replace_file;
 
 pub const PROJECT_FORMAT: &str = "rowly-project";
 pub const PROJECT_VERSION: u64 = 1;
@@ -92,10 +96,7 @@ impl RowlyProject {
         let bytes = serde_json::to_vec_pretty(&value)
             .map_err(|error| ProjectError::Schema(error.to_string()))?;
         let path = project_path.as_ref();
-        fs::write(path, bytes).map_err(|error| ProjectError::Write {
-            path: path.display().to_string(),
-            message: error.to_string(),
-        })
+        write_atomic(path, &bytes)
     }
 
     /// Resolve only declared source paths. This does not enumerate directories
@@ -349,6 +350,65 @@ impl RowlyProject {
         }
         Ok(())
     }
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ProjectError> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let name = path.file_name().ok_or_else(|| ProjectError::Write {
+        path: path.display().to_string(),
+        message: "project path has no file name".into(),
+    })?;
+    let mut temporary = None;
+    for attempt in 0..16u32 {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let mut temporary_name = name.to_os_string();
+        temporary_name.push(format!(".{}.{}.{}.tmp", std::process::id(), stamp, attempt));
+        let candidate = parent.join(temporary_name);
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => {
+                temporary = Some((candidate, file));
+                break;
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(ProjectError::Write {
+                    path: path.display().to_string(),
+                    message: error.to_string(),
+                });
+            }
+        }
+    }
+    let Some((temporary_path, mut file)) = temporary else {
+        return Err(ProjectError::Write {
+            path: path.display().to_string(),
+            message: "could not allocate a temporary project manifest".into(),
+        });
+    };
+    let result = (|| {
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        replace_file(&temporary_path, path)?;
+        Ok::<(), io::Error>(())
+    })();
+    if let Err(error) = result {
+        let _ = fs::remove_file(&temporary_path);
+        return Err(ProjectError::Write {
+            path: path.display().to_string(),
+            message: error.to_string(),
+        });
+    }
+    Ok(())
 }
 
 pub(crate) fn validate_project_value(value: Value) -> Result<(), ProjectError> {

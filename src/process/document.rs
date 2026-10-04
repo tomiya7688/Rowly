@@ -978,13 +978,13 @@ fn merge_row_only_changes(
 
     let mut merged = vec![baseline[0].clone()];
     let mut mapped_rows = HashMap::new();
-    for row_index in 1..baseline.len() {
+    for (row_index, baseline_row) in baseline.iter().enumerate().skip(1) {
         if let Some(rows) = insertions.get(&row_index) {
             merged.extend(rows.iter().cloned());
         }
         if !removed.contains(&row_index) {
             mapped_rows.insert(row_index, merged.len());
-            merged.push(baseline[row_index].clone());
+            merged.push(baseline_row.clone());
         }
     }
     if let Some(rows) = insertions.get(&baseline.len()) {

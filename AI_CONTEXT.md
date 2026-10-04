@@ -34,6 +34,14 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Do not mix unrelated refactors into the current change.
 - Summaries are routing aids, not substitutes for source/tests.
 
+## Commenting Convention
+- Rowlyの保守対象コードは `tomiya7688/Json-like-comment-outs` の日本語canonical仕様をコメント規約として使用する。
+- struct / enum / trait / function / method等の宣言直前は、責務・処理・引数・戻り値・必要な副作用/エラーをJSON-like Comment Outsで記述する。
+- 実装内部の分岐理由、処理ブロック、非自明な変数には通常コメントを使用し、内部処理までJSON-like形式へしない。
+- コメントはコードの逐語訳ではなく、責務・理由・境界・副作用を優先して書く。
+- コメント追加だけの変更では、原則として機能変更や無関係なrefactorを混ぜない。
+- 全コードへの初回適用はP1 Issue #143で管理する。
+
 ## Important Constraints
 - CSV is the source of truth; Rowly-only metadata must never be required to recover table data.
 - Never mutate CSV structure merely for presentation.

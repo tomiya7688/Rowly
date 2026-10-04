@@ -152,6 +152,10 @@ pub enum Statement {
     CheckJapanese {
         selector: ColumnSelector,
     },
+    SetValidationRule {
+        selector: ColumnSelector,
+        rule: ValidationRule,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -240,16 +244,124 @@ pub enum ColumnSelector {
     Header(String),
 }
 
+/// A pure validation rule declared by a DSL `SET` statement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValidationRule {
+    AllowedValues(Vec<String>),
+    Expression(ValidationExpression),
+}
+
+impl ValidationRule {
+    /// Returns whether a candidate text value satisfies this rule.
+    pub fn matches(&self, candidate: &str) -> bool {
+        match self {
+            Self::AllowedValues(values) => values.iter().any(|value| value == candidate),
+            Self::Expression(expression) => expression.evaluate(candidate),
+        }
+    }
+
+    pub fn allowed_values(&self) -> Option<&[String]> {
+        match self {
+            Self::AllowedValues(values) => Some(values),
+            Self::Expression(_) => None,
+        }
+    }
+
+    pub fn expression(&self) -> Option<&ValidationExpression> {
+        match self {
+            Self::AllowedValues(_) => None,
+            Self::Expression(expression) => Some(expression),
+        }
+    }
+}
+
+/// Boolean expression over the candidate `Value` and string literals only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValidationExpression {
+    Compare {
+        left: ValidationOperand,
+        operator: ComparisonOperator,
+        right: ValidationOperand,
+    },
+    Not(Box<ValidationExpression>),
+    And(Box<ValidationExpression>, Box<ValidationExpression>),
+    Or(Box<ValidationExpression>, Box<ValidationExpression>),
+}
+
+impl ValidationExpression {
+    pub fn evaluate(&self, candidate: &str) -> bool {
+        match self {
+            Self::Compare {
+                left,
+                operator,
+                right,
+            } => {
+                let left = left.value(candidate);
+                let right = right.value(candidate);
+                let ordering = left.cmp(right);
+                match operator {
+                    ComparisonOperator::Equal => ordering.is_eq(),
+                    ComparisonOperator::NotEqual => !ordering.is_eq(),
+                    ComparisonOperator::Less => ordering.is_lt(),
+                    ComparisonOperator::LessOrEqual => !ordering.is_gt(),
+                    ComparisonOperator::Greater => ordering.is_gt(),
+                    ComparisonOperator::GreaterOrEqual => !ordering.is_lt(),
+                }
+            }
+            Self::Not(inner) => !inner.evaluate(candidate),
+            Self::And(left, right) => left.evaluate(candidate) && right.evaluate(candidate),
+            Self::Or(left, right) => left.evaluate(candidate) || right.evaluate(candidate),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValidationOperand {
+    Value,
+    Literal(String),
+}
+
+impl ValidationOperand {
+    fn value<'a>(&'a self, candidate: &'a str) -> &'a str {
+        match self {
+            Self::Value => candidate,
+            Self::Literal(value) => value,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidationRuleDefinition {
+    pub(super) selector: ColumnSelector,
+    pub(super) rule: ValidationRule,
+}
+
+impl ValidationRuleDefinition {
+    pub fn selector(&self) -> &ColumnSelector {
+        &self.selector
+    }
+
+    pub fn rule(&self) -> &ValidationRule {
+        &self.rule
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutionReport {
     pub(super) events: Vec<ExecutionEvent>,
     pub(super) variables: HashMap<String, String>,
     pub(super) object_fields: HashMap<String, HashMap<String, String>>,
+    pub(super) validation_rules: Vec<ValidationRuleDefinition>,
 }
 
 impl ExecutionReport {
     pub fn events(&self) -> &[ExecutionEvent] {
         &self.events
+    }
+
+    /// Validation declarations in source execution order.
+    pub fn validation_rules(&self) -> &[ValidationRuleDefinition] {
+        &self.validation_rules
     }
 
     pub fn variable(&self, name: &str) -> Option<&str> {
@@ -306,6 +418,9 @@ pub enum ExecutionEvent {
     JapaneseChecked {
         selector: ColumnSelector,
         report: JapaneseCheckReport,
+    },
+    ValidationRuleSet {
+        definition: ValidationRuleDefinition,
     },
 }
 

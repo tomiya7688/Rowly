@@ -8,7 +8,7 @@ use crate::process::{ColumnError, CsvDocument, DocumentError};
 use super::ast::{
     ArithmeticOperator, ColumnSelector, ComparisonOperator, Condition, DeclarationKind,
     ExecutionEvent, ExecutionReport, Expression, Program, StandardNamespace, Statement,
-    UnaryOperator, normalize_identifier,
+    UnaryOperator, ValidationRuleDefinition, normalize_identifier,
 };
 
 const MAX_CALL_DEPTH: usize = 64;
@@ -170,6 +170,7 @@ struct Runtime<'a> {
     scopes: Vec<HashMap<String, Binding>>,
     objects: Vec<ObjectInstance>,
     events: Vec<ExecutionEvent>,
+    validation_rules: Vec<ValidationRuleDefinition>,
     call_depth: usize,
     method_context: Vec<String>,
 }
@@ -182,6 +183,7 @@ impl<'a> Runtime<'a> {
             scopes: vec![HashMap::new()],
             objects: Vec::new(),
             events: Vec::new(),
+            validation_rules: Vec::new(),
             call_depth: 0,
             method_context: Vec::new(),
         }
@@ -229,6 +231,7 @@ impl<'a> Runtime<'a> {
             events: self.events,
             variables,
             object_fields,
+            validation_rules: self.validation_rules,
         })
     }
 
@@ -405,6 +408,16 @@ impl<'a> Runtime<'a> {
                         selector: selector.clone(),
                         report,
                     });
+                }
+                Statement::SetValidationRule { selector, rule } => {
+                    resolve_column(selector, self.document)?;
+                    let definition = ValidationRuleDefinition {
+                        selector: selector.clone(),
+                        rule: rule.clone(),
+                    };
+                    self.validation_rules.push(definition.clone());
+                    self.events
+                        .push(ExecutionEvent::ValidationRuleSet { definition });
                 }
             }
         }

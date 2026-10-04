@@ -5,7 +5,7 @@ use crate::process::{CellRange, ColumnType};
 use super::ast::{
     ArithmeticOperator, ClassDefinition, ColumnSelector, ComparisonOperator, Condition,
     DeclarationKind, Expression, FieldDefinition, FunctionDefinition, Program, StandardNamespace,
-    Statement, UnaryOperator,
+    Statement, UnaryOperator, ValidationExpression, ValidationOperand, ValidationRule,
 };
 
 pub fn parse(source: &str) -> Result<Program, ParseError> {
@@ -210,6 +210,22 @@ impl Parser {
         }
         if starts_with_ci(&line.text, "for ") {
             return self.parse_for(&line);
+        }
+        if starts_with_ci(&line.text, "set ") {
+            let mut declaration = line.clone();
+            let mut text = line.text.clone();
+            while validation_declaration_needs_continuation(&text) {
+                let Some(next) = self.lines.get(self.position + 1) else {
+                    break;
+                };
+                text.push(' ');
+                text.push_str(&next.text);
+                declaration.text = text.clone();
+                self.position += 1;
+            }
+            let statement = parse_validation_statement(&declaration)?;
+            self.position += 1;
+            return Ok(statement);
         }
         if starts_with_ci(&line.text, "def ") || starts_with_ci(&line.text, "class ") {
             return Err(parse_error(
@@ -483,6 +499,214 @@ fn parse_statement(line: &SourceLine) -> Result<Statement, ParseError> {
         }),
         _ => Err(parse_error(line.number, "unsupported statement")),
     }
+}
+
+fn parse_validation_statement(line: &SourceLine) -> Result<Statement, ParseError> {
+    let rest = strip_prefix_ci(&line.text, "set ")
+        .ok_or_else(|| parse_error(line.number, "expected `SET target = value`"))?;
+    let (target, value) = split_top_level_once(rest, '=')
+        .ok_or_else(|| parse_error(line.number, "expected `SET target = value`"))?;
+    if !starts_with_ci(target.trim(), "this.worksheet.editor.column(") {
+        return Err(parse_error(
+            line.number,
+            "SET target must start with `This.Worksheet.Editor.Column(...)`",
+        ));
+    }
+    let (selector, remainder) =
+        parse_call(target.trim(), "this.worksheet.editor.column(", line.number)?;
+    let selector = parse_column_selector(selector, line.number)?;
+    let value = value.trim();
+    let rule = if eq_ci(remainder, ".validation.allowedvalues") {
+        ValidationRule::AllowedValues(parse_validation_values(value, line.number)?)
+    } else if eq_ci(remainder, ".validation.expression") {
+        let condition = parse_condition(value, line.number)?;
+        let mut uses_value = false;
+        let expression = compile_validation_expression(&condition, &mut uses_value, line.number)?;
+        if !uses_value {
+            return Err(parse_error(
+                line.number,
+                "Validation.Expression must reference the candidate `Value`",
+            ));
+        }
+        ValidationRule::Expression(expression)
+    } else {
+        return Err(parse_error(
+            line.number,
+            "SET target must end in `.Validation.AllowedValues` or `.Validation.Expression`",
+        ));
+    };
+    Ok(Statement::SetValidationRule { selector, rule })
+}
+
+fn parse_validation_values(text: &str, line: usize) -> Result<Vec<String>, ParseError> {
+    let text = text.trim();
+    if !text.starts_with('[') || !text.ends_with(']') {
+        return Err(parse_error(
+            line,
+            "Validation.AllowedValues expects a bracketed list",
+        ));
+    }
+    let contents = &text[1..text.len() - 1];
+    if contents.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut values = Vec::new();
+    let mut start = 0usize;
+    let mut quoted = false;
+    let mut escaped = false;
+    for (index, ch) in contents.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if quoted && ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            quoted = !quoted;
+            continue;
+        }
+        if !quoted {
+            if matches!(ch, '[' | ']' | '(' | ')') {
+                return Err(parse_error(
+                    line,
+                    "AllowedValues items must be literal values",
+                ));
+            }
+            if ch == ',' {
+                values.push(parse_validation_value(&contents[start..index], line)?);
+                start = index + ch.len_utf8();
+            }
+        }
+    }
+    if quoted || escaped {
+        return Err(parse_error(line, "unterminated string in AllowedValues"));
+    }
+    values.push(parse_validation_value(&contents[start..], line)?);
+    Ok(values)
+}
+
+fn parse_validation_value(text: &str, line: usize) -> Result<String, ParseError> {
+    match parse_expression(text.trim(), line)? {
+        Expression::Literal(value) => Ok(value),
+        _ => Err(parse_error(
+            line,
+            "AllowedValues items must be literal values",
+        )),
+    }
+}
+
+fn compile_validation_expression(
+    condition: &Condition,
+    uses_value: &mut bool,
+    line: usize,
+) -> Result<ValidationExpression, ParseError> {
+    match condition {
+        Condition::Compare {
+            left,
+            operator,
+            right,
+        } => {
+            let mut comparison_uses_value = false;
+            let left = compile_validation_operand(left, &mut comparison_uses_value, line)?;
+            let right = compile_validation_operand(right, &mut comparison_uses_value, line)?;
+            if !comparison_uses_value {
+                return Err(parse_error(
+                    line,
+                    "each Validation.Expression comparison must reference the candidate `Value`",
+                ));
+            }
+            *uses_value = true;
+            Ok(ValidationExpression::Compare {
+                left,
+                operator: *operator,
+                right,
+            })
+        }
+        Condition::Not(inner) => Ok(ValidationExpression::Not(Box::new(
+            compile_validation_expression(inner, uses_value, line)?,
+        ))),
+        Condition::And(left, right) => Ok(ValidationExpression::And(
+            Box::new(compile_validation_expression(left, uses_value, line)?),
+            Box::new(compile_validation_expression(right, uses_value, line)?),
+        )),
+        Condition::Or(left, right) => Ok(ValidationExpression::Or(
+            Box::new(compile_validation_expression(left, uses_value, line)?),
+            Box::new(compile_validation_expression(right, uses_value, line)?),
+        )),
+        _ => Err(parse_error(
+            line,
+            "Validation.Expression must be a Boolean comparison using `Value` and string literals",
+        )),
+    }
+}
+
+fn compile_validation_operand(
+    expression: &Expression,
+    uses_value: &mut bool,
+    line: usize,
+) -> Result<ValidationOperand, ParseError> {
+    match expression {
+        Expression::Variable(name) if name.eq_ignore_ascii_case("Value") => {
+            *uses_value = true;
+            Ok(ValidationOperand::Value)
+        }
+        Expression::Literal(value) => Ok(ValidationOperand::Literal(value.clone())),
+        _ => Err(parse_error(
+            line,
+            "Validation.Expression operands must be `Value` or string literals; calls and variables are unsupported",
+        )),
+    }
+}
+
+fn validation_declaration_needs_continuation(text: &str) -> bool {
+    let Some((target, value)) = split_top_level_once(text, '=') else {
+        return false;
+    };
+    let target = target.trim().to_ascii_lowercase();
+    let value = value.trim();
+    if target.ends_with(".validation.allowedvalues") {
+        return value.is_empty() || has_unclosed_square_bracket(value);
+    }
+    if target.ends_with(".validation.expression") {
+        if value.is_empty() {
+            return true;
+        }
+        let lower = value.to_ascii_lowercase();
+        return [" and", " or", " =", " !=", " <=", " >=", " <", " >"]
+            .iter()
+            .any(|suffix| lower.ends_with(suffix));
+    }
+    false
+}
+
+fn has_unclosed_square_bracket(text: &str) -> bool {
+    let mut depth = 0usize;
+    let mut quoted = false;
+    let mut escaped = false;
+    for ch in text.chars() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if quoted && ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            quoted = !quoted;
+            continue;
+        }
+        if !quoted {
+            match ch {
+                '[' => depth += 1,
+                ']' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+    }
+    depth > 0
 }
 
 fn parse_declaration(

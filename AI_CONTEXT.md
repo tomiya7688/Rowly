@@ -15,6 +15,12 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Implementation truth: `src/` and matching tests
 - Task intent: the current issue/conversation takes priority over speculative future work
 
+## README Policy
+- READMEは入口ページとして短く保つ。
+- READMEへ詳細な構文仕様、内部アルゴリズム、長大な実装済み一覧を置かない。
+- 詳細仕様は `docs/`、未実装設計・実装タスクはGitHub Issuesへ分離する。
+- READMEには「Rowlyとは何か / 基本原則 / 主な機能 / 起動 / 文書への導線」だけを置く。
+
 ## Read First
 1. Current task / issue
 2. `README.md`

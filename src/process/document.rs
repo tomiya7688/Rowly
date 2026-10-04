@@ -534,11 +534,11 @@ impl CsvDocument {
             })?;
         if current != self.disk_fingerprint {
             self.merge_external_disk()?;
-            if !self.is_dirty() {
+            if !self.is_dirty() && self.source_encoding == SourceEncoding::Utf8 {
                 return Ok(());
             }
         }
-        if !self.is_dirty() {
+        if !self.is_dirty() && self.source_encoding == SourceEncoding::Utf8 {
             return Ok(());
         }
         self.disk_fingerprint =

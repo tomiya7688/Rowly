@@ -96,7 +96,7 @@ impl RowlyProject {
         let bytes = serde_json::to_vec_pretty(&value)
             .map_err(|error| ProjectError::Schema(error.to_string()))?;
         let path = project_path.as_ref();
-        write_atomic(path, &bytes)
+        write_project_file_atomic(path, &bytes)
     }
 
     /// Resolve only declared source paths. This does not enumerate directories
@@ -352,7 +352,7 @@ impl RowlyProject {
     }
 }
 
-fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ProjectError> {
+pub(crate) fn write_project_file_atomic(path: &Path, bytes: &[u8]) -> Result<(), ProjectError> {
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())

@@ -8,6 +8,8 @@ Rowly は CSV-first のエディタです。表示、スクリプト、外部連
 
 `.rowlyx` は通常のproject treeをZIP互換archiveへ包装します。pack対象はmanifest内の相対参照に限り、absolute参照は外部のまま保持します。open時にarchive pathとproject manifestを検証し、安全な相対entryだけを空の展開先へ復元します。
 
+`ProjectSession` は `.rwprj` と `.rowlyx` を同じAPIで開きます。declared file sourceのopen時は `init.rly` の `INCLUDE GENERATED` / `INCLUDE USER` だけを解釈し、source idとheaderを指定するcolumn type宣言だけを適用します。initから通常のRowly DSL、macro、File I/Oは実行しません。script pathはproject-relativeかつsymlinkなしに制限します。GUI生成設定は `generated.rly` だけを更新し、`user.rly` は存在しない場合だけ空ファイルとして作成します。bare CSVを開く経路はProjectSessionを通らず、generated initファイルやsidecarを作りません。
+
 各logical tableは参加source idとCSV fileを保持し、default write targetはそのtable内のsourceに限定して設定します。新規rowはschema幅・source fileの一意性・現在のschemaを確認してCSVへ追記し、source idとpathをprovenanceに記録します。source間move APIはCSV間更新とlogical provenanceのUndo/Redoを一つの操作として扱います。
 
 同じlogical tableに属するsource間row moveは明示targetを要求し、元CSVから対象recordを削除して互換schemaのCSVへ挿入します。logical provenanceとdisplay orderを分離し、move historyからUndo/Redoを適用します。

@@ -2,14 +2,16 @@
 
 use std::{
     collections::BTreeSet,
-    fs::{self, File},
+    fs::{self, File, OpenOptions},
     io::{self, Read, Write},
     path::{Component, Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use thiserror::Error;
 use zip::{CompressionMethod, ZipArchive, ZipWriter, write::SimpleFileOptions};
 
+use crate::data::replace_file;
 use crate::project::{RowlyProject, SourceKind, resolve_project_reference};
 
 /// Package a project folder into a standard ZIP-compatible `.rowlyx` archive.
@@ -137,23 +139,70 @@ pub fn pack_project(
         }
     }
 
-    let output = File::create(archive_file).map_err(|error| io_error(archive_file, error))?;
-    let mut zip = ZipWriter::new(output);
-    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-    for relative in entries {
-        let source = root.join(&relative);
-        let entry = zip_name(&relative);
-        if source.is_dir() {
-            zip.add_directory(format!("{entry}/"), options)
-                .map_err(zip_error)?;
-        } else {
-            zip.start_file(entry, options).map_err(zip_error)?;
-            let mut input = File::open(&source).map_err(|error| io_error(&source, error))?;
-            io::copy(&mut input, &mut zip).map_err(|error| io_error(&source, error))?;
+    let temporary = create_temporary_archive(archive_file)?;
+    let result = (|| {
+        let output = File::create(&temporary).map_err(|error| io_error(&temporary, error))?;
+        let mut zip = ZipWriter::new(output);
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        for relative in entries {
+            let source = root.join(&relative);
+            let entry = zip_name(&relative);
+            if source.is_dir() {
+                zip.add_directory(format!("{entry}/"), options)
+                    .map_err(zip_error)?;
+            } else {
+                zip.start_file(entry, options).map_err(zip_error)?;
+                let mut input = File::open(&source).map_err(|error| io_error(&source, error))?;
+                io::copy(&mut input, &mut zip).map_err(|error| io_error(&source, error))?;
+            }
+        }
+        zip.finish().map_err(zip_error)?;
+        RowlyxArchive::open(&temporary)?;
+        replace_file(&temporary, archive_file).map_err(|error| io_error(archive_file, error))?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+fn create_temporary_archive(path: &Path) -> Result<PathBuf, RowlyxError> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let name = path
+        .file_name()
+        .ok_or_else(|| RowlyxError::InvalidReference(path.display().to_string()))?;
+    for attempt in 0..16u32 {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let mut temporary_name = name.to_os_string();
+        temporary_name.push(format!(".{}.{}.{}.tmp", std::process::id(), stamp, attempt));
+        let temporary = parent.join(temporary_name);
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+        {
+            Ok(file) => {
+                drop(file);
+                return Ok(temporary);
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(io_error(&temporary, error)),
         }
     }
-    zip.finish().map_err(zip_error)?;
-    Ok(())
+    Err(io_error(
+        path,
+        io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "could not allocate a temporary rowlyx archive",
+        ),
+    ))
 }
 
 /// An opened and validated `.rowlyx` archive.

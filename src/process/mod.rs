@@ -12,7 +12,10 @@ pub use address::{CellRange, CellRef, ReferenceError};
 pub use column::{
     ColumnCell, ColumnError, ColumnType, ColumnTypeReport, JapaneseCheckReport, contains_japanese,
 };
-pub use document::{CsvDocument, DocumentError};
+pub use document::{
+    CsvDocument, DocumentError, ExternalCellConflict, ExternalConflictDraft,
+    ExternalStructureConflict,
+};
 pub use validation::{
     ValidationComparisonOperator, ValidationExpression, ValidationOperand, ValidationReport,
     ValidationRule, ValidationTarget, ValidationViolation,

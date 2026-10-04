@@ -124,17 +124,18 @@ impl EditHistory {
         true
     }
 
-    pub(super) fn commit_transaction(&mut self) -> Option<Vec<EditOperation>> {
-        let operations = self.transaction.take()?;
+    pub(super) fn commit_transaction(&mut self) -> bool {
+        let Some(operations) = self.transaction.take() else {
+            return false;
+        };
         let non_empty = operations
-            .iter()
+            .into_iter()
             .filter(|operation| !operation.is_empty())
-            .cloned()
             .collect::<Vec<_>>();
         if !non_empty.is_empty() {
             self.record_committed(EditOperation::Batch(non_empty));
         }
-        Some(operations)
+        true
     }
 
     pub(super) fn take_transaction(&mut self) -> Option<Vec<EditOperation>> {

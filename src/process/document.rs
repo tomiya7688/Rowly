@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
@@ -23,11 +23,42 @@ pub struct CsvDocument {
     path: PathBuf,
     source_encoding: SourceEncoding,
     table: Table,
+    baseline: Table,
     history: EditHistory,
     validation_rules: BTreeMap<ValidationTarget, ValidationRule>,
     metadata: ColumnMetadata,
     metadata_error: Option<String>,
     disk_fingerprint: ContentFingerprint,
+    external_conflicts: Vec<ExternalConflictDraft>,
+}
+
+/// A preserved three-way snapshot for local changes that could not be merged.
+/// The current document remains the disk version plus any safe local cell edits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalConflictDraft {
+    pub baseline: Vec<Vec<String>>,
+    pub local: Vec<Vec<String>>,
+    pub disk: Vec<Vec<String>>,
+    pub cell_conflicts: Vec<ExternalCellConflict>,
+    pub structural_conflict: Option<ExternalStructureConflict>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalCellConflict {
+    pub row: usize,
+    pub column: usize,
+    pub baseline: String,
+    pub local: String,
+    pub disk: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExternalStructureConflict {
+    RowCountChanged,
+    RowShapeChanged,
+    HeaderChanged,
+    RowOrderChanged,
+    DuplicateRowsAmbiguous,
 }
 
 impl CsvDocument {
@@ -45,12 +76,14 @@ impl CsvDocument {
         Ok(Self {
             path,
             source_encoding: SourceEncoding::Utf8,
+            baseline: table.clone(),
             table,
             history,
             validation_rules: BTreeMap::new(),
             metadata: ColumnMetadata::default(),
             metadata_error: None,
             disk_fingerprint,
+            external_conflicts: Vec::new(),
         })
     }
 
@@ -66,15 +99,18 @@ impl CsvDocument {
             Err(error) => (ColumnMetadata::default(), Some(error.to_string())),
         };
 
+        let baseline = loaded.table.clone();
         Ok(Self {
             path,
             source_encoding: loaded.encoding,
             table: loaded.table,
+            baseline,
             history: EditHistory::default(),
             validation_rules: BTreeMap::new(),
             metadata,
             metadata_error,
             disk_fingerprint: loaded.fingerprint,
+            external_conflicts: Vec::new(),
         })
     }
 
@@ -90,25 +126,116 @@ impl CsvDocument {
         self.history.is_dirty()
     }
 
-    /// Check for external edits. A clean document reloads changed content;
-    /// dirty documents report a conflict and keep their in-memory edits.
+    /// Synchronize external edits. Safe cell changes merge automatically;
+    /// overlapping or structurally ambiguous local changes are preserved as
+    /// three-way snapshots while the disk content becomes current.
     pub fn refresh_if_external_change(&mut self) -> Result<bool, DocumentError> {
         self.ensure_no_transaction("refresh external changes")?;
-        let current =
-            fingerprint_file(&self.path).map_err(|error| DocumentError::ExternalCheck {
-                path: self.path.display().to_string(),
-                message: error.to_string(),
-            })?;
-        if current == self.disk_fingerprint {
-            return Ok(false);
+        self.merge_external_disk()
+    }
+
+    /// Preserved three-way snapshots for local changes that need later review.
+    pub fn external_conflict_drafts(&self) -> &[ExternalConflictDraft] {
+        &self.external_conflicts
+    }
+
+    /// Reapply the Local side of cell conflicts in a preserved draft.
+    /// Structural conflicts require review and are not reapplied automatically.
+    pub fn reapply_local_cell_conflicts(
+        &mut self,
+        draft_index: usize,
+    ) -> Result<usize, DocumentError> {
+        self.ensure_no_transaction("reapply conflict draft")?;
+        let draft = self.external_conflicts.get(draft_index).ok_or_else(|| {
+            DocumentError::ConflictDraft(format!("draft {draft_index} does not exist"))
+        })?;
+        if draft.structural_conflict.is_some() {
+            return Err(DocumentError::ConflictDraft(
+                "structural conflicts require manual review".into(),
+            ));
         }
-        if self.is_dirty() {
-            return Err(DocumentError::ExternalModification {
-                path: self.path.display().to_string(),
-            });
+
+        let conflicts = draft.cell_conflicts.clone();
+        let mut changes = Vec::new();
+        for conflict in conflicts {
+            let current = self
+                .table
+                .cell(conflict.row, conflict.column)
+                .ok_or_else(|| {
+                    DocumentError::ConflictDraft(format!(
+                        "cell {},{} no longer exists",
+                        conflict.row, conflict.column
+                    ))
+                })?;
+            if current == conflict.local {
+                continue;
+            }
+            if current != conflict.disk {
+                return Err(DocumentError::ConflictDraft(format!(
+                    "cell {},{} changed after the conflict was recorded",
+                    conflict.row, conflict.column
+                )));
+            }
+            changes.push((conflict.row, conflict.column, conflict.local));
         }
-        self.reload_disk_content()?;
-        Ok(true)
+
+        if changes.is_empty() {
+            return Ok(0);
+        }
+        self.begin_transaction()?;
+        for (row, column, value) in &changes {
+            if let Err(error) = self.set_cell(*row, *column, value.clone()) {
+                let _ = self.rollback_transaction();
+                return Err(error);
+            }
+        }
+        self.commit_transaction()?;
+        Ok(changes.len())
+    }
+
+    /// Replace the current table with a structural draft's Local snapshot.
+    /// This is only allowed while the current table still matches that draft's Disk snapshot.
+    pub fn reapply_local_structural_draft(
+        &mut self,
+        draft_index: usize,
+    ) -> Result<usize, DocumentError> {
+        self.ensure_no_transaction("reapply structural conflict draft")?;
+        let draft = self.external_conflicts.get(draft_index).ok_or_else(|| {
+            DocumentError::ConflictDraft(format!("draft {draft_index} does not exist"))
+        })?;
+        if draft.structural_conflict.is_none() {
+            return Err(DocumentError::ConflictDraft(
+                "draft does not contain a structural conflict".into(),
+            ));
+        }
+        if self.table.rows() != draft.disk {
+            return Err(DocumentError::ConflictDraft(
+                "the current table changed after the structural conflict was recorded".into(),
+            ));
+        }
+
+        let local = draft.local.clone();
+        if local == self.table.rows() {
+            return Ok(0);
+        }
+        self.begin_transaction()?;
+        let removed = match self
+            .table
+            .replace_rows(0, self.table.row_count(), local.clone())
+        {
+            Ok(removed) => removed,
+            Err(error) => {
+                let _ = self.rollback_transaction();
+                return Err(DocumentError::Edit(error.to_string()));
+            }
+        };
+        self.history.record(EditOperation::Rows(RowEdit {
+            index: 0,
+            removed,
+            inserted: local.clone(),
+        }));
+        self.commit_transaction()?;
+        Ok(local.len())
     }
 
     pub fn metadata_path(&self) -> PathBuf {
@@ -475,7 +602,7 @@ impl CsvDocument {
     }
 
     pub fn commit_transaction(&mut self) -> Result<(), DocumentError> {
-        if self.history.commit_transaction().is_none() {
+        if !self.history.commit_transaction() {
             return Err(DocumentError::Transaction(
                 "no transaction is active".into(),
             ));
@@ -585,12 +712,12 @@ impl CsvDocument {
                 message: error.to_string(),
             })?;
         if current != self.disk_fingerprint {
-            if self.is_dirty() {
-                return Err(DocumentError::ExternalModification {
-                    path: self.path.display().to_string(),
-                });
+            self.merge_external_disk()?;
+            if !self.is_dirty() && self.source_encoding == SourceEncoding::Utf8 {
+                return Ok(());
             }
-            self.reload_disk_content()?;
+        }
+        if !self.is_dirty() && self.source_encoding == SourceEncoding::Utf8 {
             return Ok(());
         }
         self.disk_fingerprint =
@@ -598,12 +725,12 @@ impl CsvDocument {
             {
                 Ok(fingerprint) => fingerprint,
                 Err(crate::data::CsvIoError::ExternalModification) => {
+                    self.merge_external_disk()?;
                     if self.is_dirty() {
                         return Err(DocumentError::ExternalModification {
                             path: self.path.display().to_string(),
                         });
                     }
-                    self.reload_disk_content()?;
                     return Ok(());
                 }
                 Err(error) => {
@@ -615,6 +742,7 @@ impl CsvDocument {
             };
 
         self.source_encoding = SourceEncoding::Utf8;
+        self.baseline = self.table.clone();
         self.history.mark_saved();
         Ok(())
     }
@@ -630,20 +758,142 @@ impl CsvDocument {
 
         self.path = path;
         self.source_encoding = SourceEncoding::Utf8;
+        self.baseline = self.table.clone();
         self.history.mark_saved();
         Ok(())
     }
 
-    fn reload_disk_content(&mut self) -> Result<(), DocumentError> {
-        let loaded = read_csv(&self.path).map_err(|error| DocumentError::Open {
+    fn merge_external_disk(&mut self) -> Result<bool, DocumentError> {
+        let loaded = read_csv(&self.path).map_err(|error| DocumentError::ExternalCheck {
             path: self.path.display().to_string(),
             message: error.to_string(),
         })?;
+        if loaded.fingerprint == self.disk_fingerprint {
+            return Ok(false);
+        }
+
+        let baseline = self.baseline.rows().to_vec();
+        let local = self.table.rows().to_vec();
+        let disk = loaded.table.rows().to_vec();
+
+        if local == baseline {
+            self.install_disk_snapshot(loaded);
+            return Ok(true);
+        }
+        if local == disk {
+            self.install_disk_snapshot(loaded);
+            return Ok(true);
+        }
+        if disk == baseline {
+            self.disk_fingerprint = loaded.fingerprint;
+            self.source_encoding = loaded.encoding;
+            self.baseline = loaded.table;
+            return Ok(true);
+        }
+
+        match merge_row_only_changes(&baseline, &local, &disk) {
+            Ok(merged) => {
+                self.install_disk_snapshot(loaded);
+                if merged != self.table.rows() {
+                    self.begin_transaction()?;
+                    let removed = self
+                        .table
+                        .replace_rows(
+                            1,
+                            self.table.row_count().saturating_sub(1),
+                            merged[1..].to_vec(),
+                        )
+                        .map_err(|error| DocumentError::Edit(error.to_string()))?;
+                    self.history.record(EditOperation::Rows(RowEdit {
+                        index: 1,
+                        removed,
+                        inserted: merged[1..].to_vec(),
+                    }));
+                    self.commit_transaction()?;
+                }
+                return Ok(true);
+            }
+            Err(reason) if baseline.len() != local.len() || baseline.len() != disk.len() => {
+                self.external_conflicts.push(ExternalConflictDraft {
+                    baseline,
+                    local,
+                    disk,
+                    cell_conflicts: Vec::new(),
+                    structural_conflict: Some(reason),
+                });
+                self.install_disk_snapshot(loaded);
+                return Ok(true);
+            }
+            Err(_) => {}
+        }
+
+        if let Some(reason) = structural_conflict(&baseline, &local, &disk) {
+            self.external_conflicts.push(ExternalConflictDraft {
+                baseline,
+                local,
+                disk,
+                cell_conflicts: Vec::new(),
+                structural_conflict: Some(reason),
+            });
+            self.install_disk_snapshot(loaded);
+            return Ok(true);
+        }
+
+        let mut safe_local_changes = Vec::new();
+        let mut conflicts = Vec::new();
+        for row in 0..baseline.len() {
+            for column in 0..baseline[row].len() {
+                let before = &baseline[row][column];
+                let local_value = &local[row][column];
+                let disk_value = &disk[row][column];
+                if local_value == before || local_value == disk_value {
+                    continue;
+                }
+                if disk_value == before {
+                    safe_local_changes.push((row, column, local_value.clone()));
+                } else {
+                    conflicts.push(ExternalCellConflict {
+                        row,
+                        column,
+                        baseline: before.clone(),
+                        local: local_value.clone(),
+                        disk: disk_value.clone(),
+                    });
+                }
+            }
+        }
+
+        if !conflicts.is_empty() {
+            self.external_conflicts.push(ExternalConflictDraft {
+                baseline,
+                local,
+                disk,
+                cell_conflicts: conflicts,
+                structural_conflict: None,
+            });
+        }
+
+        self.install_disk_snapshot(loaded);
+        if !safe_local_changes.is_empty() {
+            self.begin_transaction()?;
+            for (row, column, value) in safe_local_changes {
+                if let Err(error) = self.set_cell(row, column, value) {
+                    let _ = self.rollback_transaction();
+                    return Err(error);
+                }
+            }
+            self.commit_transaction()?;
+        }
+        Ok(true)
+    }
+
+    fn install_disk_snapshot(&mut self, loaded: crate::data::LoadedCsv) {
         self.table = loaded.table;
+        self.baseline = self.table.clone();
         self.source_encoding = loaded.encoding;
         self.disk_fingerprint = loaded.fingerprint;
         self.history = EditHistory::default();
-        Ok(())
+        self.history.mark_saved();
     }
 
     fn resolve_validation_target(&self, target: &ValidationTarget) -> Result<usize, ColumnError> {
@@ -960,6 +1210,211 @@ enum CommandDirection {
     Redo,
 }
 
+fn structural_conflict(
+    baseline: &[Vec<String>],
+    local: &[Vec<String>],
+    disk: &[Vec<String>],
+) -> Option<ExternalStructureConflict> {
+    if baseline.len() != local.len() || baseline.len() != disk.len() {
+        return Some(ExternalStructureConflict::RowCountChanged);
+    }
+    if baseline.iter().enumerate().any(|(index, row)| {
+        local.get(index).map(Vec::len) != Some(row.len())
+            || disk.get(index).map(Vec::len) != Some(row.len())
+    }) {
+        return Some(ExternalStructureConflict::RowShapeChanged);
+    }
+    if baseline
+        .first()
+        .is_some_and(|header| local.first() != Some(header) || disk.first() != Some(header))
+    {
+        return Some(ExternalStructureConflict::HeaderChanged);
+    }
+    if row_order_changed(baseline, local) || row_order_changed(baseline, disk) {
+        return Some(ExternalStructureConflict::RowOrderChanged);
+    }
+    if duplicate_rows_changed(baseline, local) || duplicate_rows_changed(baseline, disk) {
+        return Some(ExternalStructureConflict::DuplicateRowsAmbiguous);
+    }
+    None
+}
+
+#[derive(Default)]
+struct RowDelta {
+    removed: HashSet<usize>,
+    inserted: BTreeMap<usize, Vec<Vec<String>>>,
+    cell_changes: BTreeMap<(usize, usize), String>,
+}
+
+fn merge_row_only_changes(
+    baseline: &[Vec<String>],
+    local: &[Vec<String>],
+    disk: &[Vec<String>],
+) -> Result<Vec<Vec<String>>, ExternalStructureConflict> {
+    if baseline.is_empty() || local.first() != baseline.first() || disk.first() != baseline.first()
+    {
+        return Err(ExternalStructureConflict::HeaderChanged);
+    }
+
+    let local_delta = analyze_row_delta(baseline, local)?;
+    let disk_delta = analyze_row_delta(baseline, disk)?;
+    let mut removed = local_delta.removed.clone();
+    removed.extend(disk_delta.removed.iter().copied());
+
+    let mut insertions = local_delta.inserted.clone();
+    for (slot, rows) in &disk_delta.inserted {
+        match insertions.get(slot) {
+            Some(local_rows) if local_rows != rows => {
+                return Err(ExternalStructureConflict::DuplicateRowsAmbiguous);
+            }
+            Some(_) => {}
+            None => {
+                insertions.insert(*slot, rows.clone());
+            }
+        }
+    }
+
+    // An insertion next to a removed baseline row may be an edited replacement.
+    if insertions.keys().any(|slot| {
+        removed.contains(slot)
+            || slot
+                .checked_sub(1)
+                .is_some_and(|index| removed.contains(&index))
+    }) {
+        return Err(ExternalStructureConflict::DuplicateRowsAmbiguous);
+    }
+
+    let mut merged = vec![baseline[0].clone()];
+    let mut mapped_rows = HashMap::new();
+    for (row_index, baseline_row) in baseline.iter().enumerate().skip(1) {
+        if let Some(rows) = insertions.get(&row_index) {
+            merged.extend(rows.iter().cloned());
+        }
+        if !removed.contains(&row_index) {
+            mapped_rows.insert(row_index, merged.len());
+            merged.push(baseline_row.clone());
+        }
+    }
+    if let Some(rows) = insertions.get(&baseline.len()) {
+        merged.extend(rows.iter().cloned());
+    }
+    for (&(row, column), value) in local_delta
+        .cell_changes
+        .iter()
+        .chain(disk_delta.cell_changes.iter())
+    {
+        let Some(&merged_row) = mapped_rows.get(&row) else {
+            return Err(ExternalStructureConflict::DuplicateRowsAmbiguous);
+        };
+        let cell = merged[merged_row]
+            .get_mut(column)
+            .ok_or(ExternalStructureConflict::RowShapeChanged)?;
+        *cell = value.clone();
+    }
+    Ok(merged)
+}
+
+fn analyze_row_delta(
+    baseline: &[Vec<String>],
+    changed: &[Vec<String>],
+) -> Result<RowDelta, ExternalStructureConflict> {
+    if baseline.len() == changed.len()
+        && baseline
+            .iter()
+            .zip(changed)
+            .all(|(left, right)| left == right)
+    {
+        return Ok(RowDelta::default());
+    }
+    if baseline.len() == changed.len() {
+        if row_order_changed(baseline, changed) || duplicate_rows_changed(baseline, changed) {
+            return Err(ExternalStructureConflict::RowOrderChanged);
+        }
+        let mut delta = RowDelta::default();
+        for (row_index, (before, after)) in baseline.iter().zip(changed).enumerate().skip(1) {
+            if before.len() != after.len() {
+                return Err(ExternalStructureConflict::RowShapeChanged);
+            }
+            for (column, (before, after)) in before.iter().zip(after).enumerate() {
+                if before != after {
+                    delta
+                        .cell_changes
+                        .insert((row_index, column), after.clone());
+                }
+            }
+        }
+        return Ok(delta);
+    }
+    let mut baseline_positions = HashMap::new();
+    for (index, row) in baseline.iter().enumerate().skip(1) {
+        if baseline_positions.insert(row.as_slice(), index).is_some() {
+            return Err(ExternalStructureConflict::DuplicateRowsAmbiguous);
+        }
+    }
+    let mut changed_counts = HashMap::<&[String], usize>::new();
+    for row in changed.iter().skip(1) {
+        *changed_counts.entry(row.as_slice()).or_default() += 1;
+    }
+
+    let mut delta = RowDelta::default();
+    let mut next_baseline = 1;
+    let mut pending_insertions = Vec::new();
+    for row in changed.iter().skip(1) {
+        match baseline_positions.get(row.as_slice()).copied() {
+            Some(index) => {
+                if changed_counts.get(row.as_slice()) != Some(&1) || index < next_baseline {
+                    return Err(ExternalStructureConflict::RowOrderChanged);
+                }
+                if !pending_insertions.is_empty() {
+                    delta
+                        .inserted
+                        .insert(index, std::mem::take(&mut pending_insertions));
+                }
+                delta.removed.extend(next_baseline..index);
+                next_baseline = index + 1;
+            }
+            None => pending_insertions.push(row.clone()),
+        }
+    }
+    if !pending_insertions.is_empty() {
+        delta.inserted.insert(baseline.len(), pending_insertions);
+    }
+    delta.removed.extend(next_baseline..baseline.len());
+    Ok(delta)
+}
+
+fn row_order_changed(baseline: &[Vec<String>], changed: &[Vec<String>]) -> bool {
+    let baseline_counts = row_counts(baseline);
+    let mut changed_positions = HashMap::<&[String], (usize, usize)>::new();
+    for (index, row) in changed.iter().enumerate() {
+        let entry = changed_positions.entry(row.as_slice()).or_default();
+        entry.0 += 1;
+        entry.1 = index;
+    }
+    baseline.iter().enumerate().any(|(index, row)| {
+        baseline_counts.get(row.as_slice()) == Some(&1)
+            && matches!(changed_positions.get(row.as_slice()), Some((1, position)) if *position != index)
+    })
+}
+
+fn duplicate_rows_changed(baseline: &[Vec<String>], changed: &[Vec<String>]) -> bool {
+    let baseline_counts = row_counts(baseline);
+    baseline.iter().enumerate().any(|(index, row)| {
+        baseline_counts
+            .get(row.as_slice())
+            .is_some_and(|count| *count > 1)
+            && changed.get(index) != Some(row)
+    })
+}
+
+fn row_counts(rows: &[Vec<String>]) -> HashMap<&[String], usize> {
+    let mut counts = HashMap::new();
+    for row in rows {
+        *counts.entry(row.as_slice()).or_insert(0) += 1;
+    }
+    counts
+}
+
 #[derive(Debug, Error)]
 pub enum DocumentError {
     #[error("failed to open CSV `{path}`: {message}")]
@@ -982,6 +1437,9 @@ pub enum DocumentError {
 
     #[error("CSV `{path}` changed outside Rowly after it was opened")]
     ExternalModification { path: String },
+
+    #[error("cannot reapply external conflict draft: {0}")]
+    ConflictDraft(String),
 
     #[error("invalid transaction operation: {0}")]
     Transaction(String),

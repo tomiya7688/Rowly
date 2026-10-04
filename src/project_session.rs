@@ -139,6 +139,30 @@ impl ProjectSession {
         Ok(())
     }
 
+    /// Save one source's validation rules to the app-owned generated init DSL.
+    pub fn save_generated_validation_rules(
+        &mut self,
+        source_id: &str,
+        document: &CsvDocument,
+    ) -> Result<(), ProjectSessionError> {
+        if !self
+            .project
+            .sources
+            .iter()
+            .any(|source| source.id == source_id)
+        {
+            return Err(ProjectSessionError::SourceNotFound(source_id.to_owned()));
+        }
+        project_init::save_generated_validation_rules(
+            &self.project,
+            self.manifest_path(),
+            source_id,
+            document,
+        )?;
+        self.mark_structure_or_config_dirty();
+        Ok(())
+    }
+
     /// Open one declared file source and apply its config-only project init.
     pub fn open_source_document(
         &self,

@@ -35,6 +35,8 @@ pub struct RowlyApp {
     selection_anchor: CellRef,
     editing: bool,
     edit_value: String,
+    validation_candidates_open: bool,
+    validation_candidate_index: usize,
     help: help::HelpViewer,
 }
 
@@ -55,6 +57,8 @@ impl Default for RowlyApp {
             selection_anchor: CellRef::new(0, 0),
             editing: false,
             edit_value: String::new(),
+            validation_candidates_open: false,
+            validation_candidate_index: 0,
             help: help::HelpViewer::default(),
         }
     }
@@ -93,6 +97,7 @@ impl RowlyApp {
                 self.selection_anchor = self.selection;
                 self.reference_input = self.selection.to_string();
                 self.editing = false;
+                self.validation_candidates_open = false;
             }
             Err(error) => self.status = error.to_string(),
         }
@@ -465,7 +470,14 @@ impl RowlyApp {
         let row_count = document.row_count();
         let column_count = document.column_count();
         let total_width = GUTTER_WIDTH + column_count as f32 * CELL_WIDTH;
+        let allowed_values = document
+            .allowed_values_for_column(self.selection.column())
+            .map(<[String]>::to_vec);
         let mut commit_value = None;
+        let mut candidate_popup_anchor = None;
+        if !self.editing {
+            self.validation_candidates_open = false;
+        }
 
         if row_count == 0 || column_count == 0 {
             ui.label("CSVにセルがありません。行や列を挿入して編集を開始できます。");
@@ -549,20 +561,97 @@ impl RowlyApp {
                                         && self.selection == reference
                                         && value.is_some()
                                     {
-                                        let response = ui.add_sized(
-                                            [CELL_WIDTH, ROW_HEIGHT],
-                                            egui::TextEdit::singleline(&mut self.edit_value),
-                                        );
-                                        response.request_focus();
-                                        if response.lost_focus()
-                                            && ui.input(|input| input.key_pressed(egui::Key::Enter))
+                                        let candidates = if row > 0 {
+                                            allowed_values.as_deref()
+                                        } else {
+                                            None
+                                        };
+                                        let has_candidate_rule = candidates.is_some();
+                                        let mut open_clicked = false;
+                                        let editor_width = if has_candidate_rule {
+                                            CELL_WIDTH - 24.0
+                                        } else {
+                                            CELL_WIDTH
+                                        };
+                                        ui.horizontal(|ui| {
+                                            let response = ui.add_sized(
+                                                [editor_width, ROW_HEIGHT],
+                                                egui::TextEdit::singleline(&mut self.edit_value),
+                                            );
+                                            response.request_focus();
+                                            candidate_popup_anchor = Some(response.rect);
+                                            if has_candidate_rule
+                                                && ui
+                                                    .add_sized(
+                                                        [24.0, ROW_HEIGHT],
+                                                        egui::Button::new("▾"),
+                                                    )
+                                                    .clicked()
+                                            {
+                                                open_clicked = true;
+                                            }
+                                        });
+
+                                        let (alt_down, down, up, enter, escape, tab) =
+                                            ui.input(|input| {
+                                                (
+                                                    input.modifiers.alt
+                                                        && input.key_pressed(egui::Key::ArrowDown),
+                                                    input.key_pressed(egui::Key::ArrowDown),
+                                                    input.key_pressed(egui::Key::ArrowUp),
+                                                    input.key_pressed(egui::Key::Enter),
+                                                    input.key_pressed(egui::Key::Escape),
+                                                    input.key_pressed(egui::Key::Tab),
+                                                )
+                                            });
+                                        if open_clicked || has_candidate_rule && alt_down {
+                                            self.validation_candidates_open = true;
+                                        } else if self.validation_candidates_open
+                                            && has_candidate_rule
                                         {
+                                            let candidates = candidates.unwrap_or_default();
+                                            if down {
+                                                self.validation_candidate_index = self
+                                                    .validation_candidate_index
+                                                    .saturating_add(1)
+                                                    .min(candidates.len().saturating_sub(1));
+                                            } else if up {
+                                                self.validation_candidate_index = self
+                                                    .validation_candidate_index
+                                                    .saturating_sub(1);
+                                            }
+                                            if enter {
+                                                if let Some(candidate) =
+                                                    candidates.get(self.validation_candidate_index)
+                                                {
+                                                    commit_value = Some((
+                                                        row,
+                                                        column,
+                                                        candidate.clone(),
+                                                        false,
+                                                    ));
+                                                    self.editing = false;
+                                                    self.validation_candidates_open = false;
+                                                }
+                                            } else if tab {
+                                                let selected = candidates
+                                                    .get(self.validation_candidate_index)
+                                                    .cloned()
+                                                    .unwrap_or_else(|| self.edit_value.clone());
+                                                commit_value = Some((row, column, selected, true));
+                                                self.editing = false;
+                                                self.validation_candidates_open = false;
+                                            } else if escape {
+                                                self.validation_candidates_open = false;
+                                            }
+                                        } else if enter || tab {
                                             commit_value =
-                                                Some((row, column, self.edit_value.clone()));
+                                                Some((row, column, self.edit_value.clone(), tab));
                                             self.editing = false;
-                                        }
-                                        if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                                            self.validation_candidates_open = false;
+                                        } else if escape {
                                             self.editing = false;
+                                            self.validation_candidates_open = false;
                                         }
                                     } else {
                                         if let Some(value) = value {
@@ -595,6 +684,15 @@ impl RowlyApp {
                                                 );
                                                 self.edit_value = value.to_owned();
                                                 self.editing = true;
+                                                self.validation_candidates_open = false;
+                                                self.validation_candidate_index = document
+                                                    .allowed_values_for_column(column)
+                                                    .and_then(|values| {
+                                                        values.iter().position(|candidate| {
+                                                            candidate == value
+                                                        })
+                                                    })
+                                                    .unwrap_or(0);
                                             }
                                         } else {
                                             ui.add_enabled_ui(false, |ui| {
@@ -611,8 +709,57 @@ impl RowlyApp {
                     });
             });
 
-        if let Some((row, column, value)) = commit_value {
-            self.set_cell(row, column, value);
+        if self.editing && self.validation_candidates_open {
+            if let (Some(anchor), Some(candidates)) = (candidate_popup_anchor, allowed_values) {
+                let reference = self.selection;
+                let context = ui.ctx().clone();
+                egui::Area::new(egui::Id::new((
+                    "validation-candidates",
+                    reference.row(),
+                    reference.column(),
+                )))
+                .order(egui::Order::Foreground)
+                .fixed_pos(anchor.left_bottom())
+                .show(&context, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.set_min_width(anchor.width());
+                        if candidates.is_empty() {
+                            ui.weak("この列には許可値がありません");
+                        } else {
+                            egui::ScrollArea::vertical()
+                                .id_salt(("validation-candidate-list", reference))
+                                .max_height(180.0)
+                                .show(ui, |ui| {
+                                    for (index, candidate) in candidates.iter().enumerate() {
+                                        let selected = index == self.validation_candidate_index;
+                                        if ui.selectable_label(selected, candidate).clicked() {
+                                            commit_value = Some((
+                                                reference.row(),
+                                                reference.column(),
+                                                candidate.clone(),
+                                                false,
+                                            ));
+                                            self.validation_candidate_index = index;
+                                            self.editing = false;
+                                            self.validation_candidates_open = false;
+                                        }
+                                    }
+                                });
+                        }
+                    });
+                });
+            }
+        }
+
+        if let Some((row, column, value, advance_after_tab)) = commit_value {
+            if self.set_cell(row, column, value.clone()) {
+                if advance_after_tab {
+                    self.move_selection_after_tab();
+                }
+            } else {
+                self.editing = true;
+                self.edit_value = value;
+            }
         }
     }
 
@@ -669,19 +816,56 @@ impl RowlyApp {
     fn begin_edit(&mut self, value: &str) {
         self.edit_value = value.to_owned();
         self.editing = true;
+        self.validation_candidates_open = false;
+        self.validation_candidate_index = self
+            .document
+            .as_ref()
+            .and_then(|document| {
+                document
+                    .allowed_values_for_column(self.selection.column())
+                    .and_then(|values| values.iter().position(|candidate| candidate == value))
+            })
+            .unwrap_or(0);
     }
 
-    fn set_cell(&mut self, row: usize, column: usize, value: String) {
+    fn set_cell(&mut self, row: usize, column: usize, value: String) -> bool {
         let Some(document) = self.document.as_mut() else {
-            return;
+            return false;
         };
         match document.set_cell(row, column, value) {
-            Ok(()) => self.status = format!("Cell updated ({})", self.selection),
-            Err(DocumentError::ValidationRejected { violations }) => {
-                self.status = format_validation_violations(&violations)
+            Ok(()) => {
+                self.status = format!("Cell updated ({})", self.selection);
+                true
             }
-            Err(error) => self.status = error.to_string(),
+            Err(DocumentError::ValidationRejected { violations }) => {
+                self.status = format_validation_violations(&violations);
+                false
+            }
+            Err(error) => {
+                self.status = error.to_string();
+                false
+            }
         }
+    }
+
+    fn move_selection_after_tab(&mut self) {
+        let Some(document) = self.document.as_ref() else {
+            return;
+        };
+        let row_count = document.row_count();
+        let column_count = document.column_count();
+        if row_count == 0 || column_count == 0 {
+            return;
+        }
+
+        let next = if self.selection.column() + 1 < column_count {
+            CellRef::new(self.selection.row(), self.selection.column() + 1)
+        } else if self.selection.row() + 1 < row_count {
+            CellRef::new(self.selection.row() + 1, 0)
+        } else {
+            self.selection
+        };
+        self.set_selection(next, false);
     }
 
     fn navigate_to_cell(&mut self) {

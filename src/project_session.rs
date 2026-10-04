@@ -9,7 +9,9 @@ use tempfile::TempDir;
 use thiserror::Error;
 
 use crate::{
-    project::{ProjectError, RowlyProject},
+    process::CsvDocument,
+    project::{ProjectError, RowlyProject, SourceKind, resolve_project_reference},
+    project_init::{self, ProjectInitError},
     rowlyx::{RowlyxArchive, RowlyxError, pack_project},
 };
 
@@ -110,6 +112,62 @@ impl ProjectSession {
 
     pub fn project(&self) -> &RowlyProject {
         &self.project
+    }
+
+    /// Save a source's column type declarations to the app-owned generated
+    /// init script. The project must be saved afterward to repack `.rowlyx`.
+    pub fn save_generated_column_types(
+        &mut self,
+        source_id: &str,
+        document: &CsvDocument,
+    ) -> Result<(), ProjectSessionError> {
+        if !self
+            .project
+            .sources
+            .iter()
+            .any(|source| source.id == source_id)
+        {
+            return Err(ProjectSessionError::SourceNotFound(source_id.to_owned()));
+        }
+        project_init::save_generated_column_types(
+            &self.project,
+            self.manifest_path(),
+            source_id,
+            document,
+        )?;
+        self.mark_structure_or_config_dirty();
+        Ok(())
+    }
+
+    /// Open one declared file source and apply its config-only project init.
+    pub fn open_source_document(
+        &self,
+        source_id: &str,
+    ) -> Result<CsvDocument, ProjectSessionError> {
+        let source = self
+            .project
+            .sources
+            .iter()
+            .find(|source| source.id == source_id)
+            .ok_or_else(|| ProjectSessionError::SourceNotFound(source_id.to_owned()))?;
+        if source.kind != SourceKind::File {
+            return Err(ProjectSessionError::DirectorySource(source_id.to_owned()));
+        }
+        let path = resolve_project_reference(self.manifest_path(), &source.path);
+        let mut document = CsvDocument::open_without_metadata(path)?;
+        self.apply_safe_init(source_id, &mut document)?;
+        Ok(document)
+    }
+
+    /// Rebuild supported project configuration using the config-only init
+    /// interpreter. It never runs user macros or general Rowly DSL statements.
+    pub fn apply_safe_init(
+        &self,
+        source_id: &str,
+        document: &mut CsvDocument,
+    ) -> Result<(), ProjectSessionError> {
+        project_init::apply_safe_init(&self.project, self.manifest_path(), source_id, document)?;
+        Ok(())
     }
 
     /// Mutably access the manifest model and mark the session dirty.
@@ -217,5 +275,13 @@ pub enum ProjectSessionError {
     #[error(transparent)]
     Project(#[from] ProjectError),
     #[error(transparent)]
+    ProjectInit(#[from] ProjectInitError),
+    #[error(transparent)]
     Rowlyx(#[from] RowlyxError),
+    #[error(transparent)]
+    Document(#[from] crate::process::DocumentError),
+    #[error("project source `{0}` does not exist")]
+    SourceNotFound(String),
+    #[error("project source `{0}` is a directory; open a file source instead")]
+    DirectorySource(String),
 }

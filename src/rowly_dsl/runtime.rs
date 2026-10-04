@@ -188,8 +188,11 @@ impl<'a> Runtime<'a> {
     }
 
     fn execute(mut self) -> Result<ExecutionReport, ExecutionError> {
-        let statements = self.program.statements.clone();
-        if !matches!(self.execute_statements(&statements)?, Flow::Continue) {
+        let program = self.program;
+        if !matches!(
+            self.execute_statements(&program.statements)?,
+            Flow::Continue
+        ) {
             return Err(ExecutionError::ReturnOutsideFunction);
         }
 
@@ -733,40 +736,59 @@ impl<'a> Runtime<'a> {
             });
         }
 
-        let values = self.evaluate_arguments(arguments)?;
+        let mut values = self.evaluate_arguments(arguments)?.into_iter();
         match (namespace, canonical) {
             (StandardNamespace::Text, "Contains") => {
-                let haystack =
-                    self.expect_text(values[0].clone(), "Text.Contains first argument")?;
-                let needle =
-                    self.expect_text(values[1].clone(), "Text.Contains second argument")?;
+                let haystack = self.expect_text(
+                    values.next().expect("validated standard function arity"),
+                    "Text.Contains first argument",
+                )?;
+                let needle = self.expect_text(
+                    values.next().expect("validated standard function arity"),
+                    "Text.Contains second argument",
+                )?;
                 Ok(Value::Boolean(haystack.contains(&needle)))
             }
             (StandardNamespace::Text, "StartsWith") => {
-                let value =
-                    self.expect_text(values[0].clone(), "Text.StartsWith first argument")?;
-                let prefix =
-                    self.expect_text(values[1].clone(), "Text.StartsWith second argument")?;
+                let value = self.expect_text(
+                    values.next().expect("validated standard function arity"),
+                    "Text.StartsWith first argument",
+                )?;
+                let prefix = self.expect_text(
+                    values.next().expect("validated standard function arity"),
+                    "Text.StartsWith second argument",
+                )?;
                 Ok(Value::Boolean(value.starts_with(&prefix)))
             }
             (StandardNamespace::Text, "EndsWith") => {
-                let value = self.expect_text(values[0].clone(), "Text.EndsWith first argument")?;
-                let suffix =
-                    self.expect_text(values[1].clone(), "Text.EndsWith second argument")?;
+                let value = self.expect_text(
+                    values.next().expect("validated standard function arity"),
+                    "Text.EndsWith first argument",
+                )?;
+                let suffix = self.expect_text(
+                    values.next().expect("validated standard function arity"),
+                    "Text.EndsWith second argument",
+                )?;
                 Ok(Value::Boolean(value.ends_with(&suffix)))
             }
             (StandardNamespace::Text, "IsJapanese") => {
-                let value = self.expect_text(values[0].clone(), "Text.IsJapanese argument")?;
+                let value = self.expect_text(
+                    values.next().expect("validated standard function arity"),
+                    "Text.IsJapanese argument",
+                )?;
                 Ok(Value::Boolean(contains_japanese(&value)))
             }
             (StandardNamespace::Number, "IsInteger") => {
-                Ok(Value::Boolean(is_integer_value(&values[0])))
+                let value = values.next().expect("validated standard function arity");
+                Ok(Value::Boolean(is_integer_value(&value)))
             }
             (StandardNamespace::Number, "IsDecimal") => {
-                Ok(Value::Boolean(is_decimal_value(&values[0])))
+                let value = values.next().expect("validated standard function arity");
+                Ok(Value::Boolean(is_decimal_value(&value)))
             }
             (StandardNamespace::Boolean, "IsValid") => {
-                Ok(Value::Boolean(is_boolean_value(&values[0])))
+                let value = values.next().expect("validated standard function arity");
+                Ok(Value::Boolean(is_boolean_value(&value)))
             }
             _ => unreachable!(),
         }
@@ -822,48 +844,79 @@ impl<'a> Runtime<'a> {
             });
         }
 
-        let values = self.evaluate_arguments(arguments)?;
+        let mut values = self.evaluate_arguments(arguments)?.into_iter();
         Ok(Some(match canonical {
-            "Integer" => self.convert_integer(values[0].clone())?,
-            "Decimal" => self.convert_decimal(values[0].clone())?,
-            "Boolean" => self.convert_boolean(values[0].clone())?,
-            "String" => self.convert_string(values[0].clone())?,
+            "Integer" => {
+                self.convert_integer(values.next().expect("validated builtin function arity"))?
+            }
+            "Decimal" => {
+                self.convert_decimal(values.next().expect("validated builtin function arity"))?
+            }
+            "Boolean" => {
+                self.convert_boolean(values.next().expect("validated builtin function arity"))?
+            }
+            "String" => {
+                self.convert_string(values.next().expect("validated builtin function arity"))?
+            }
             "CellValue" => {
-                let reference = self.expect_text(values[0].clone(), "CellValue argument")?;
+                let reference = self.expect_text(
+                    values.next().expect("validated builtin function arity"),
+                    "CellValue argument",
+                )?;
                 let value = self
                     .document
                     .cell_a1(&reference)?
-                    .ok_or_else(|| ExecutionError::MissingCell(reference.clone()))?;
-                Value::Text(value.to_owned())
+                    .map(str::to_owned)
+                    .ok_or(ExecutionError::MissingCell(reference))?;
+                Value::Text(value)
             }
             "RowCount" => Value::Integer(self.document.row_count() as i64),
             "ColumnCount" => Value::Integer(self.document.column_count() as i64),
             "CellValueAt" => {
-                let row = self.expect_one_based_index(values[0].clone(), "CellValueAt row")?;
-                let column =
-                    self.expect_one_based_index(values[1].clone(), "CellValueAt column")?;
+                let row = self.expect_one_based_index(
+                    values.next().expect("validated builtin function arity"),
+                    "CellValueAt row",
+                )?;
+                let column = self.expect_one_based_index(
+                    values.next().expect("validated builtin function arity"),
+                    "CellValueAt column",
+                )?;
                 let value = self.document.cell(row - 1, column - 1).ok_or_else(|| {
                     ExecutionError::MissingCell(format!("row {row}, column {column}"))
                 })?;
                 Value::Text(value.to_owned())
             }
             "SetCellValueAt" => {
-                let row = self.expect_one_based_index(values[0].clone(), "SetCellValueAt row")?;
-                let column =
-                    self.expect_one_based_index(values[1].clone(), "SetCellValueAt column")?;
-                let value = self.cell_text(values[2].clone())?;
+                let row = self.expect_one_based_index(
+                    values.next().expect("validated builtin function arity"),
+                    "SetCellValueAt row",
+                )?;
+                let column = self.expect_one_based_index(
+                    values.next().expect("validated builtin function arity"),
+                    "SetCellValueAt column",
+                )?;
+                let value =
+                    self.cell_text(values.next().expect("validated builtin function arity"))?;
                 self.document.set_cell(row - 1, column - 1, value.clone())?;
                 Value::Text(value)
             }
             "ColumnIndex" => {
-                let header = self.expect_text(values[0].clone(), "ColumnIndex header")?;
+                let header = self.expect_text(
+                    values.next().expect("validated builtin function arity"),
+                    "ColumnIndex header",
+                )?;
                 let column = self.document.column_index_by_header(&header)?;
                 Value::Integer((column + 1) as i64)
             }
             "CellValueByHeader" => {
-                let row =
-                    self.expect_one_based_index(values[0].clone(), "CellValueByHeader row")?;
-                let header = self.expect_text(values[1].clone(), "CellValueByHeader header")?;
+                let row = self.expect_one_based_index(
+                    values.next().expect("validated builtin function arity"),
+                    "CellValueByHeader row",
+                )?;
+                let header = self.expect_text(
+                    values.next().expect("validated builtin function arity"),
+                    "CellValueByHeader header",
+                )?;
                 let column = self.document.column_index_by_header(&header)?;
                 let value = self.document.cell(row - 1, column).ok_or_else(|| {
                     ExecutionError::MissingCell(format!("row {row}, header {header}"))
@@ -871,11 +924,17 @@ impl<'a> Runtime<'a> {
                 Value::Text(value.to_owned())
             }
             "SetCellValueByHeader" => {
-                let row =
-                    self.expect_one_based_index(values[0].clone(), "SetCellValueByHeader row")?;
-                let header = self.expect_text(values[1].clone(), "SetCellValueByHeader header")?;
+                let row = self.expect_one_based_index(
+                    values.next().expect("validated builtin function arity"),
+                    "SetCellValueByHeader row",
+                )?;
+                let header = self.expect_text(
+                    values.next().expect("validated builtin function arity"),
+                    "SetCellValueByHeader header",
+                )?;
                 let column = self.document.column_index_by_header(&header)?;
-                let value = self.cell_text(values[2].clone())?;
+                let value =
+                    self.cell_text(values.next().expect("validated builtin function arity"))?;
                 self.document.set_cell(row - 1, column, value.clone())?;
                 Value::Text(value)
             }
@@ -944,7 +1003,7 @@ impl<'a> Runtime<'a> {
         class_name: &str,
         arguments: &[Expression],
     ) -> Result<Value, ExecutionError> {
-        let class = self.class_by_name(class_name)?.clone();
+        let class = self.class_by_name(class_name)?;
         let lineage = self.class_lineage(&class.name)?;
         let constructor = self.find_method_in_hierarchy(&class.name, "Init")?;
         let expected = constructor
@@ -953,7 +1012,7 @@ impl<'a> Runtime<'a> {
             .unwrap_or(0);
         if expected != arguments.len() {
             return Err(ExecutionError::ConstructorArgumentCount {
-                class_name: class.name,
+                class_name: class.name.clone(),
                 expected,
                 actual: arguments.len(),
             });
@@ -978,7 +1037,7 @@ impl<'a> Runtime<'a> {
 
         if let Some((defining_class, constructor)) = constructor {
             let _ =
-                self.invoke_method_with_values(object_id, &defining_class, &constructor, values)?;
+                self.invoke_method_with_values(object_id, defining_class, constructor, values)?;
         }
 
         Ok(Value::Object(object_id))
@@ -990,31 +1049,29 @@ impl<'a> Runtime<'a> {
         arguments: &[Expression],
     ) -> Result<Option<Value>, ExecutionError> {
         self.ensure_call_depth()?;
-        let function = self
-            .program
+        let program = self.program;
+        let function = program
             .functions
             .iter()
             .find(|function| function.name.eq_ignore_ascii_case(name))
-            .cloned()
             .ok_or_else(|| ExecutionError::UnknownFunction(name.to_owned()))?;
         if function.parameters.len() != arguments.len() {
             return Err(ExecutionError::ArgumentCount {
-                name: function.name,
+                name: function.name.clone(),
                 expected: function.parameters.len(),
                 actual: arguments.len(),
             });
         }
         let values = self.evaluate_arguments(arguments)?;
+        let argument_descriptions = values
+            .iter()
+            .map(|value| self.describe_value(value))
+            .collect();
         let scope = function
             .parameters
             .iter()
-            .zip(values.iter())
-            .map(|(parameter, value)| {
-                (
-                    normalize_identifier(parameter),
-                    Binding::variable(value.clone()),
-                )
-            })
+            .zip(values)
+            .map(|(parameter, value)| (normalize_identifier(parameter), Binding::variable(value)))
             .collect();
         self.scopes.push(scope);
         self.call_depth += 1;
@@ -1026,11 +1083,8 @@ impl<'a> Runtime<'a> {
             Flow::Return(value) => value,
         };
         self.events.push(ExecutionEvent::FunctionCalled {
-            name: function.name,
-            arguments: values
-                .iter()
-                .map(|value| self.describe_value(value))
-                .collect(),
+            name: function.name.clone(),
+            arguments: argument_descriptions,
             return_value: return_value
                 .as_ref()
                 .map(|value| self.describe_value(value)),
@@ -1054,13 +1108,13 @@ impl<'a> Runtime<'a> {
         if method.parameters.len() != arguments.len() {
             return Err(ExecutionError::MethodArgumentCount {
                 class_name,
-                name: method.name,
+                name: method.name.clone(),
                 expected: method.parameters.len(),
                 actual: arguments.len(),
             });
         }
         let values = self.evaluate_arguments(arguments)?;
-        self.invoke_method_with_values(object_id, &defining_class, &method, values)
+        self.invoke_method_with_values(object_id, defining_class, method, values)
     }
 
     fn call_super_method(
@@ -1076,27 +1130,27 @@ impl<'a> Runtime<'a> {
         let parent = self
             .class_by_name(&current_class)?
             .parent
-            .clone()
+            .as_deref()
             .ok_or_else(|| ExecutionError::NoSuperClass {
                 class_name: current_class.clone(),
             })?;
         let object_id = self.resolve_object("Self")?;
         let (defining_class, method) =
-            self.find_method_in_hierarchy(&parent, name)?
+            self.find_method_in_hierarchy(parent, name)?
                 .ok_or_else(|| ExecutionError::UnknownSuperMethod {
                     class_name: current_class,
                     method: name.to_owned(),
                 })?;
         if method.parameters.len() != arguments.len() {
             return Err(ExecutionError::MethodArgumentCount {
-                class_name: defining_class.clone(),
-                name: method.name,
+                class_name: defining_class.to_owned(),
+                name: method.name.clone(),
                 expected: method.parameters.len(),
                 actual: arguments.len(),
             });
         }
         let values = self.evaluate_arguments(arguments)?;
-        self.invoke_method_with_values(object_id, &defining_class, &method, values)
+        self.invoke_method_with_values(object_id, defining_class, method, values)
     }
 
     fn invoke_method_with_values(
@@ -1107,16 +1161,15 @@ impl<'a> Runtime<'a> {
         values: Vec<Value>,
     ) -> Result<Option<Value>, ExecutionError> {
         self.ensure_call_depth()?;
+        let argument_descriptions = values
+            .iter()
+            .map(|value| self.describe_value(value))
+            .collect();
         let mut scope: HashMap<String, Binding> = method
             .parameters
             .iter()
-            .zip(values.iter())
-            .map(|(parameter, value)| {
-                (
-                    normalize_identifier(parameter),
-                    Binding::variable(value.clone()),
-                )
-            })
+            .zip(values)
+            .map(|(parameter, value)| (normalize_identifier(parameter), Binding::variable(value)))
             .collect();
         scope.insert(
             "self".to_owned(),
@@ -1139,10 +1192,7 @@ impl<'a> Runtime<'a> {
         self.events.push(ExecutionEvent::MethodCalled {
             class_name: defining_class.to_owned(),
             name: method.name.clone(),
-            arguments: values
-                .iter()
-                .map(|value| self.describe_value(value))
-                .collect(),
+            arguments: argument_descriptions,
             return_value: return_value
                 .as_ref()
                 .map(|value| self.describe_value(value)),
@@ -1150,7 +1200,7 @@ impl<'a> Runtime<'a> {
         Ok(return_value)
     }
 
-    fn class_by_name(&self, name: &str) -> Result<&super::ast::ClassDefinition, ExecutionError> {
+    fn class_by_name(&self, name: &str) -> Result<&'a super::ast::ClassDefinition, ExecutionError> {
         self.program
             .classes
             .iter()
@@ -1161,18 +1211,18 @@ impl<'a> Runtime<'a> {
     fn class_lineage(
         &self,
         class_name: &str,
-    ) -> Result<Vec<super::ast::ClassDefinition>, ExecutionError> {
+    ) -> Result<Vec<&'a super::ast::ClassDefinition>, ExecutionError> {
         let mut lineage = Vec::new();
         let mut seen = Vec::new();
-        let mut current = self.class_by_name(class_name)?.clone();
+        let mut current = self.class_by_name(class_name)?;
 
         loop {
             let key = normalize_identifier(&current.name);
             if seen.iter().any(|name| name == &key) {
-                return Err(ExecutionError::InheritanceCycle(current.name));
+                return Err(ExecutionError::InheritanceCycle(current.name.clone()));
             }
             seen.push(key);
-            lineage.push(current.clone());
+            lineage.push(current);
 
             let Some(parent_name) = current.parent.as_deref() else {
                 break;
@@ -1182,7 +1232,6 @@ impl<'a> Runtime<'a> {
                 .classes
                 .iter()
                 .find(|class| class.name.eq_ignore_ascii_case(parent_name))
-                .cloned()
                 .ok_or_else(|| ExecutionError::UnknownParentClass {
                     class_name: current.name.clone(),
                     parent: parent_name.to_owned(),
@@ -1197,15 +1246,14 @@ impl<'a> Runtime<'a> {
         &self,
         class_name: &str,
         method_name: &str,
-    ) -> Result<Option<(String, super::ast::FunctionDefinition)>, ExecutionError> {
+    ) -> Result<Option<(&'a str, &'a super::ast::FunctionDefinition)>, ExecutionError> {
         let lineage = self.class_lineage(class_name)?;
         Ok(lineage.iter().rev().find_map(|class| {
             class
                 .methods
                 .iter()
                 .find(|method| method.name.eq_ignore_ascii_case(method_name))
-                .cloned()
-                .map(|method| (class.name.clone(), method))
+                .map(|method| (class.name.as_str(), method))
         }))
     }
 

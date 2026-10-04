@@ -12,7 +12,7 @@ mod data;
 pub mod excel_python;
 // {
 //   責務: [
-//     gui: Rowlyのtable editor、viewer、script editor等のGUIを提供する
+//     gui: Rowlyのtable editor、viewer、CSV text editor等のGUIを提供する
 //   ]
 // }
 #[cfg(feature = "gui")]

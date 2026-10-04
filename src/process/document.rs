@@ -426,7 +426,7 @@ impl CsvDocument {
     }
 
     pub fn commit_transaction(&mut self) -> Result<(), DocumentError> {
-        if self.history.commit_transaction().is_none() {
+        if !self.history.commit_transaction() {
             return Err(DocumentError::Transaction(
                 "no transaction is active".into(),
             ));

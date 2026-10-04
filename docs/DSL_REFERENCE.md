@@ -421,7 +421,7 @@ SET This.Worksheet.Editor.Column("状態").Validation.Expression =
     Value = "未着手" OR Value = "進行中" OR Value = "完了"
 ```
 
-DSL実行時に列の存在・一意性を確認し、設定宣言をソース順の `ExecutionReport.validation_rules()` と `ValidationRuleSet` イベントで返します。`ValidationRule::matches(candidate)` はAllowedValuesとExpressionの両方を評価できます。この宣言処理自体はCSVを変更せず、保存・編集時の検証エンジンや永続設定は別の機能層が適用します。
+DSL実行時に列の存在・一意性を確認し、設定宣言をソース順の `ExecutionReport.validation_rules()` と `ValidationRuleSet` イベントで返します。`ValidationRule::matches(candidate)` はAllowedValuesとExpressionの両方を評価できます。この宣言処理自体はCSVを変更しません。ProjectSessionはsource IDと一意headerを付けたinit DSLとしてruleを保存・復元できます。保存・編集時の検証エンジンはprocess層が適用します。
 
 <a id="limits"></a>
 ## CSVへ書き込める値と主要制限

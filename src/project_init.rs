@@ -10,11 +10,15 @@ use std::{
 use thiserror::Error;
 
 use crate::{
-    process::{ColumnType, CsvDocument},
+    process::{
+        ColumnType, CsvDocument, ValidationComparisonOperator, ValidationExpression,
+        ValidationOperand, ValidationRule, ValidationTarget,
+    },
     project::{
         ProjectError, RowlyProject, SourceKind, resolve_project_reference,
         write_project_file_atomic,
     },
+    rowly_dsl::{ColumnSelector, Statement},
 };
 
 const INIT_TEMPLATE: &str = "INCLUDE GENERATED\nINCLUDE USER\n";
@@ -29,27 +33,62 @@ struct ColumnTypeDeclaration {
 #[derive(Debug, Default)]
 struct ProjectInitConfig {
     column_types: BTreeMap<(String, String), ColumnType>,
+    validation_rules: BTreeMap<(String, String), ValidationRule>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ValidationRuleDeclaration {
+    source_id: String,
+    header: String,
+    rule: ValidationRule,
 }
 
 impl ProjectInitConfig {
     fn parse(source: &str, path: &Path) -> Result<Self, ProjectInitError> {
         let mut config = Self::default();
-        for (index, line) in source.lines().enumerate() {
-            let line = line.trim();
+        let lines = source.lines().collect::<Vec<_>>();
+        let mut index = 0;
+        while index < lines.len() {
+            let line = lines[index].trim();
             if line.is_empty() || line.starts_with('\'') || is_rem_comment(line) {
+                index += 1;
                 continue;
             }
-            let declaration = parse_column_type_declaration(line).ok_or_else(|| {
-                ProjectInitError::InvalidConfig {
-                    path: path.display().to_string(),
-                    line: index + 1,
-                    message: "only project column type configuration is allowed in init scripts"
-                        .into(),
+            if let Some(declaration) = parse_column_type_declaration(line) {
+                config.column_types.insert(
+                    (declaration.source_id, declaration.header),
+                    declaration.column_type,
+                );
+                index += 1;
+                continue;
+            }
+
+            let start_line = index + 1;
+            let mut statement = line.to_owned();
+            index += 1;
+            while validation_statement_needs_continuation(&statement) && index < lines.len() {
+                let continuation = lines[index].trim();
+                index += 1;
+                if continuation.is_empty()
+                    || continuation.starts_with('\'')
+                    || is_rem_comment(continuation)
+                {
+                    continue;
                 }
-            })?;
-            config.column_types.insert(
+                statement.push(' ');
+                statement.push_str(continuation);
+            }
+            let declaration =
+                parse_project_validation_declaration(&statement).map_err(|message| {
+                    ProjectInitError::InvalidConfig {
+                        path: path.display().to_string(),
+                        line: start_line,
+                        message,
+                    }
+                })?;
+            config.validation_rules.insert(
                 (declaration.source_id, declaration.header),
-                declaration.column_type,
+                declaration.rule,
             );
         }
         Ok(config)
@@ -66,10 +105,34 @@ impl ProjectInitConfig {
             output.push_str(column_type.as_metadata_str());
             output.push('\n');
         }
+        for ((source_id, header), rule) in &self.validation_rules {
+            output.push_str("SET This.Project.Source(");
+            output.push_str(&quote(source_id));
+            output.push_str(").Worksheet.Editor.Column(");
+            output.push_str(&quote(header));
+            match rule {
+                ValidationRule::AllowedValues(values) => {
+                    output.push_str(").Validation.AllowedValues = [");
+                    output.push_str(
+                        &values
+                            .iter()
+                            .map(|value| quote(value))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    );
+                    output.push_str("]\n");
+                }
+                ValidationRule::Expression(expression) => {
+                    output.push_str(").Validation.Expression = ");
+                    output.push_str(&serialize_validation_expression(expression));
+                    output.push('\n');
+                }
+            }
+        }
         output
     }
 
-    fn update_source(
+    fn update_column_types(
         &mut self,
         source_id: &str,
         document: &CsvDocument,
@@ -107,6 +170,62 @@ impl ProjectInitConfig {
         }
     }
 
+    fn update_validation_rules(
+        &mut self,
+        source_id: &str,
+        document: &CsvDocument,
+        user_config: &ProjectInitConfig,
+    ) -> Result<(), ProjectInitError> {
+        let headers = document
+            .rows()
+            .next()
+            .map(|row| row.to_vec())
+            .unwrap_or_default();
+        let header_counts = headers.iter().fold(HashMap::new(), |mut counts, header| {
+            *counts.entry(header.clone()).or_insert(0_usize) += 1;
+            counts
+        });
+        let mut document_rules = BTreeMap::new();
+        for (target, rule) in document.validation_rules() {
+            let header = match target {
+                ValidationTarget::Header(header) => header.clone(),
+                ValidationTarget::Index(index) => headers
+                    .get(*index)
+                    .cloned()
+                    .ok_or(ProjectInitError::UnstableValidationTarget(*index))?,
+            };
+            if header_counts.get(&header).is_some_and(|count| *count > 1) {
+                return Err(ProjectInitError::AmbiguousHeader(header));
+            }
+            let key = (source_id.to_owned(), header);
+            if document_rules.insert(key.clone(), rule.clone()).is_some() {
+                return Err(ProjectInitError::DuplicateValidationTarget(key.1));
+            }
+        }
+
+        for ((entry_source, header), rule) in &document_rules {
+            if entry_source != source_id {
+                continue;
+            }
+            let key = (entry_source.clone(), header.clone());
+            if user_config.validation_rules.get(&key) == Some(rule) {
+                // The document contains the effective user override. Keep the generated layer.
+                continue;
+            }
+            self.validation_rules.insert(key, rule.clone());
+        }
+
+        for header in &headers {
+            let key = (source_id.to_owned(), header.clone());
+            if document_rules.contains_key(&key) || user_config.validation_rules.contains_key(&key)
+            {
+                continue;
+            }
+            self.validation_rules.remove(&key);
+        }
+        Ok(())
+    }
+
     fn apply_source(
         &self,
         source_id: &str,
@@ -125,11 +244,22 @@ impl ProjectInitConfig {
                 return Err(ProjectInitError::AmbiguousHeader(header.clone()));
             }
         }
+        let mut validation_rules = BTreeMap::new();
+        for ((entry_source, header), rule) in &self.validation_rules {
+            if entry_source != source_id {
+                continue;
+            }
+            if header_counts.get(header).is_some_and(|count| *count > 1) {
+                return Err(ProjectInitError::AmbiguousHeader(header.clone()));
+            }
+            validation_rules.insert(ValidationTarget::Header(header.clone()), rule.clone());
+        }
         for ((entry_source, header), column_type) in &self.column_types {
             if entry_source == source_id && header_counts.contains_key(header) {
                 document.set_column_type_declaration_by_header(header, *column_type)?;
             }
         }
+        document.replace_project_validation_rules(validation_rules);
         Ok(())
     }
 }
@@ -142,6 +272,27 @@ pub(crate) fn save_generated_column_types(
     manifest_path: &Path,
     source_id: &str,
     document: &CsvDocument,
+) -> Result<(), ProjectInitError> {
+    save_generated_configuration(project, manifest_path, source_id, document, true, false)
+}
+
+/// Save one source's validation rules to the generated init DSL.
+pub(crate) fn save_generated_validation_rules(
+    project: &RowlyProject,
+    manifest_path: &Path,
+    source_id: &str,
+    document: &CsvDocument,
+) -> Result<(), ProjectInitError> {
+    save_generated_configuration(project, manifest_path, source_id, document, false, true)
+}
+
+fn save_generated_configuration(
+    project: &RowlyProject,
+    manifest_path: &Path,
+    source_id: &str,
+    document: &CsvDocument,
+    update_column_types: bool,
+    update_validation_rules: bool,
 ) -> Result<(), ProjectInitError> {
     if source_id.trim().is_empty() {
         return Err(ProjectInitError::EmptySourceId);
@@ -163,7 +314,12 @@ pub(crate) fn save_generated_column_types(
 
     let mut config = read_optional_config(&generated_path)?;
     let user_config = read_optional_config(&user_path)?;
-    config.update_source(source_id, document, &user_config);
+    if update_column_types {
+        config.update_column_types(source_id, document, &user_config);
+    }
+    if update_validation_rules {
+        config.update_validation_rules(source_id, document, &user_config)?;
+    }
     match fs::read_to_string(&init_path) {
         Ok(init_source) => {
             parse_init_includes(&init_source, &init_path)?;
@@ -214,6 +370,7 @@ pub(crate) fn apply_safe_init(
         };
         let parsed = ProjectInitConfig::parse(&source, path)?;
         config.column_types.extend(parsed.column_types);
+        config.validation_rules.extend(parsed.validation_rules);
     }
     config.apply_source(source_id, document)
 }
@@ -295,6 +452,139 @@ fn parse_column_type_declaration(line: &str) -> Option<ColumnTypeDeclaration> {
         header,
         column_type,
     })
+}
+
+fn parse_project_validation_declaration(line: &str) -> Result<ValidationRuleDeclaration, String> {
+    let rest = strip_prefix_ci(line, "SET This.Project.Source(")
+        .ok_or_else(|| "only project column types and validation DSL are allowed".to_owned())?;
+    let (source_id, rest) =
+        parse_quoted(rest).ok_or_else(|| "expected a quoted source id".to_owned())?;
+    let rest = strip_prefix_ci(rest, ").Worksheet.Editor.Column(")
+        .ok_or_else(|| "expected a project source column target".to_owned())?;
+    let (header, rest) =
+        parse_quoted(rest).ok_or_else(|| "expected a quoted column header".to_owned())?;
+    let validation = strip_prefix_ci(rest, ").")
+        .ok_or_else(|| "expected a validation rule after the column target".to_owned())?;
+    if source_id.trim().is_empty() {
+        return Err("project source id must not be empty".to_owned());
+    }
+
+    let dsl = format!(
+        "SET This.Worksheet.Editor.Column({}).{}",
+        quote(&header),
+        validation
+    );
+    let program = crate::rowly_dsl::parse(&dsl)
+        .map_err(|error| format!("invalid Rowly validation DSL: {}", error.message()))?;
+    if !program.classes().is_empty() || !program.functions().is_empty() {
+        return Err("project init validation entries must be declarative rules".to_owned());
+    }
+    let [Statement::SetValidationRule { selector, rule }] = program.statements() else {
+        return Err("project init allows only validation rule declarations".to_owned());
+    };
+    if selector != &ColumnSelector::Header(header.clone()) {
+        return Err("project validation target must use a quoted unique header".to_owned());
+    }
+    Ok(ValidationRuleDeclaration {
+        source_id,
+        header,
+        rule: rule.clone(),
+    })
+}
+
+fn validation_statement_needs_continuation(statement: &str) -> bool {
+    let lower = statement.to_ascii_lowercase();
+    let (suffix, allowed_values) = if let Some(index) = lower.find(".validation.allowedvalues") {
+        (index + ".validation.allowedvalues".len(), true)
+    } else if let Some(index) = lower.find(".validation.expression") {
+        (index + ".validation.expression".len(), false)
+    } else {
+        return false;
+    };
+    let Some(equal_offset) = statement[suffix..].find('=') else {
+        return false;
+    };
+    let value = statement[suffix + equal_offset + 1..].trim();
+    if allowed_values {
+        return has_unclosed_bracket(value);
+    }
+    if value.is_empty() {
+        return true;
+    }
+    let lower = value.to_ascii_lowercase();
+    [" and", " or", " =", " !=", " <=", " >=", " <", " >"]
+        .iter()
+        .any(|suffix| lower.ends_with(suffix))
+}
+
+fn has_unclosed_bracket(value: &str) -> bool {
+    let mut depth = 0_usize;
+    let mut quoted = false;
+    let mut escaped = false;
+    for ch in value.chars() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if quoted && ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            quoted = !quoted;
+            continue;
+        }
+        if !quoted {
+            match ch {
+                '[' => depth += 1,
+                ']' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+    }
+    depth > 0
+}
+
+fn serialize_validation_expression(expression: &ValidationExpression) -> String {
+    match expression {
+        ValidationExpression::Compare {
+            left,
+            operator,
+            right,
+        } => format!(
+            "{} {} {}",
+            serialize_validation_operand(left),
+            match operator {
+                ValidationComparisonOperator::Equal => "=",
+                ValidationComparisonOperator::NotEqual => "!=",
+                ValidationComparisonOperator::Less => "<",
+                ValidationComparisonOperator::LessOrEqual => "<=",
+                ValidationComparisonOperator::Greater => ">",
+                ValidationComparisonOperator::GreaterOrEqual => ">=",
+            },
+            serialize_validation_operand(right)
+        ),
+        ValidationExpression::Not(inner) => {
+            format!("NOT ({})", serialize_validation_expression(inner))
+        }
+        ValidationExpression::And(left, right) => format!(
+            "({}) AND ({})",
+            serialize_validation_expression(left),
+            serialize_validation_expression(right)
+        ),
+        ValidationExpression::Or(left, right) => format!(
+            "({}) OR ({})",
+            serialize_validation_expression(left),
+            serialize_validation_expression(right)
+        ),
+    }
+}
+
+fn serialize_validation_operand(operand: &ValidationOperand) -> String {
+    match operand {
+        ValidationOperand::Value => "Value".to_owned(),
+        ValidationOperand::Literal(value) => quote(value),
+    }
 }
 
 fn parse_quoted(input: &str) -> Option<(String, &str)> {
@@ -574,6 +864,10 @@ pub enum ProjectInitError {
     NotRegularScriptFile(String),
     #[error("project column type cannot target duplicate header `{0}`")]
     AmbiguousHeader(String),
+    #[error("project validation target `{0}` resolves to more than one column")]
+    DuplicateValidationTarget(String),
+    #[error("column index {0} has no stable header identity for project persistence")]
+    UnstableValidationTarget(usize),
     #[error(transparent)]
     Document(#[from] crate::process::DocumentError),
     #[error("failed to read project init script `{path}`: {message}")]

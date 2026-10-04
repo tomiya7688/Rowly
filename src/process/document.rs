@@ -333,6 +333,14 @@ impl CsvDocument {
         Ok(())
     }
 
+    /// Restore the project-owned validation layer without adding edit history.
+    pub(crate) fn replace_project_validation_rules(
+        &mut self,
+        rules: BTreeMap<ValidationTarget, ValidationRule>,
+    ) {
+        self.validation_rules = rules;
+    }
+
     pub fn remove_validation_rule(
         &mut self,
         target: &ValidationTarget,

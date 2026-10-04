@@ -11,6 +11,9 @@ pub use address::{CellRange, CellRef, ReferenceError};
 pub use column::{
     ColumnCell, ColumnError, ColumnType, ColumnTypeReport, JapaneseCheckReport, contains_japanese,
 };
-pub use document::{CsvDocument, DocumentError};
+pub use document::{
+    CsvDocument, DocumentError, ExternalCellConflict, ExternalConflictDraft,
+    ExternalStructureConflict,
+};
 #[cfg(feature = "gui")]
 pub(crate) use watcher::CsvFileWatcher;

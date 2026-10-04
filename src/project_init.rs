@@ -1,7 +1,7 @@
 //! Safe, declarative project init scripts for persistent Viewer configuration.
 
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap},
     fs::{self, OpenOptions},
     io::{self, Write},
     path::{Component, Path, PathBuf},
@@ -11,7 +11,10 @@ use thiserror::Error;
 
 use crate::{
     process::{ColumnType, CsvDocument},
-    project::{ProjectError, RowlyProject, write_project_file_atomic},
+    project::{
+        ProjectError, RowlyProject, SourceKind, resolve_project_reference,
+        write_project_file_atomic,
+    },
 };
 
 const INIT_TEMPLATE: &str = "INCLUDE GENERATED\nINCLUDE USER\n";
@@ -66,26 +69,68 @@ impl ProjectInitConfig {
         output
     }
 
-    fn replace_source(&mut self, source_id: &str, document: &CsvDocument) {
-        self.column_types
-            .retain(|(existing_source, _), _| existing_source != source_id);
-        for (header, column_type) in document.column_type_declarations() {
-            self.column_types
-                .insert((source_id.to_owned(), header.to_owned()), column_type);
-        }
-    }
-
-    fn apply_source(&self, source_id: &str, document: &mut CsvDocument) {
+    fn update_source(
+        &mut self,
+        source_id: &str,
+        document: &CsvDocument,
+        user_config: &ProjectInitConfig,
+    ) {
         let headers = document
             .rows()
             .next()
-            .map(|row| row.iter().cloned().collect::<HashSet<_>>())
+            .map(|row| {
+                row.iter()
+                    .cloned()
+                    .collect::<std::collections::HashSet<_>>()
+            })
             .unwrap_or_default();
-        for ((entry_source, header), column_type) in &self.column_types {
-            if entry_source == source_id && headers.contains(header) {
-                let _ = document.set_column_type_declaration_by_header(header, *column_type);
+        let declarations = document
+            .column_type_declarations()
+            .map(|(header, column_type)| (header.to_owned(), column_type))
+            .collect::<BTreeMap<_, _>>();
+        for header in headers {
+            let key = (source_id.to_owned(), header.clone());
+            match declarations.get(&key.1).copied() {
+                Some(column_type)
+                    if user_config.column_types.get(&key).copied() == Some(column_type) =>
+                {
+                    // This is the effective user override. Preserve the existing generated
+                    // value instead of copying the merged document back into generated.rly.
+                }
+                Some(column_type) => {
+                    self.column_types.insert(key, column_type);
+                }
+                None => {
+                    self.column_types.remove(&key);
+                }
             }
         }
+    }
+
+    fn apply_source(
+        &self,
+        source_id: &str,
+        document: &mut CsvDocument,
+    ) -> Result<(), ProjectInitError> {
+        let mut header_counts = HashMap::<String, usize>::new();
+        if let Some(row) = document.rows().next() {
+            for header in row {
+                *header_counts.entry(header.clone()).or_insert(0_usize) += 1;
+            }
+        }
+        for (entry_source, header) in self.column_types.keys() {
+            if entry_source == source_id
+                && header_counts.get(header).is_some_and(|count| *count > 1)
+            {
+                return Err(ProjectInitError::AmbiguousHeader(header.clone()));
+            }
+        }
+        for ((entry_source, header), column_type) in &self.column_types {
+            if entry_source == source_id && header_counts.contains_key(header) {
+                document.set_column_type_declaration_by_header(header, *column_type)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -105,13 +150,33 @@ pub(crate) fn save_generated_column_types(
     let generated_path = project_script_path(manifest_path, &project.scripts.generated)?;
     let user_path = project_script_path(manifest_path, &project.scripts.user)?;
     ensure_distinct_paths(&init_path, &generated_path, &user_path)?;
+    ensure_generated_path_does_not_alias_project_data(
+        project,
+        manifest_path,
+        &init_path,
+        &generated_path,
+        &user_path,
+    )?;
+    for path in [&init_path, &generated_path, &user_path] {
+        validate_regular_file_if_present(path)?;
+    }
 
     let mut config = read_optional_config(&generated_path)?;
-    config.replace_source(source_id, document);
-    create_parent(&generated_path)?;
-    write_project_file_atomic(&generated_path, config.serialize().as_bytes())?;
+    let user_config = read_optional_config(&user_path)?;
+    config.update_source(source_id, document, &user_config);
+    match fs::read_to_string(&init_path) {
+        Ok(init_source) => {
+            parse_init_includes(&init_source, &init_path)?;
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(script_read_error(&init_path, error)),
+    }
+    // Prepare all included files before replacing generated.rly so an error
+    // cannot leave the new configuration persisted with an incomplete setup.
     create_if_missing(&user_path, "")?;
     create_if_missing(&init_path, INIT_TEMPLATE)?;
+    create_parent(&generated_path)?;
+    write_project_file_atomic(&generated_path, config.serialize().as_bytes())?;
     Ok(())
 }
 
@@ -136,6 +201,7 @@ pub(crate) fn apply_safe_init(
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(script_read_error(&init_path, error)),
     };
+    let mut config = ProjectInitConfig::default();
     for include in parse_init_includes(&init_source, &init_path)? {
         let path = match include {
             InitInclude::Generated => &generated_path,
@@ -146,9 +212,10 @@ pub(crate) fn apply_safe_init(
             Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
             Err(error) => return Err(script_read_error(path, error)),
         };
-        ProjectInitConfig::parse(&source, path)?.apply_source(source_id, document);
+        let parsed = ProjectInitConfig::parse(&source, path)?;
+        config.column_types.extend(parsed.column_types);
     }
-    Ok(())
+    config.apply_source(source_id, document)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -220,7 +287,7 @@ fn parse_column_type_declaration(line: &str) -> Option<ColumnTypeDeclaration> {
         rest.trim()
             .eq_ignore_ascii_case(column_type.as_metadata_str())
     })?;
-    if source_id.trim().is_empty() || header.trim().is_empty() {
+    if source_id.trim().is_empty() {
         return None;
     }
     Some(ColumnTypeDeclaration {
@@ -292,21 +359,33 @@ fn project_script_path(
     manifest_path: &Path,
     reference: &Path,
 ) -> Result<PathBuf, ProjectInitError> {
-    if reference.is_absolute()
-        || reference.as_os_str().is_empty()
-        || !reference
-            .components()
-            .all(|component| matches!(component, Component::Normal(_)))
-    {
+    if reference.is_absolute() || reference.as_os_str().is_empty() {
+        return Err(ProjectInitError::UnsafeScriptPath(
+            reference.display().to_string(),
+        ));
+    }
+    let mut relative = PathBuf::new();
+    for component in reference.components() {
+        match component {
+            Component::Normal(name) => relative.push(name),
+            Component::CurDir => {}
+            _ => {
+                return Err(ProjectInitError::UnsafeScriptPath(
+                    reference.display().to_string(),
+                ));
+            }
+        }
+    }
+    if relative.as_os_str().is_empty() {
         return Err(ProjectInitError::UnsafeScriptPath(
             reference.display().to_string(),
         ));
     }
     let root = manifest_path.parent().unwrap_or_else(|| Path::new("."));
     let root = fs::canonicalize(root).map_err(|error| script_read_error(root, error))?;
-    let path = root.join(reference);
+    let path = root.join(&relative);
     let mut current = root.clone();
-    for component in reference.components() {
+    for component in relative.components() {
         let Component::Normal(name) = component else {
             return Err(ProjectInitError::UnsafeScriptPath(
                 reference.display().to_string(),
@@ -337,10 +416,103 @@ fn ensure_distinct_paths(
     generated: &Path,
     user: &Path,
 ) -> Result<(), ProjectInitError> {
-    if init == generated || init == user || generated == user {
+    if same_path(init, generated) || same_path(init, user) || same_path(generated, user) {
         return Err(ProjectInitError::ScriptPathCollision);
     }
     Ok(())
+}
+
+fn ensure_generated_path_does_not_alias_project_data(
+    project: &RowlyProject,
+    manifest_path: &Path,
+    init_path: &Path,
+    generated_path: &Path,
+    user_path: &Path,
+) -> Result<(), ProjectInitError> {
+    let generated = normalized_path(generated_path);
+    let mut protected = vec![
+        manifest_path.to_path_buf(),
+        init_path.to_path_buf(),
+        user_path.to_path_buf(),
+        resolve_project_reference(manifest_path, &project.scripts.macros),
+        resolve_project_reference(manifest_path, &project.history),
+    ];
+    let mut protected_directories = vec![
+        resolve_project_reference(manifest_path, &project.scripts.macros),
+        resolve_project_reference(manifest_path, &project.history),
+    ]
+    .into_iter()
+    .filter(|path| path.is_dir())
+    .collect::<Vec<_>>();
+    for source in &project.sources {
+        let path = resolve_project_reference(manifest_path, &source.path);
+        if source.kind == SourceKind::Directory {
+            protected_directories.push(path.clone());
+        }
+        protected.push(path);
+    }
+    if protected
+        .iter()
+        .any(|path| same_path(&generated, &normalized_path(path)))
+        || protected_directories
+            .iter()
+            .any(|directory| generated.starts_with(normalized_path(directory)))
+    {
+        return Err(ProjectInitError::GeneratedPathAliasesProjectData(
+            generated_path.display().to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn same_path(left: &Path, right: &Path) -> bool {
+    let left = normalized_path(left);
+    let right = normalized_path(right);
+    #[cfg(windows)]
+    {
+        left.to_string_lossy()
+            .eq_ignore_ascii_case(&right.to_string_lossy())
+    }
+    #[cfg(not(windows))]
+    {
+        left == right
+    }
+}
+
+fn normalized_path(path: &Path) -> PathBuf {
+    let path = fs::canonicalize(path).unwrap_or_else(|_| {
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(path)
+        }
+    });
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(name) => normalized.push(name),
+        }
+    }
+    normalized
+}
+
+fn validate_regular_file_if_present(path: &Path) -> Result<(), ProjectInitError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_file() => Ok(()),
+        Ok(_) => Err(ProjectInitError::NotRegularScriptFile(
+            path.display().to_string(),
+        )),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(script_read_error(path, error)),
+    }
 }
 
 fn read_optional_config(path: &Path) -> Result<ProjectInitConfig, ProjectInitError> {
@@ -363,7 +535,9 @@ fn create_if_missing(path: &Path, contents: &str) -> Result<(), ProjectInitError
     create_parent(path)?;
     let mut file = match OpenOptions::new().write(true).create_new(true).open(path) {
         Ok(file) => file,
-        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            return validate_regular_file_if_present(path);
+        }
         Err(error) => {
             return Err(ProjectInitError::ScriptWrite {
                 path: path.display().to_string(),
@@ -394,6 +568,14 @@ pub enum ProjectInitError {
     UnsafeScriptPath(String),
     #[error("project init script paths collide")]
     ScriptPathCollision,
+    #[error("generated script path `{0}` aliases project data or another project file")]
+    GeneratedPathAliasesProjectData(String),
+    #[error("project init script target `{0}` must be a regular file")]
+    NotRegularScriptFile(String),
+    #[error("project column type cannot target duplicate header `{0}`")]
+    AmbiguousHeader(String),
+    #[error(transparent)]
+    Document(#[from] crate::process::DocumentError),
     #[error("failed to read project init script `{path}`: {message}")]
     ScriptRead { path: String, message: String },
     #[error("failed to write project init script `{path}`: {message}")]

@@ -154,7 +154,7 @@ impl ProjectSession {
             return Err(ProjectSessionError::DirectorySource(source_id.to_owned()));
         }
         let path = resolve_project_reference(self.manifest_path(), &source.path);
-        let mut document = CsvDocument::open(path)?;
+        let mut document = CsvDocument::open_without_metadata(path)?;
         self.apply_safe_init(source_id, &mut document)?;
         Ok(document)
     }

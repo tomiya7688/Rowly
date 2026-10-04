@@ -28,6 +28,7 @@ pub struct CsvDocument {
     validation_rules: BTreeMap<ValidationTarget, ValidationRule>,
     metadata: ColumnMetadata,
     metadata_error: Option<String>,
+    save_metadata_sidecar: bool,
     disk_fingerprint: ContentFingerprint,
     external_conflicts: Vec<ExternalConflictDraft>,
 }
@@ -82,21 +83,36 @@ impl CsvDocument {
             validation_rules: BTreeMap::new(),
             metadata: ColumnMetadata::default(),
             metadata_error: None,
+            save_metadata_sidecar: true,
             disk_fingerprint,
             external_conflicts: Vec::new(),
         })
     }
 
     pub fn open(path: impl AsRef<Path>) -> Result<Self, DocumentError> {
-        let path = path.as_ref().to_path_buf();
+        Self::open_with_metadata(path.as_ref(), true)
+    }
+
+    /// Open a CSV without reading or writing Rowly's CSV-adjacent metadata.
+    /// Project sessions use this when configuration is stored in the project.
+    pub(crate) fn open_without_metadata(path: impl AsRef<Path>) -> Result<Self, DocumentError> {
+        Self::open_with_metadata(path.as_ref(), false)
+    }
+
+    fn open_with_metadata(path: &Path, load_metadata: bool) -> Result<Self, DocumentError> {
+        let path = path.to_path_buf();
         let loaded = read_csv(&path).map_err(|error| DocumentError::Open {
             path: path.display().to_string(),
             message: error.to_string(),
         })?;
 
-        let (metadata, metadata_error) = match ColumnMetadata::load(&path) {
-            Ok(metadata) => (metadata, None),
-            Err(error) => (ColumnMetadata::default(), Some(error.to_string())),
+        let (metadata, metadata_error) = if load_metadata {
+            match ColumnMetadata::load(&path) {
+                Ok(metadata) => (metadata, None),
+                Err(error) => (ColumnMetadata::default(), Some(error.to_string())),
+            }
+        } else {
+            (ColumnMetadata::default(), None)
         };
 
         let baseline = loaded.table.clone();
@@ -109,6 +125,7 @@ impl CsvDocument {
             validation_rules: BTreeMap::new(),
             metadata,
             metadata_error,
+            save_metadata_sidecar: load_metadata,
             disk_fingerprint: loaded.fingerprint,
             external_conflicts: Vec::new(),
         })
@@ -278,6 +295,9 @@ impl CsvDocument {
     }
 
     pub fn save_metadata(&mut self) -> Result<(), DocumentError> {
+        if !self.save_metadata_sidecar {
+            return Ok(());
+        }
         self.metadata
             .save(&self.path)
             .map_err(|error| DocumentError::Metadata(error.to_string()))?;

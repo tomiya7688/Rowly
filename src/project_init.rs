@@ -493,20 +493,15 @@ fn parse_project_validation_declaration(line: &str) -> Result<ValidationRuleDecl
 }
 
 fn validation_statement_needs_continuation(statement: &str) -> bool {
-    let lower = statement.to_ascii_lowercase();
-    let (suffix, allowed_values) = if let Some(index) = lower.find(".validation.allowedvalues") {
-        (index + ".validation.allowedvalues".len(), true)
-    } else if let Some(index) = lower.find(".validation.expression") {
-        (index + ".validation.expression".len(), false)
-    } else {
+    let Some(rest) = project_validation_property(statement) else {
         return false;
     };
-    let Some(equal_offset) = statement[suffix..].find('=') else {
+    let Some(equal_offset) = rest.value.find('=') else {
         return false;
     };
-    let value = statement[suffix + equal_offset + 1..].trim();
-    if allowed_values {
-        return has_unclosed_bracket(value);
+    let value = rest.value[equal_offset + 1..].trim();
+    if rest.allowed_values {
+        return value.is_empty() || has_unclosed_bracket(value);
     }
     if value.is_empty() {
         return true;
@@ -515,6 +510,30 @@ fn validation_statement_needs_continuation(statement: &str) -> bool {
     [" and", " or", " =", " !=", " <=", " >=", " <", " >"]
         .iter()
         .any(|suffix| lower.ends_with(suffix))
+}
+
+struct ValidationProperty<'a> {
+    value: &'a str,
+    allowed_values: bool,
+}
+
+fn project_validation_property(statement: &str) -> Option<ValidationProperty<'_>> {
+    let rest = strip_prefix_ci(statement, "SET This.Project.Source(")?;
+    let (_, rest) = parse_quoted(rest)?;
+    let rest = strip_prefix_ci(rest, ").Worksheet.Editor.Column(")?;
+    let (_, rest) = parse_quoted(rest)?;
+    let rest = strip_prefix_ci(rest, ").Validation.")?;
+    if let Some(value) = strip_prefix_ci(rest, "AllowedValues") {
+        Some(ValidationProperty {
+            value,
+            allowed_values: true,
+        })
+    } else {
+        strip_prefix_ci(rest, "Expression").map(|value| ValidationProperty {
+            value,
+            allowed_values: false,
+        })
+    }
 }
 
 fn has_unclosed_bracket(value: &str) -> bool {

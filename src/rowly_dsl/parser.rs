@@ -1142,6 +1142,7 @@ fn parse_scalar(text: &str, line: usize) -> Result<String, ParseError> {
         if escaped {
             value.push(match ch {
                 'n' => '\n',
+                'r' => '\r',
                 't' => '\t',
                 '"' => '"',
                 '\\' => '\\',

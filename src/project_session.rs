@@ -32,6 +32,32 @@ pub enum ProjectBackingKind {
     Package,
 }
 
+/// Independent unsaved project state categories.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ProjectDirtyState {
+    data: bool,
+    structure_or_config: bool,
+    package: bool,
+}
+
+impl ProjectDirtyState {
+    pub fn data_is_dirty(self) -> bool {
+        self.data
+    }
+
+    pub fn structure_or_config_is_dirty(self) -> bool {
+        self.structure_or_config
+    }
+
+    pub fn package_is_dirty(self) -> bool {
+        self.package
+    }
+
+    pub fn is_dirty(self) -> bool {
+        self.data || self.structure_or_config || self.package
+    }
+}
+
 /// An editable project model with a retained directory or package backing.
 ///
 /// `.rowlyx` archives are extracted to a managed temporary workspace for the
@@ -41,7 +67,7 @@ pub enum ProjectBackingKind {
 pub struct ProjectSession {
     project: RowlyProject,
     backing: ProjectBacking,
-    dirty: bool,
+    dirty: ProjectDirtyState,
 }
 
 impl ProjectSession {
@@ -64,7 +90,7 @@ impl ProjectSession {
                     manifest_path,
                     workspace,
                 },
-                dirty: false,
+                dirty: ProjectDirtyState::default(),
             })
         } else if extension.is_some_and(|value| value.eq_ignore_ascii_case("rwprj")) {
             let project = RowlyProject::load(&path)?;
@@ -73,7 +99,7 @@ impl ProjectSession {
                 backing: ProjectBacking::Directory {
                     manifest_path: path,
                 },
-                dirty: false,
+                dirty: ProjectDirtyState::default(),
             })
         } else {
             Err(ProjectSessionError::UnsupportedBacking(
@@ -88,8 +114,33 @@ impl ProjectSession {
 
     /// Mutably access the manifest model and mark the session dirty.
     pub fn project_mut(&mut self) -> &mut RowlyProject {
-        self.dirty = true;
+        self.mark_structure_or_config_dirty();
         &mut self.project
+    }
+
+    /// Mark data changed through a document or data command owned by this session.
+    pub fn mark_data_dirty(&mut self) {
+        self.dirty.data = true;
+        self.mark_package_dirty_if_needed();
+    }
+
+    /// Clear the in-memory data dirty flag after its owning document has saved.
+    /// A package still needs a project save so the updated working file is
+    /// included in the archive.
+    pub fn mark_data_saved(&mut self) {
+        self.dirty.data = false;
+    }
+
+    /// Mark project structure or persisted configuration changed.
+    pub fn mark_structure_or_config_dirty(&mut self) {
+        self.dirty.structure_or_config = true;
+        self.mark_package_dirty_if_needed();
+    }
+
+    fn mark_package_dirty_if_needed(&mut self) {
+        if matches!(self.backing, ProjectBacking::Package { .. }) {
+            self.dirty.package = true;
+        }
     }
 
     /// Root of the directory or extracted package working tree.
@@ -127,6 +178,10 @@ impl ProjectSession {
     }
 
     pub fn is_dirty(&self) -> bool {
+        self.dirty.is_dirty()
+    }
+
+    pub fn dirty_state(&self) -> ProjectDirtyState {
         self.dirty
     }
 
@@ -143,7 +198,12 @@ impl ProjectSession {
         {
             pack_project(manifest_path, archive_path)?;
         }
-        self.dirty = false;
+        let data_dirty = self.dirty.data;
+        self.dirty = ProjectDirtyState {
+            data: data_dirty,
+            structure_or_config: false,
+            package: data_dirty && matches!(self.backing, ProjectBacking::Package { .. }),
+        };
         Ok(())
     }
 }

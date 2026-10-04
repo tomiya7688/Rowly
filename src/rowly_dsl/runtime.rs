@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
-use crate::process::{ColumnError, CsvDocument, DocumentError};
+use crate::process::{ColumnError, CsvDocument, DocumentError, ValidationTarget};
 
 use super::ast::{
     ArithmeticOperator, ColumnSelector, ComparisonOperator, Condition, DeclarationKind,
@@ -410,7 +410,12 @@ impl<'a> Runtime<'a> {
                     });
                 }
                 Statement::SetValidationRule { selector, rule } => {
-                    resolve_column(selector, self.document)?;
+                    let column = resolve_column(selector, self.document)?;
+                    let target = match selector {
+                        ColumnSelector::Index(_) => ValidationTarget::Index(column),
+                        ColumnSelector::Header(header) => ValidationTarget::Header(header.clone()),
+                    };
+                    self.document.set_validation_rule(target, rule.clone())?;
                     let definition = ValidationRuleDefinition {
                         selector: selector.clone(),
                         rule: rule.clone(),

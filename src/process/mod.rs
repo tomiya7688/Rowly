@@ -3,6 +3,7 @@ mod column;
 mod document;
 mod history;
 mod metadata;
+mod validation;
 #[cfg(feature = "gui")]
 mod watcher;
 
@@ -14,6 +15,10 @@ pub use column::{
 pub use document::{
     CsvDocument, DocumentError, ExternalCellConflict, ExternalConflictDraft,
     ExternalStructureConflict,
+};
+pub use validation::{
+    ValidationComparisonOperator, ValidationExpression, ValidationOperand, ValidationReport,
+    ValidationRule, ValidationTarget, ValidationViolation,
 };
 #[cfg(feature = "gui")]
 pub(crate) use watcher::CsvFileWatcher;

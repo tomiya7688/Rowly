@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use csv::{ReaderBuilder, Terminator, WriterBuilder};
 use thiserror::Error;
 
 use crate::data::{
@@ -11,7 +12,8 @@ use crate::data::{
 };
 
 use super::{
-    CellRange, CellRef, ColumnError, ColumnType, ReferenceError,
+    CellRange, CellRef, ColumnError, ColumnType, ReferenceError, ValidationReport, ValidationRule,
+    ValidationTarget, ValidationViolation,
     history::{CellChange, ColumnChange, EditCommand, EditHistory, EditOperation, RowEdit},
     metadata::{ColumnMetadata, sidecar_path},
 };
@@ -23,6 +25,7 @@ pub struct CsvDocument {
     table: Table,
     baseline: Table,
     history: EditHistory,
+    validation_rules: BTreeMap<ValidationTarget, ValidationRule>,
     metadata: ColumnMetadata,
     metadata_error: Option<String>,
     disk_fingerprint: ContentFingerprint,
@@ -76,6 +79,7 @@ impl CsvDocument {
             baseline: table.clone(),
             table,
             history,
+            validation_rules: BTreeMap::new(),
             metadata: ColumnMetadata::default(),
             metadata_error: None,
             disk_fingerprint,
@@ -102,6 +106,7 @@ impl CsvDocument {
             table: loaded.table,
             baseline,
             history: EditHistory::default(),
+            validation_rules: BTreeMap::new(),
             metadata,
             metadata_error,
             disk_fingerprint: loaded.fingerprint,
@@ -280,6 +285,114 @@ impl CsvDocument {
         Ok(())
     }
 
+    /// Install a session-only validation rule for a column.
+    ///
+    /// A rule assignment is undoable but does not mark the CSV file dirty.
+    pub fn set_validation_rule(
+        &mut self,
+        target: ValidationTarget,
+        rule: ValidationRule,
+    ) -> Result<(), DocumentError> {
+        let column = self.resolve_validation_target(&target)?;
+        let before = self.validation_rules.clone();
+        let replaced = self
+            .validation_rules
+            .keys()
+            .filter_map(|existing| {
+                (self.resolve_validation_target(existing).ok() == Some(column))
+                    .then_some(existing.clone())
+            })
+            .collect::<Vec<_>>();
+        for existing in replaced {
+            self.validation_rules.remove(&existing);
+        }
+        self.validation_rules.insert(target, rule);
+        let after = self.validation_rules.clone();
+        self.history
+            .record(EditOperation::ValidationRules { before, after });
+        Ok(())
+    }
+
+    pub fn remove_validation_rule(
+        &mut self,
+        target: &ValidationTarget,
+    ) -> Result<bool, DocumentError> {
+        let before = self.validation_rules.clone();
+        if let Ok(column) = self.resolve_validation_target(target) {
+            let matching = self
+                .validation_rules
+                .keys()
+                .filter_map(|existing| {
+                    (self.resolve_validation_target(existing).ok() == Some(column))
+                        .then_some(existing.clone())
+                })
+                .collect::<Vec<_>>();
+            for existing in matching {
+                self.validation_rules.remove(&existing);
+            }
+        } else {
+            self.validation_rules.remove(target);
+        }
+        let after = self.validation_rules.clone();
+        if before == after {
+            return Ok(false);
+        }
+        self.history
+            .record(EditOperation::ValidationRules { before, after });
+        Ok(true)
+    }
+
+    pub fn validation_rule(&self, target: &ValidationTarget) -> Option<&ValidationRule> {
+        self.validation_rules.get(target)
+    }
+
+    pub fn validation_rules(&self) -> impl Iterator<Item = (&ValidationTarget, &ValidationRule)> {
+        self.validation_rules.iter()
+    }
+
+    /// Inspect current data without rejecting it. This also reports legacy or
+    /// externally supplied values that do not satisfy their session rules.
+    pub fn validation_report(&self) -> ValidationReport {
+        self.validation_report_for(&self.table)
+    }
+
+    fn validation_report_for(&self, table: &Table) -> ValidationReport {
+        let mut report = ValidationReport::default();
+        let mut rules_by_column =
+            BTreeMap::<usize, Vec<(&ValidationTarget, &ValidationRule)>>::new();
+        for (target, rule) in &self.validation_rules {
+            if let Ok(column) = self.resolve_validation_target(target) {
+                rules_by_column
+                    .entry(column)
+                    .or_default()
+                    .push((target, rule));
+            }
+        }
+
+        for row in 1..table.row_count() {
+            for column in 0..table.column_count() {
+                let Some(rules) = rules_by_column.get(&column) else {
+                    continue;
+                };
+                let Some(value) = table.cell(row, column) else {
+                    continue;
+                };
+                report.checked_cells += 1;
+                for (target, rule) in rules {
+                    if !rule.matches(value) {
+                        report.violations.push(ValidationViolation {
+                            cell: CellRef::new(row, column),
+                            target: (*target).clone(),
+                            value: value.to_owned(),
+                            rule: (*rule).clone(),
+                        });
+                    }
+                }
+            }
+        }
+        report
+    }
+
     pub fn can_undo(&self) -> bool {
         self.history.can_undo()
     }
@@ -310,6 +423,57 @@ impl CsvDocument {
 
     pub fn cell_a1(&self, reference: &str) -> Result<Option<&str>, DocumentError> {
         Ok(self.cell_ref(reference.parse()?))
+    }
+
+    pub fn csv_text(&self) -> Result<String, DocumentError> {
+        let mut writer = WriterBuilder::new()
+            .terminator(Terminator::Any(b'\n'))
+            .from_writer(Vec::new());
+        for row in self.table.rows() {
+            writer
+                .write_record(row)
+                .map_err(|error| DocumentError::Csv(error.to_string()))?;
+        }
+        let bytes = writer
+            .into_inner()
+            .map_err(|error| DocumentError::Csv(error.error().to_string()))?;
+        String::from_utf8(bytes).map_err(|error| DocumentError::Csv(error.to_string()))
+    }
+
+    /// Parse an editable CSV buffer and atomically apply it after validating all
+    /// data cells against the active session rules.
+    pub fn apply_csv_text(&mut self, text: &str) -> Result<(), DocumentError> {
+        let mut reader = ReaderBuilder::new()
+            .has_headers(false)
+            .flexible(true)
+            .from_reader(text.as_bytes());
+        let mut rows = Vec::new();
+        for record in reader.records() {
+            let record = record.map_err(|error| DocumentError::Csv(error.to_string()))?;
+            rows.push(record.iter().map(str::to_owned).collect());
+        }
+        self.replace_contents(rows)
+    }
+
+    pub fn replace_contents(&mut self, rows: Vec<Vec<String>>) -> Result<(), DocumentError> {
+        let replacement = Table::new(rows);
+        let before = self.table.rows().to_vec();
+        let after = replacement.rows().to_vec();
+        if before == after {
+            return Ok(());
+        }
+
+        let report = self.validation_report_for(&replacement);
+        if !report.is_valid() {
+            return Err(DocumentError::ValidationRejected {
+                violations: report.violations,
+            });
+        }
+
+        self.table = replacement;
+        self.history
+            .record(EditOperation::Contents { before, after });
+        Ok(())
     }
 
     pub fn set_cell(
@@ -391,6 +555,8 @@ impl CsvDocument {
             )));
         }
 
+        let before_validation = self.validation_rules.clone();
+        let shifted_validation = self.shift_validation_rules_for_insert(index, count)?;
         let inserted = vec![String::new(); count];
         let changes = self
             .table
@@ -412,7 +578,8 @@ impl CsvDocument {
                 .map_err(|error| DocumentError::Edit(error.to_string()))?;
         }
 
-        self.history.record(EditOperation::Columns(changes));
+        self.validation_rules = shifted_validation;
+        self.record_column_edit(changes, before_validation);
         Ok(())
     }
 
@@ -465,6 +632,8 @@ impl CsvDocument {
             )));
         }
 
+        let before_validation = self.validation_rules.clone();
+        let shifted_validation = self.shift_validation_rules_for_delete(index, end, count);
         let changes = self
             .table
             .rows()
@@ -491,7 +660,8 @@ impl CsvDocument {
                 .map_err(|error| DocumentError::Edit(error.to_string()))?;
         }
 
-        self.history.record(EditOperation::Columns(changes));
+        self.validation_rules = shifted_validation;
+        self.record_column_edit(changes, before_validation);
         Ok(())
     }
 
@@ -717,12 +887,88 @@ impl CsvDocument {
         self.history.mark_saved();
     }
 
+    fn resolve_validation_target(&self, target: &ValidationTarget) -> Result<usize, ColumnError> {
+        match target {
+            ValidationTarget::Index(column) if *column < self.column_count() => Ok(*column),
+            ValidationTarget::Index(column) => Err(ColumnError::ColumnOutOfBounds {
+                column: *column,
+                column_count: self.column_count(),
+            }),
+            ValidationTarget::Header(header) => self.column_index_by_header(header),
+        }
+    }
+
+    fn shift_validation_rules_for_insert(
+        &self,
+        index: usize,
+        count: usize,
+    ) -> Result<BTreeMap<ValidationTarget, ValidationRule>, DocumentError> {
+        self.validation_rules
+            .iter()
+            .map(|(target, rule)| {
+                let target = match target {
+                    ValidationTarget::Index(column) if *column >= index => {
+                        ValidationTarget::Index(column.checked_add(count).ok_or_else(|| {
+                            DocumentError::Edit("validation column index overflowed".into())
+                        })?)
+                    }
+                    _ => target.clone(),
+                };
+                Ok((target, rule.clone()))
+            })
+            .collect()
+    }
+
+    fn shift_validation_rules_for_delete(
+        &self,
+        index: usize,
+        end: usize,
+        count: usize,
+    ) -> BTreeMap<ValidationTarget, ValidationRule> {
+        self.validation_rules
+            .iter()
+            .filter_map(|(target, rule)| {
+                let target = match target {
+                    ValidationTarget::Index(column) if *column >= index && *column < end => {
+                        return None;
+                    }
+                    ValidationTarget::Index(column) if *column >= end => {
+                        ValidationTarget::Index(column - count)
+                    }
+                    _ => target.clone(),
+                };
+                Some((target, rule.clone()))
+            })
+            .collect()
+    }
+
+    fn record_column_edit(
+        &mut self,
+        columns: Vec<ColumnChange>,
+        before_validation: BTreeMap<ValidationTarget, ValidationRule>,
+    ) {
+        let after_validation = self.validation_rules.clone();
+        let operation = if before_validation == after_validation {
+            EditOperation::Columns(columns)
+        } else {
+            EditOperation::Batch(vec![
+                EditOperation::Columns(columns),
+                EditOperation::ValidationRules {
+                    before: before_validation,
+                    after: after_validation,
+                },
+            ])
+        };
+        self.history.record(operation);
+    }
+
     fn set_references_value(
         &mut self,
         references: impl IntoIterator<Item = CellRef>,
         value: String,
     ) -> Result<(), DocumentError> {
         let mut changes = Vec::new();
+        let mut violations = Vec::new();
 
         for reference in references {
             let before = self.cell_ref(reference).ok_or_else(|| {
@@ -732,12 +978,30 @@ impl CsvDocument {
             })?;
 
             if before != value {
+                if reference.row() > 0 {
+                    for (target, rule) in &self.validation_rules {
+                        if self.resolve_validation_target(target).ok() == Some(reference.column())
+                            && !rule.matches(&value)
+                        {
+                            violations.push(ValidationViolation {
+                                cell: reference,
+                                target: target.clone(),
+                                value: value.clone(),
+                                rule: rule.clone(),
+                            });
+                        }
+                    }
+                }
                 changes.push(CellChange {
                     reference,
                     before: before.to_owned(),
                     after: value.clone(),
                 });
             }
+        }
+
+        if !violations.is_empty() {
+            return Err(DocumentError::ValidationRejected { violations });
         }
 
         for change in &changes {
@@ -771,6 +1035,22 @@ impl CsvDocument {
             EditOperation::Cells(changes) => self.apply_cell_changes(changes, direction),
             EditOperation::Rows(edit) => self.apply_row_edit(edit, direction),
             EditOperation::Columns(changes) => self.apply_column_changes(changes, direction),
+            EditOperation::Contents { before, after } => {
+                self.apply_contents_change(before, after, direction)
+            }
+            EditOperation::ValidationRules { before, after } => {
+                let (expected, replacement) = match direction {
+                    CommandDirection::Undo => (after, before),
+                    CommandDirection::Redo => (before, after),
+                };
+                if &self.validation_rules != expected {
+                    return Err(DocumentError::Edit(
+                        "edit history no longer matches the validation rules".into(),
+                    ));
+                }
+                self.validation_rules = replacement.clone();
+                Ok(())
+            }
             EditOperation::Batch(operations) => match direction {
                 CommandDirection::Undo => {
                     for operation in operations.iter().rev() {
@@ -851,6 +1131,25 @@ impl CsvDocument {
             .map_err(|error| {
                 DocumentError::Edit(format!("edit history no longer matches the table: {error}"))
             })?;
+        Ok(())
+    }
+
+    fn apply_contents_change(
+        &mut self,
+        before: &[Vec<String>],
+        after: &[Vec<String>],
+        direction: CommandDirection,
+    ) -> Result<(), DocumentError> {
+        let (expected, replacement) = match direction {
+            CommandDirection::Undo => (after, before),
+            CommandDirection::Redo => (before, after),
+        };
+        if self.table.rows() != expected {
+            return Err(DocumentError::Edit(
+                "edit history no longer matches the table contents".into(),
+            ));
+        }
+        self.table = Table::new(replacement.to_vec());
         Ok(())
     }
 
@@ -1118,6 +1417,9 @@ pub enum DocumentError {
     #[error("failed to edit CSV: {0}")]
     Edit(String),
 
+    #[error("invalid CSV text: {0}")]
+    Csv(String),
+
     #[error("failed to save CSV `{path}`: {message}")]
     Save { path: String, message: String },
 
@@ -1135,6 +1437,11 @@ pub enum DocumentError {
 
     #[error("Rowly metadata operation failed: {0}")]
     Metadata(String),
+
+    #[error("input validation rejected one or more cell values")]
+    ValidationRejected {
+        violations: Vec<ValidationViolation>,
+    },
 
     #[error(transparent)]
     Column(#[from] ColumnError),

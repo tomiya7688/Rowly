@@ -14,6 +14,15 @@ Rowly は CSV-first のエディタです。表示、スクリプト、外部連
 
 同じlogical tableに属するsource間row moveは明示targetを要求し、元CSVから対象recordを削除して互換schemaのCSVへ挿入します。logical provenanceとdisplay orderを分離し、move historyからUndo/Redoを適用します。
 
+## コードを読む順序
+
+1. まず [`README.md`](../README.md) でRowlyの基本原則と起動方法を確認します。
+2. GUIを追う場合は `src/gui_main.rs` から `src/gui.rs` へ、CLIを追う場合は `src/main.rs` から読みます。
+3. 共通の機能モジュールは `src/lib.rs` に並んでいます。表の編集・保存などの操作は `src/process/`、CSVデータとcodecは `src/data/` を読みます。
+4. DSL、Luau、Excel連携など個別機能を調べる場合は、それぞれ `src/rowly_dsl.rs`、`src/luau.rs`、`src/excel_python.rs` から入り、共通操作との接続を `process` APIまで追います。
+
+依存方向は UI / adapter → process/application → data です。機能固有の設計や仕様は、各節と対応する詳細文書を参照してください。
+
 ## 依存方向
 
 ```text

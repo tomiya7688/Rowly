@@ -12,12 +12,32 @@ use thiserror::Error;
 
 use super::{SourceEncoding, Table, encoding::decode_to_utf8};
 
+// {
+//   責務: [
+//     LoadedCsv: 読み込んだ表、元encoding、外部変更検出用fingerprintをまとめる
+//   ]
+//   フィールド: [
+//     table: CSV recordを保持する表
+//     encoding: 入力CSVの元文字コード
+//     fingerprint: 読込時bytesのcontent fingerprint
+//   ]
+// }
 pub(crate) struct LoadedCsv {
     pub(crate) table: Table,
     pub(crate) encoding: SourceEncoding,
     pub(crate) fingerprint: ContentFingerprint,
 }
 
+// {
+//   責務: [
+//     ContentFingerprint: file contentの比較に使う固定長fingerprintを保持する
+//   ]
+//   フィールド: [
+//     length: 元bytesの長さ
+//     first: 1つ目のseedによるhash値
+//     second: 別seedによるhash値
+//   ]
+// }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ContentFingerprint {
     length: u64,
@@ -26,6 +46,17 @@ pub(crate) struct ContentFingerprint {
 }
 
 impl ContentFingerprint {
+    // {
+    //   責務: [
+    //     from_bytes: bytesから長さと独立seedのhashを持つfingerprintを作る
+    //   ]
+    //   引数: [
+    //     bytes: 比較対象のfile content
+    //   ]
+    //   戻り値: [
+    //     Self: file contentの比較用fingerprint
+    //   ]
+    // }
     fn from_bytes(bytes: &[u8]) -> Self {
         let mut first = DefaultHasher::new();
         first.write_u64(0x726f_776c_792d_3031);
@@ -41,10 +72,34 @@ impl ContentFingerprint {
     }
 }
 
+// {
+//   責務: [
+//     fingerprint_file: fileを読み、その現在のcontent fingerprintを返す
+//   ]
+//   引数: [
+//     path: fingerprintを取得するfile path
+//   ]
+//   戻り値: [
+//     ContentFingerprint: file contentの比較用fingerprint
+//     io::Error: fileを読み込めない理由
+//   ]
+// }
 pub(crate) fn fingerprint_file(path: &Path) -> io::Result<ContentFingerprint> {
     fs::read(path).map(|bytes| ContentFingerprint::from_bytes(&bytes))
 }
 
+// {
+//   責務: [
+//     read_csv: fileを読み、文字コードとCSV構造を保持したLoadedCsvを作る
+//   ]
+//   引数: [
+//     path: 読み込むCSV file path
+//   ]
+//   戻り値: [
+//     LoadedCsv: decode済みtable、元encoding、読込時fingerprint
+//     CsvIoError: file、encoding、CSV parseの失敗理由
+//   ]
+// }
 pub(crate) fn read_csv(path: &Path) -> Result<LoadedCsv, CsvIoError> {
     let bytes = fs::read(path)?;
     let decoded = decode_to_utf8(&bytes)?;
@@ -67,10 +122,45 @@ pub(crate) fn read_csv(path: &Path) -> Result<LoadedCsv, CsvIoError> {
     })
 }
 
+// {
+//   責務: [
+//     write_csv_utf8: TableをUTF-8 CSVとして書き込み、保存後fingerprintを返す
+//   ]
+//   引数: [
+//     path: 書込先CSV file path
+//     table: CSVへ保存する表
+//   ]
+//   戻り値: [
+//     ContentFingerprint: 保存されたfileのfingerprint
+//     CsvIoError: CSVを書き込めない理由
+//   ]
+// }
 pub(crate) fn write_csv_utf8(path: &Path, table: &Table) -> Result<ContentFingerprint, CsvIoError> {
     write_csv_utf8_if_unchanged(path, table, None)
 }
 
+// {
+//   責務: [
+//     write_csv_utf8_if_unchanged: CSVを一時fileへ完全に書き、必要なら旧content確認後に置換する
+//   ]
+//   処理: [
+//     1: UTF-8・LFのCSVを同じdirectoryの一時fileへ書く
+//     2: expectedがある場合は保存先の現fingerprintと比較する
+//     3: 一致するときだけ保存先を置換し、書込・比較不一致・置換失敗では一時fileを除去する
+//   ]
+//   引数: [
+//     path: 保存先CSV file path
+//     table: 書き込む表
+//     expected: 設定時に保存先が一致すべきfingerprint
+//   ]
+//   戻り値: [
+//     ContentFingerprint: 新しく保存したcontentのfingerprint
+//     CsvIoError: I/O、CSV書込、外部変更の理由
+//   ]
+//   副作用: [
+//     一時fileを作成し、成功時に保存先fileを置換する
+//   ]
+// }
 pub(crate) fn write_csv_utf8_if_unchanged(
     path: &Path,
     table: &Table,
@@ -115,6 +205,21 @@ pub(crate) fn write_csv_utf8_if_unchanged(
     Ok(fingerprint)
 }
 
+// {
+//   責務: [
+//     create_temporary_csv: 保存先と同じdirectoryに衝突しない一時CSV fileを作る
+//   ]
+//   引数: [
+//     path: 保存先CSV file path
+//   ]
+//   戻り値: [
+//     (PathBuf, File): 作成した一時fileのpathと書込handle
+//     CsvIoError: pathが無効、または一時fileを作れない理由
+//   ]
+//   副作用: [
+//     create_newで一時fileを排他的に作成する
+//   ]
+// }
 fn create_temporary_csv(path: &Path) -> Result<(PathBuf, File), CsvIoError> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let name = path.file_name().ok_or_else(|| {
@@ -147,12 +252,41 @@ fn create_temporary_csv(path: &Path) -> Result<(PathBuf, File), CsvIoError> {
     )))
 }
 
+// {
+//   責務: [
+//     replace_file: Windowsのreplace-capable file moveで保存先を置換する
+//   ]
+//   引数: [
+//     source: 完成済み一時file
+//     destination: 置換する保存先file
+//   ]
+//   戻り値: [
+//     (): file置換の成功
+//     io::Error: OSによる置換失敗の理由
+//   ]
+//   副作用: [
+//     destinationをsourceのfileへ置換する
+//   ]
+// }
 #[cfg(windows)]
 pub(crate) fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
 
     #[link(name = "Kernel32")]
     unsafe extern "system" {
+        // {
+        //   責務: [
+        //     MoveFileExW: Windows Kernel32のfile move APIを呼び出す
+        //   ]
+        //   引数: [
+        //     existing: NUL終端UTF-16のsource path
+        //     new: NUL終端UTF-16のdestination path
+        //     flags: replaceとwrite-through動作の指定
+        //   ]
+        //   戻り値: [
+        //     i32: 成功時は非zero、失敗時はzero
+        //   ]
+        // }
         fn MoveFileExW(existing: *const u16, new: *const u16, flags: u32) -> i32;
     }
 
@@ -175,11 +309,38 @@ pub(crate) fn replace_file(source: &Path, destination: &Path) -> io::Result<()> 
     }
 }
 
+// {
+//   責務: [
+//     replace_file: filesystem renameで一時fileを保存先へ置換する
+//   ]
+//   引数: [
+//     source: 完成済み一時file
+//     destination: 置換する保存先file
+//   ]
+//   戻り値: [
+//     (): renameの成功
+//     io::Error: filesystemによる置換失敗の理由
+//   ]
+//   副作用: [
+//     destinationをsourceのfileへ置換する
+//   ]
+// }
 #[cfg(not(windows))]
 pub(crate) fn replace_file(source: &Path, destination: &Path) -> io::Result<()> {
     fs::rename(source, destination)
 }
 
+// {
+//   責務: [
+//     CsvIoError: CSV file処理で発生するI/O、encoding、parse、競合errorを表す
+//   ]
+//   フィールド: [
+//     Io: filesystemまたはwriterのI/O error
+//     Encoding: CSV本文を許可されたencodingへ変換できないerror
+//     Csv: CSV recordの解析または書込error
+//     ExternalModification: open後に保存先fileが変更されたことを示すerror
+//   ]
+// }
 #[derive(Debug, Error)]
 pub(crate) enum CsvIoError {
     #[error("I/O error: {0}")]
@@ -203,6 +364,19 @@ mod tests {
 
     use super::*;
 
+    // {
+    //   責務: [
+    //     reads_empty_values_without_rejecting_the_csv: 空fieldを空文字として読み取る
+    //   ]
+    //   処理: [
+    //     1: 行末と途中の空fieldを含むCSVを読む
+    //     2: 空fieldと隣接する値が保持されることを確認する
+    //   ]
+    //   引数: []
+    //   戻り値: [
+    //     (): assertion成功時に値を返さない
+    //   ]
+    // }
     #[test]
     fn reads_empty_values_without_rejecting_the_csv() {
         let directory = tempdir().unwrap();
@@ -216,6 +390,19 @@ mod tests {
         assert_eq!(loaded.table.cell(2, 2), Some("確認中"));
     }
 
+    // {
+    //   責務: [
+    //     reads_standard_csv_quoting_and_embedded_newlines: 標準引用符表現をrecordとfield値へ復元する
+    //   ]
+    //   処理: [
+    //     1: comma、double quote、embedded newlineを含むCSVを読む
+    //     2: record数とdecode後のfield値を確認する
+    //   ]
+    //   引数: []
+    //   戻り値: [
+    //     (): assertion成功時に値を返さない
+    //   ]
+    // }
     #[test]
     fn reads_standard_csv_quoting_and_embedded_newlines() {
         let directory = tempdir().unwrap();
@@ -234,6 +421,19 @@ mod tests {
         assert_eq!(loaded.table.cell(3, 1), Some("1行目\n2行目"));
     }
 
+    // {
+    //   責務: [
+    //     accepts_lf_and_crlf_and_writes_utf8_lf: LFとCRLFを読み、保存時にUTF-8 LFへ正規化する
+    //   ]
+    //   処理: [
+    //     1: LFとCRLFのCSVが同じtableになることを確認する
+    //     2: 書込結果のencodingと改行を確認する
+    //   ]
+    //   引数: []
+    //   戻り値: [
+    //     (): assertion成功時に値を返さない
+    //   ]
+    // }
     #[test]
     fn accepts_lf_and_crlf_and_writes_utf8_lf() {
         let directory = tempdir().unwrap();
@@ -255,6 +455,19 @@ mod tests {
         assert!(!text.contains("\r\n"));
     }
 
+    // {
+    //   責務: [
+    //     round_trip_preserves_special_field_values: 空値や引用が必要なfieldを往復後も保持する
+    //   ]
+    //   処理: [
+    //     1: 特殊fieldを含むCSVを読み書きする
+    //     2: 再読込後のtableと各field値を比較する
+    //   ]
+    //   引数: []
+    //   戻り値: [
+    //     (): assertion成功時に値を返さない
+    //   ]
+    // }
     #[test]
     fn round_trip_preserves_special_field_values() {
         let directory = tempdir().unwrap();
@@ -277,6 +490,19 @@ mod tests {
         assert_eq!(reopened.table.cell(4, 0), Some("line1\nline2"));
     }
 
+    // {
+    //   責務: [
+    //     round_trip_preserves_records_and_values: CSVのrecordとfield値を読み書き後も保持する
+    //   ]
+    //   処理: [
+    //     1: 通常fieldを含むCSVを読み書きする
+    //     2: 再読込tableと元encodingを確認する
+    //   ]
+    //   引数: []
+    //   戻り値: [
+    //     (): assertion成功時に値を返さない
+    //   ]
+    // }
     #[test]
     fn round_trip_preserves_records_and_values() {
         let directory = tempdir().unwrap();

@@ -61,6 +61,14 @@ rowly excel export input.csv output.xlsx [sheet-name]
 
 CLI 1.0では対話shell・JSON出力・Rowly DSL one-shot実行も整備します。
 
+## ソースコードの入口
+
+- GUIは [`src/gui_main.rs`](src/gui_main.rs) から [`src/gui.rs`](src/gui.rs) へ進みます。
+- CLIは [`src/main.rs`](src/main.rs) が引数を解析して処理を呼び出します。
+- 共通モジュールの一覧は [`src/lib.rs`](src/lib.rs) にあります。
+- 表の操作は [`src/process/`](src/process/) を通り、CSVの保持と入出力は [`src/data/`](src/data/) が担当します。
+- 依存関係と機能別の読み進め方は [アーキテクチャ文書](docs/ARCHITECTURE.md#コードを読む順序) を参照してください。
+
 ## ドキュメント
 
 | 内容 | 文書 |

@@ -1,7 +1,9 @@
 use mlua::{Lua, LuaOptions, Result, StdLib, Value};
 
-// Luau の標準機能を無条件に公開しない。追加は権限境界のレビューと
-// tests_sandbox の公開面テストを伴う変更として扱う。
+// {
+//   責務: [ALLOWED_GLOBALS: sandbox VMのglobalへ残す標準名をallowlistで固定する。]
+//   補足: [権限境界の変更はtests_sandboxの公開面テストとsecurity reviewを伴う。]
+// }
 const ALLOWED_GLOBALS: &[&str] = &[
     "_G",
     "_VERSION",
@@ -35,8 +37,13 @@ const ALLOWED_GLOBALS: &[&str] = &[
     "vector",
 ];
 
-/// 実行ごとに外部能力のない VM を作成する。呼び出し側には公開しない。
-/// Rowly API の登録後、スクリプト実行前に Lua::sandbox(true) を適用する。
+// {
+//   責務: [new_vm: 許可された標準libraryとglobalだけを持つ実行ごとのLua VMを作成する。]
+//   処理: [許可libraryでLuaを初期化し、globalを走査してallowlist外のkeyを削除する。]
+//   引数: []
+//   戻り値: [Lua: sandbox化前のVM。呼出側がRowly APIを登録してからsandboxを有効化する。]
+//   エラー: [mlua::Error: library初期化またはglobal走査・削除に失敗した場合。]
+// }
 pub(super) fn new_vm() -> Result<Lua> {
     let libraries = StdLib::TABLE
         | StdLib::STRING

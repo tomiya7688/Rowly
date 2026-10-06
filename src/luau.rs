@@ -19,6 +19,10 @@ const DEFAULT_MAX_DURATION: Duration = Duration::from_secs(5);
 const DEFAULT_MAX_INTERRUPTS: u64 = 1_000_000;
 const DEFAULT_MAX_MEMORY_BYTES: usize = 64 * 1024 * 1024;
 
+/// {
+///   責務: [LuauLimits: 1回のLuau実行に適用する時間・中断回数・memory上限をまとめる。]
+///   フィールド: [max_duration: 実行時間上限。 max_interrupts: VM interrupt上限。 max_memory_bytes: Lua VM memory上限。]
+/// }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LuauLimits {
     pub max_duration: Duration,
@@ -26,7 +30,16 @@ pub struct LuauLimits {
     pub max_memory_bytes: usize,
 }
 
+// {
+//   責務: [LuauLimitsの既定値をアプリケーション標準の実行上限から構成する。]
+// }
 impl Default for LuauLimits {
+    // {
+    //   責務: [default: named default limit定数からLuauLimitsを生成する。]
+    //   処理: [各上限fieldへ対応するDEFAULT_MAX_*定数を設定する。]
+    //   引数: []
+    //   戻り値: [LuauLimits: 既定の時間・interrupt・memory上限。]
+    // }
     fn default() -> Self {
         Self {
             max_duration: DEFAULT_MAX_DURATION,
@@ -36,6 +49,10 @@ impl Default for LuauLimits {
     }
 }
 
+// {
+//   責務: [LuauLimitError: Luau VMの時間またはinterrupt上限到達を分類する。]
+//   選択肢: [Duration: 実行時間上限を超過。 Interrupts: VM interrupt上限を超過。]
+// }
 #[derive(Debug, Error)]
 enum LuauLimitError {
     #[error("Luau スクリプトが実行時間上限を超えました")]
@@ -44,19 +61,31 @@ enum LuauLimitError {
     Interrupts,
 }
 
+// {
+//   責務: [LuauCancelled: mlua callback内の停止要求を識別可能な外部errorとして運ぶ。]
+// }
 #[derive(Debug, Error)]
 #[error("Luau スクリプトの実行がキャンセルされました")]
 struct LuauCancelled;
 
-/// Luau スクリプトを現在の CSV ドキュメントに対して既定の制限付きで実行する。
-///
-/// Luau 側には `Rowly` テーブルだけをアプリケーション API として公開する。
-/// CSV のデータ層には直接触れず、すべて `CsvDocument` の process API を経由する。
+/// {
+///   責務: [execute: Luau scriptを既定の実行制限で実行し、Rowly process APIだけを通してdocumentへ作用させる。]
+///   処理: [execute_with_limitsへ既定LuauLimitsを渡す。]
+///   引数: [document: 編集対象CsvDocument。 script: 実行するLuau source。]
+///   戻り値: [(): 正常終了。 LuauError: VM・script・resource limit失敗。]
+///   副作用: [Rowly API経由のdocument編集。]
+/// }
 pub fn execute(document: &mut CsvDocument, script: &str) -> Result<(), LuauError> {
     execute_with_limits(document, script, LuauLimits::default())
 }
 
-/// Luau スクリプトを現在の CSV ドキュメントに対して指定した制限付きで実行する。
+/// {
+///   責務: [execute_with_limits: 呼び出し側が指定したLuau resource limitsでscriptを実行する。]
+///   処理: [新しいcancellation tokenを作り、execute_with_limits_and_cancellationへ委譲する。]
+///   引数: [document: 編集対象CsvDocument。 script: 実行するLuau source。 limits: VMへ適用する時間・interrupt・memory上限。]
+///   戻り値: [(): 正常終了。 LuauError: VM・script・resource limit失敗。]
+///   副作用: [Rowly API経由のdocument編集。]
+/// }
 pub fn execute_with_limits(
     document: &mut CsvDocument,
     script: &str,
@@ -65,9 +94,13 @@ pub fn execute_with_limits(
     execute_with_limits_and_cancellation(document, script, limits, &LuauCancellationToken::new())
 }
 
-/// 既定の実行制限と、外部からの停止要求を受け付けるトークンで実行する。
-///
-/// この関数は同期実行する。停止を要求する側はトークンの clone を保持する。
+/// {
+///   責務: [execute_with_cancellation: 既定のresource limitsと共有cancellation tokenでscriptを実行する。]
+///   処理: [既定LuauLimitsと受け取ったtokenを共通実行入口へ渡す。]
+///   引数: [document: 編集対象CsvDocument。 script: 実行するLuau source。 cancellation: 停止要求を共有するtoken。]
+///   戻り値: [(): 正常終了。 LuauError: cancellation・VM・script失敗。]
+///   副作用: [Rowly API経由のdocument編集。]
+/// }
 pub fn execute_with_cancellation(
     document: &mut CsvDocument,
     script: &str,
@@ -76,11 +109,13 @@ pub fn execute_with_cancellation(
     execute_with_limits_and_cancellation(document, script, LuauLimits::default(), cancellation)
 }
 
-/// 指定した実行制限と停止トークンで実行する。
-///
-/// 停止は VM の safepoint と Rowly API の入口で確認する。実行中の Rust / C の
-/// 処理を OS スレッドごと強制終了するものではない。スクリプト開始時に
-/// transaction がなければ、失敗時に残った未確定 transaction を rollback する。
+/// {
+///   責務: [execute_with_limits_and_cancellation: resource limitsとcancellation tokenを適用してscriptを実行し、開始後に残った未確定transactionをcleanupする。]
+///   処理: [実行前とVM safepointおよび各Rowly API入口で停止を確認し、sandbox VM内でscriptを実行する。失敗時は開始前にtransactionがなかった場合に限りactive transactionをrollbackする。]
+///   引数: [document: 編集対象CsvDocument。 script: 実行するLuau source。 limits: VM resource上限。 cancellation: 実行停止token。]
+///   戻り値: [(): 正常終了。 LuauError: cancellation・limit・script・cleanup失敗。]
+///   副作用: [Rowly API経由のdocument編集とtransaction cleanup。]
+/// }
 pub fn execute_with_limits_and_cancellation(
     document: &mut CsvDocument,
     script: &str,
@@ -92,6 +127,13 @@ pub fn execute_with_limits_and_cancellation(
     execute_in_lua(&lua, document, script, limits, cancellation)
 }
 
+// {
+//   責務: [execute_in_lua: 制限・停止callbackとRowly process APIを登録し、sandbox内でLuau sourceを実行する。]
+//   処理: [memory limitとVM interrupt callbackを設定する。Rowly cell/range/count/transaction APIを登録してreadonly化しsandboxを有効にした後、text chunkを実行する。停止errorを再分類し、必要なら開始後のtransactionをrollbackする。]
+//   引数: [lua: 新しく生成したVM。 document: APIが操作するCsvDocument。 script: 実行source。 limits: resource上限。 cancellation: 停止token。]
+//   戻り値: [(): script正常終了。 LuauError: script実行・limit・cleanup失敗。]
+//   副作用: [CSV document編集。script失敗時の未確定transaction rollback。]
+// }
 fn execute_in_lua(
     lua: &Lua,
     document: &mut CsvDocument,
@@ -236,6 +278,12 @@ fn execute_in_lua(
     result
 }
 
+// {
+//   責務: [check_cancellation: 停止tokenが要求済みならmluaの外部errorへ変換する。]
+//   処理: [cancelled flagを読み、trueならLuauCancelledを含むLuaErrorを返す。]
+//   引数: [cancellation: 読み取り対象の実行token。]
+//   戻り値: [(): 停止要求なし。 LuaError: 停止要求あり。]
+// }
 fn check_cancellation(cancellation: &LuauCancellationToken) -> Result<(), LuaError> {
     if cancellation.is_cancelled() {
         return Err(LuaError::external(LuauCancelled));
@@ -243,10 +291,20 @@ fn check_cancellation(cancellation: &LuauCancellationToken) -> Result<(), LuaErr
     Ok(())
 }
 
+// {
+//   責務: [runtime_error: Rowly process errorをmlua runtime errorへ変換する。]
+//   処理: [errorを文字列化してLuaError::RuntimeErrorを作る。]
+//   引数: [error: ToStringを実装したprocess error。]
+//   戻り値: [LuaError: Luau scriptへ伝えるruntime error。]
+// }
 fn runtime_error(error: impl ToString) -> LuaError {
     LuaError::RuntimeError(error.to_string())
 }
 
+/// {
+///   責務: [LuauError: cancellation・resource limit・memory・cleanup・runtime失敗を公開API用errorへ分類する。]
+///   選択肢: [Cancelled: 停止要求。 Limit: 時間またはinterrupt制限。 Memory: VM memory制限。 Cleanup: rollback失敗。 Runtime: その他のmlua error。]
+/// }
 #[derive(Debug, Error)]
 pub enum LuauError {
     #[error("Luau スクリプトの実行がキャンセルされました")]
@@ -261,7 +319,16 @@ pub enum LuauError {
     Runtime(LuaError),
 }
 
+// {
+//   責務: [LuaErrorをLuauErrorへ分類変換し、呼び出し側に安定した失敗種別を返す。]
+// }
 impl From<LuaError> for LuauError {
+    // {
+    //   責務: [from: mlua errorを停止・limit・memory・runtime分類へ変換する。]
+    //   処理: [外部停止marker、limit error、MemoryErrorを順に判定し、残りをRuntimeに包む。]
+    //   引数: [error: mluaから返された実行error。]
+    //   戻り値: [LuauError: 公開するerror分類。]
+    // }
     fn from(error: LuaError) -> Self {
         if error.downcast_ref::<LuauCancelled>().is_some() {
             return Self::Cancelled;
@@ -289,6 +356,13 @@ mod tests {
 
     use super::*;
 
+    // {
+    //   責務: [sample_document: Luau runtime test用CSV fixtureを一時fileに保存してCsvDocumentを開く。]
+    //   処理: [TempDirを作成し、固定のName/Score CSVを書き込んでCsvDocument::openへ渡す。]
+    //   引数: []
+    //   戻り値: [(TempDir, CsvDocument): 一時ディレクトリと開いたdocument。]
+    //   副作用: [一時ディレクトリにsample.csvを作成する。]
+    // }
     fn sample_document() -> (tempfile::TempDir, CsvDocument) {
         let directory = tempdir().unwrap();
         let path = directory.path().join("sample.csv");
@@ -297,6 +371,12 @@ mod tests {
         (directory, document)
     }
 
+    // {
+    //   責務: [luau_can_read_and_edit_through_process_api: Rowly process APIでcell・range・countを読み書きする。]
+    //   処理: [sample_documentで用意したdocumentに対して対象Luau scriptを実行し、期待するerrorまたはdocument状態をassertする。]
+    //   引数: []
+    //   戻り値: [(): assertion成功時に値を返さない。]
+    // }
     #[test]
     fn luau_can_read_and_edit_through_process_api() {
         let (_directory, mut document) = sample_document();
@@ -318,6 +398,12 @@ mod tests {
         assert_eq!(document.cell_a1("B3").unwrap(), Some("updated"));
     }
 
+    // {
+    //   責務: [luau_does_not_expose_undo_or_redo_but_edits_still_use_document_history: Luauへundo/redoを公開せず、編集がdocument historyへ記録されることを確認する。]
+    //   処理: [sample_documentで用意したdocumentに対して対象Luau scriptを実行し、期待するerrorまたはdocument状態をassertする。]
+    //   引数: []
+    //   戻り値: [(): assertion成功時に値を返さない。]
+    // }
     #[test]
     fn luau_does_not_expose_undo_or_redo_but_edits_still_use_document_history() {
         let (_directory, mut document) = sample_document();
@@ -339,6 +425,12 @@ mod tests {
         assert_eq!(document.cell_a1("B2").unwrap(), Some("99"));
     }
 
+    // {
+    //   責務: [luau_transaction_commit_is_one_undoable_command: transaction内の複数Luau編集がcommit後に1回のundo/redo単位になることを確認する。]
+    //   処理: [sample_documentで用意したdocumentに対して対象Luau scriptを実行し、期待するerrorまたはdocument状態をassertする。]
+    //   引数: []
+    //   戻り値: [(): assertion成功時に値を返さない。]
+    // }
     #[test]
     fn luau_transaction_commit_is_one_undoable_command() {
         let (_directory, mut document) = sample_document();
@@ -368,6 +460,12 @@ mod tests {
         assert_eq!(document.cell_a1("B3").unwrap(), Some("99"));
     }
 
+    // {
+    //   責務: [luau_transaction_rollback_restores_without_history: 明示rollbackがcell値を戻し、history・dirty状態を残さないことを確認する。]
+    //   処理: [sample_documentで用意したdocumentに対して対象Luau scriptを実行し、期待するerrorまたはdocument状態をassertする。]
+    //   引数: []
+    //   戻り値: [(): assertion成功時に値を返さない。]
+    // }
     #[test]
     fn luau_transaction_rollback_restores_without_history() {
         let (_directory, mut document) = sample_document();
@@ -389,6 +487,12 @@ mod tests {
         assert!(!document.is_dirty());
     }
 
+    // {
+    //   責務: [failed_luau_script_rolls_back_its_uncommitted_transaction: script errorで実行側が開始した未確定transactionをrollbackすることを確認する。]
+    //   処理: [sample_documentで用意したdocumentに対して対象Luau scriptを実行し、期待するerrorまたはdocument状態をassertする。]
+    //   引数: []
+    //   戻り値: [(): assertion成功時に値を返さない。]
+    // }
     #[test]
     fn failed_luau_script_rolls_back_its_uncommitted_transaction() {
         let (_directory, mut document) = sample_document();
@@ -410,6 +514,12 @@ mod tests {
         assert!(!document.is_dirty());
     }
 
+    // {
+    //   責務: [execution_limit_rolls_back_uncommitted_luau_transaction: interrupt上限超過で未確定transactionをrollbackすることを確認する。]
+    //   処理: [sample_documentで用意したdocumentに対して対象Luau scriptを実行し、期待するerrorまたはdocument状態をassertする。]
+    //   引数: []
+    //   戻り値: [(): assertion成功時に値を返さない。]
+    // }
     #[test]
     fn execution_limit_rolls_back_uncommitted_luau_transaction() {
         let (_directory, mut document) = sample_document();
@@ -436,6 +546,12 @@ mod tests {
         assert!(!document.is_dirty());
     }
 
+    // {
+    //   責務: [luau_transaction_state_errors_are_runtime_errors: 未開始transactionへのcommitがLuau runtime errorになることを確認する。]
+    //   処理: [sample_documentで用意したdocumentに対して対象Luau scriptを実行し、期待するerrorまたはdocument状態をassertする。]
+    //   引数: []
+    //   戻り値: [(): assertion成功時に値を返さない。]
+    // }
     #[test]
     fn luau_transaction_state_errors_are_runtime_errors() {
         let (_directory, mut document) = sample_document();
@@ -446,6 +562,12 @@ mod tests {
         assert!(error.to_string().contains("transaction"));
     }
 
+    // {
+    //   責務: [infinite_loop_is_stopped_by_interrupt_limit: 無限loopをinterrupt上限で停止しLuau limit errorにすることを確認する。]
+    //   処理: [sample_documentで用意したdocumentに対して対象Luau scriptを実行し、期待するerrorまたはdocument状態をassertする。]
+    //   引数: []
+    //   戻り値: [(): assertion成功時に値を返さない。]
+    // }
     #[test]
     fn infinite_loop_is_stopped_by_interrupt_limit() {
         let (_directory, mut document) = sample_document();
@@ -464,6 +586,12 @@ mod tests {
         assert!(matches!(error, LuauError::Limit(_)));
     }
 
+    // {
+    //   責務: [memory_limit_stops_unbounded_allocation: 際限ないallocationをmemoryまたは実行制限errorで止めることを確認する。]
+    //   処理: [sample_documentで用意したdocumentに対して対象Luau scriptを実行し、期待するerrorまたはdocument状態をassertする。]
+    //   引数: []
+    //   戻り値: [(): assertion成功時に値を返さない。]
+    // }
     #[test]
     fn memory_limit_stops_unbounded_allocation() {
         let (_directory, mut document) = sample_document();
@@ -487,6 +615,12 @@ mod tests {
         assert!(matches!(error, LuauError::Memory(_) | LuauError::Limit(_)));
     }
 
+    // {
+    //   責務: [process_errors_are_reported_as_luau_errors: 不正cell参照によるprocess errorをLuau側のerrorとして報告することを確認する。]
+    //   処理: [sample_documentで用意したdocumentに対して対象Luau scriptを実行し、期待するerrorまたはdocument状態をassertする。]
+    //   引数: []
+    //   戻り値: [(): assertion成功時に値を返さない。]
+    // }
     #[test]
     fn process_errors_are_reported_as_luau_errors() {
         let (_directory, mut document) = sample_document();

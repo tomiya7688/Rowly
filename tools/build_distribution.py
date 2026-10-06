@@ -16,10 +16,23 @@ BRIDGE_NAME = "rowly-excel-bridge.exe" if sys.platform == "win32" else "rowly-ex
 ROWLY_NAME = "rowly.exe" if sys.platform == "win32" else "rowly"
 
 
+# {
+#   責務: [run: package build用subprocessをrepository rootで実行し、失敗時に停止する。]
+#   引数: [*args: 実行するprogramとargument。]
+#   戻り値: [None: command成功時は値を返さない。]
+#   副作用: [外部commandを起動する。]
+#   エラー: [command失敗時はsubprocess.CalledProcessErrorを送出する。]
+# }
 def run(*args: str) -> None:
     subprocess.run(args, cwd=ROOT, check=True)
 
 
+# {
+#   責務: [copy_distribution_licenses: Python・Excel backend依存物の取得可能なlicense fileを配布先へコピーする。]
+#   引数: [output: license subdirectoryを作成する配布root。]
+#   戻り値: [list[str]: output/licensesへコピーしたfile名。]
+#   副作用: [output/licenses directoryとlicense copiesを作成する。]
+# }
 def copy_distribution_licenses(output: Path) -> list[str]:
     licenses = output / "licenses"
     licenses.mkdir(parents=True, exist_ok=True)
@@ -53,6 +66,12 @@ def copy_distribution_licenses(output: Path) -> list[str]:
     return copied
 
 
+# {
+#   責務: [write_notices: runtime・dependency versionと同梱license一覧を配布manifest・noticeへ記録する。]
+#   引数: [output: noticeとmanifestを書き込む配布root。 copied_licenses: 収集済みlicense file名。]
+#   戻り値: [None: 値を返さない。]
+#   副作用: [THIRD_PARTY_NOTICES.mdとrowly-distribution.jsonを上書き作成する。]
+# }
 def write_notices(output: Path, copied_licenses: list[str]) -> None:
     versions = {
         "python": platform.python_version(),
@@ -96,6 +115,14 @@ PyInstaller: https://pyinstaller.org/
     )
 
 
+# {
+#   責務: [main: Python runtimeとRust appをbundleしたRowly配布directoryを組み立てる。]
+#   処理: [Python versionを検査し、release app・PyInstaller bridge・licenses・manifestを順に構成する。]
+#   戻り値: [None: 成功した配布pathをstdoutへ表示する。]
+#   引数: [CLI: --outputとPython version mismatch許可flagを受け取る。]
+#   副作用: [指定outputとtarget/excel-backend-packageを削除・再作成し、build subprocessを起動する。]
+#   エラー: [必要Python version・build出力・依存packageに問題がある場合はbuild errorで停止する。]
+# }
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=ROOT / "dist" / "rowly")

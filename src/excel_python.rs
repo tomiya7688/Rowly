@@ -11,9 +11,22 @@ use thiserror::Error;
 
 use crate::process::{CsvDocument, DocumentError};
 
+// {
+//   責務: [BRIDGE_SCRIPT: source checkoutでPython bridgeを起動するときのscript pathを固定する。]
+// }
 const BRIDGE_SCRIPT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/python/excel_bridge.py");
+// {
+//   責務: [DEFAULT_PYTHON: 開発fallbackで使うOS別Python launcher名を示す。]
+// }
 const DEFAULT_PYTHON: &str = if cfg!(windows) { "python" } else { "python3" };
 
+/// {
+///   責務: [export_document: CsvDocumentの文字列cellを指定sheetのExcel workbookへ書き出す。]
+///   処理: [documentの行をJSON requestへ変換し、Excel bridgeへexportを依頼する。]
+///   引数: [document: 書き出すcanonical CSV document。 output_path: 生成するworkbook path。 sheet_name: 作成するworksheet名。]
+///   戻り値: [Result<(), ExcelError>: 書き出し成功、またはbridge・protocol error。]
+///   副作用: [output_pathにExcel workbookを作成する。]
+/// }
 pub fn export_document(
     document: &CsvDocument,
     output_path: impl AsRef<Path>,
@@ -32,6 +45,13 @@ pub fn export_document(
     Ok(())
 }
 
+/// {
+///   責務: [import_workbook: Excel worksheetの値を文字列cellとしてCsvDocumentへ取り込む。]
+///   処理: [bridgeのJSON responseを検証し、rowsを指定csv_pathのdocumentとして作成する。]
+///   引数: [input_path: 読み込むworkbook path。 csv_path: 新規documentの保存先。 sheet_name: 指定時に読み込むworksheet名。省略時はactive sheet。]
+///   戻り値: [Result<CsvDocument, ExcelError>: import済みdocument、またはbridge・protocol・document error。]
+///   副作用: [csv_pathにCSV documentを作成する。]
+/// }
 pub fn import_workbook(
     input_path: impl AsRef<Path>,
     csv_path: impl AsRef<Path>,
@@ -54,11 +74,18 @@ pub fn import_workbook(
 }
 
 #[derive(Debug)]
+// {
+//   責務: [BridgeLauncher: Excel bridgeの実行方法として同梱executableか開発用Python launcherを保持する。]
+// }
 enum BridgeLauncher {
     Bundled(PathBuf),
     Python(OsString),
 }
 
+// {
+//   責務: [bundled_bridge_filename: OSに対応する同梱Excel bridge executable名を返す。]
+//   戻り値: [&'static str: 現在のplatformでRowlyと同じdirectoryに置くbridge名。]
+// }
 fn bundled_bridge_filename() -> &'static str {
     if cfg!(windows) {
         "rowly-excel-bridge.exe"
@@ -67,6 +94,10 @@ fn bundled_bridge_filename() -> &'static str {
     }
 }
 
+// {
+//   責務: [bundled_bridge_path: 現在のRowly executableと同じdirectoryにあるbridge pathを解決する。]
+//   戻り値: [Result<PathBuf, ExcelError>: 同梱bridge path、またはcurrent executable path解決error。]
+// }
 fn bundled_bridge_path() -> Result<PathBuf, ExcelError> {
     let executable =
         env::current_exe().map_err(|error| ExcelError::ExecutablePath(error.to_string()))?;
@@ -79,6 +110,10 @@ fn bundled_bridge_path() -> Result<PathBuf, ExcelError> {
     Ok(directory.join(bundled_bridge_filename()))
 }
 
+// {
+//   責務: [resolve_bridge_launcher: override・配布物・debug環境の順でbridge launcherを選択する。]
+//   戻り値: [Result<BridgeLauncher, ExcelError>: 使用するlauncher、または実行path・配布backendの解決error。]
+// }
 fn resolve_bridge_launcher() -> Result<BridgeLauncher, ExcelError> {
     if let Some(python) = env::var_os("ROWLY_PYTHON") {
         return Ok(BridgeLauncher::Python(python));
@@ -100,6 +135,11 @@ fn resolve_bridge_launcher() -> Result<BridgeLauncher, ExcelError> {
     })
 }
 
+// {
+//   責務: [configure_bridge_command: JSON protocol用のUTF-8標準streamをbridge commandへ設定する。]
+//   引数: [command: 起動前のbridge process command。]
+//   戻り値: [&mut Command: 設定後の同じcommand。]
+// }
 fn configure_bridge_command(command: &mut Command) -> &mut Command {
     command
         .env("PYTHONUTF8", "1")
@@ -109,6 +149,13 @@ fn configure_bridge_command(command: &mut Command) -> &mut Command {
         .stderr(Stdio::piped())
 }
 
+// {
+//   責務: [run_bridge: JSON requestを選択済みExcel bridgeへ送り、response bytesを返す。]
+//   処理: [launcherを起動してUTF-8 JSONをstdinへ書き、終了statusを検査してstdoutを取得する。]
+//   引数: [mode: bridgeへ渡すimportまたはexport mode。 request: bridgeへ送るJSON payload。]
+//   戻り値: [Result<Vec<u8>, ExcelError>: 成功時のstdout bytes、または起動・protocol・bridge error。]
+//   副作用: [外部bridge processを起動し、その標準streamを介してI/Oする。]
+// }
 fn run_bridge(mode: &str, request: &Value) -> Result<Vec<u8>, ExcelError> {
     let launcher = resolve_bridge_launcher()?;
     let mut command;
@@ -160,6 +207,9 @@ fn run_bridge(mode: &str, request: &Value) -> Result<Vec<u8>, ExcelError> {
 }
 
 #[derive(Debug, Error)]
+/// {
+///   責務: [ExcelError: Excel bridgeの起動・protocol・workbook操作およびCSV document作成の失敗を表す。]
+/// }
 pub enum ExcelError {
     #[error("failed to resolve current Rowly executable path: {0}")]
     ExecutablePath(String),
@@ -191,6 +241,11 @@ mod tests {
 
     use super::*;
 
+    // {
+    //   責務: [sample_document: Excel adapter tests用CSV fixtureを一時directoryへ作成して開く。]
+    //   戻り値: [(tempfile::TempDir, CsvDocument): fixture file lifetimeを保つ一時directoryとdocument。]
+    //   副作用: [一時directoryとCSV fixture fileを作成する。]
+    // }
     fn sample_document() -> (tempfile::TempDir, CsvDocument) {
         let directory = tempdir().unwrap();
         let path = directory.path().join("source.csv");
@@ -200,6 +255,10 @@ mod tests {
     }
 
     #[test]
+    // {
+    //   責務: [bundled_bridge_uses_platform_executable_name: bridge executable名がOS別の配布名に一致することを確認する。]
+    //   戻り値: [(): assertion成功時は値を返さない。]
+    // }
     fn bundled_bridge_uses_platform_executable_name() {
         assert_eq!(
             bundled_bridge_filename(),
@@ -212,6 +271,10 @@ mod tests {
     }
 
     #[test]
+    // {
+    //   責務: [bundled_bridge_is_resolved_next_to_rowly_executable: bridge pathがRowly executableの隣を指すことを確認する。]
+    //   戻り値: [(): assertion成功時は値を返さない。]
+    // }
     fn bundled_bridge_is_resolved_next_to_rowly_executable() {
         let expected_parent = env::current_exe().unwrap().parent().unwrap().to_path_buf();
         assert_eq!(
@@ -221,6 +284,12 @@ mod tests {
     }
 
     #[test]
+    // {
+    //   責務: [excel_round_trip_preserves_csv_strings: Excel export/import round tripで先頭zero・formula風文字列・日本語を保持することを確認する。]
+    //   処理: [一時CSVをworkbookへexport後に再importし、cell text・encoding・dirty stateを検証する。]
+    //   戻り値: [(): assertion成功時は値を返さない。]
+    //   副作用: [一時directory内にCSVとExcel workbookを作成する。]
+    // }
     fn excel_round_trip_preserves_csv_strings() {
         let (directory, document) = sample_document();
         let workbook = directory.path().join("export.xlsx");
@@ -241,6 +310,11 @@ mod tests {
     }
 
     #[test]
+    // {
+    //   責務: [import_uses_active_sheet_when_name_is_omitted: worksheet名を省略したimportがactive sheetを選ぶことを確認する。]
+    //   戻り値: [(): assertion成功時は値を返さない。]
+    //   副作用: [一時directory内にCSVとExcel workbookを作成する。]
+    // }
     fn import_uses_active_sheet_when_name_is_omitted() {
         let (directory, document) = sample_document();
         let workbook = directory.path().join("export.xlsx");
@@ -254,6 +328,11 @@ mod tests {
     }
 
     #[test]
+    // {
+    //   責務: [missing_sheet_is_reported_as_bridge_error: 存在しないworksheet指定をbridge errorとして呼び出し元へ返すことを確認する。]
+    //   戻り値: [(): assertion成功時は値を返さない。]
+    //   副作用: [一時directory内にCSVとExcel workbookを作成する。]
+    // }
     fn missing_sheet_is_reported_as_bridge_error() {
         let (directory, document) = sample_document();
         let workbook = directory.path().join("export.xlsx");

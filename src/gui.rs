@@ -7,10 +7,23 @@ use crate::process::{CellRef, CsvDocument, CsvFileWatcher, DocumentError, Valida
 mod help;
 pub use help::{HelpDocument, HelpTarget};
 
+// {
+//   責務: [CELL_WIDTH: grid cell・column headerの表示幅をpixel単位で定義する。]
+// }
 const CELL_WIDTH: f32 = 120.0;
+// {
+//   責務: [ROW_HEIGHT: grid row・headerの表示高をpixel単位で定義する。]
+// }
 const ROW_HEIGHT: f32 = 26.0;
+// {
+//   責務: [GUTTER_WIDTH: row number gutterの表示幅をpixel単位で定義する。]
+// }
 const GUTTER_WIDTH: f32 = 56.0;
 
+// {
+//   責務: [WorkspaceMode: RowlyAppが表示する編集・閲覧画面を識別する。]
+//   選択肢: [TableEditor: セルと行列を編集。 TextEditor: CSVテキストを編集。 Viewer: 表を閲覧。 Help: ヘルプを表示。]
+// }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum WorkspaceMode {
     #[default]
@@ -20,6 +33,10 @@ enum WorkspaceMode {
     Help,
 }
 
+// {
+//   責務: [RowlyApp: CSV documentとGUI各画面の状態を保持し、ユーザー操作をprocess APIへ仲介する。]
+//   フィールド: [mode/help_return_mode: 現在画面とhelpからの復帰先。 path_input/reference_input: pathとcell address入力。 code_buffer/code_buffer_dirty: CSV text編集値と未適用状態。 document/file_watcher: 開いたCSVと外部変更監視。 status/zoom: 表示messageと拡大率。 selection/selection_anchor: 選択cellと範囲起点。 editing/edit_value: inline edit状態と入力text。 validation_candidates_open/validation_candidate_index: 入力候補popup状態。 help: help viewer。]
+// }
 pub struct RowlyApp {
     mode: WorkspaceMode,
     help_return_mode: WorkspaceMode,
@@ -41,6 +58,12 @@ pub struct RowlyApp {
 }
 
 impl Default for RowlyApp {
+    // {
+    //   責務: [default: 初期画面に必要なGUI状態を作る。]
+    //   処理: [table editor、空入力、A1選択、既定zoom、空documentとhelp viewerを設定する。]
+    //   引数: []
+    //   戻り値: [RowlyApp: CSV未読込の初期GUI状態。]
+    // }
     fn default() -> Self {
         Self {
             mode: WorkspaceMode::TableEditor,
@@ -65,6 +88,13 @@ impl Default for RowlyApp {
 }
 
 impl RowlyApp {
+    // {
+    //   責務: [open_csv: 入力pathのCSVを開き、documentと関連するGUI状態を初期化する。]
+    //   処理: [CsvDocumentを開き、text bufferとfile watcherを準備し、selectionとstatusを更新する。]
+    //   引数: [self: 更新対象の画面状態。 ctx: file change時にrepaintするegui context。]
+    //   戻り値: [(): 成功・失敗をstatusへ反映する。]
+    //   エラー: [open・CSV text取得・file watcher開始の失敗をstatusへ表示する。]
+    // }
     fn open_csv(&mut self, ctx: &egui::Context) {
         let path = PathBuf::from(self.path_input.trim());
         match CsvDocument::open(&path) {
@@ -103,6 +133,12 @@ impl RowlyApp {
         }
     }
 
+    // {
+    //   責務: [save_csv: 開いているdocumentを保存し結果をstatusへ表示する。]
+    //   処理: [CsvDocument::saveを呼び、保存先またはerrorをstatusへ設定する。]
+    //   引数: [self: 保存対象documentを保持する画面状態。]
+    //   戻り値: [(): 保存成否をstatusへ反映する。]
+    // }
     fn save_csv(&mut self) {
         let Some(document) = self.document.as_mut() else {
             self.status = "保存する CSV がありません".to_owned();
@@ -114,6 +150,12 @@ impl RowlyApp {
         }
     }
 
+    // {
+    //   責務: [show_menu: file・edit・help menuを描画し、選択操作を実行する。]
+    //   処理: [menu actionを記録してUI描画後にopen・save・undo・redo・help遷移を呼ぶ。]
+    //   引数: [self: 表示状態と操作対象document。 ctx: menu描画先。]
+    //   戻り値: [(): menu表示と選択された操作を反映する。]
+    // }
     fn show_menu(&mut self, ctx: &egui::Context) {
         let mut open_requested = false;
         let mut save_requested = false;
@@ -182,6 +224,12 @@ impl RowlyApp {
         }
     }
 
+    // {
+    //   責務: [show_toolbar: path・cell reference・編集操作・workspace切替用toolbarを描画する。]
+    //   処理: [document状態に応じた操作を有効化し、UI描画後に選択された操作を実行する。]
+    //   引数: [self: 入力値・workspace・documentを保持する画面状態。 ctx: toolbar描画先。]
+    //   戻り値: [(): toolbar表示とユーザー操作を反映する。]
+    // }
     fn show_toolbar(&mut self, ctx: &egui::Context) {
         if self.mode == WorkspaceMode::Help {
             return;
@@ -308,6 +356,12 @@ impl RowlyApp {
         }
     }
 
+    // {
+    //   責務: [show_workspace: 選択中modeに対応するhelp・table・text・viewer画面を描画する。]
+    //   処理: [document未読込表示、mode別widget、text buffer変更状態を更新する。]
+    //   引数: [self: workspace・document・buffer状態。 ctx: workspace描画先。]
+    //   戻り値: [(): 選択modeの画面を描画する。]
+    // }
     fn show_workspace(&mut self, ctx: &egui::Context) {
         if self.mode == WorkspaceMode::Help {
             if self.help.show(ctx) {
@@ -361,6 +415,12 @@ impl RowlyApp {
         });
     }
 
+    /// {
+    ///   責務: [open_help_target: 指定されたhelp targetを開き、元画面への復帰先を保持する。]
+    ///   処理: [初回遷移時のmodeを保存してhelp viewerを開き、modeをHelpにする。]
+    ///   引数: [self: modeとhelp viewerを持つ画面状態。 target: 表示するhelp文書とanchor。]
+    ///   戻り値: [(): help画面へ遷移する。]
+    /// }
     pub fn open_help_target(&mut self, target: help::HelpTarget) {
         if self.mode != WorkspaceMode::Help {
             self.help_return_mode = self.mode;
@@ -369,6 +429,13 @@ impl RowlyApp {
         self.mode = WorkspaceMode::Help;
     }
 
+    // {
+    //   責務: [show_external_conflicts: 外部変更とのcell・row構造競合を表示し、選択されたlocal draftを再適用する。]
+    //   処理: [競合baseline/local/disk情報を描画し、明示操作時のみCsvDocumentの再適用APIを呼ぶ。]
+    //   引数: [self: 競合draftを保持するdocumentとstatus。 ctx: 競合表示領域。]
+    //   戻り値: [(): 競合内容を表示し、再適用結果をstatusへ反映する。]
+    //   副作用: [選択操作に応じてdocumentのlocal競合値または表全体を再適用する。]
+    // }
     fn show_external_conflicts(&mut self, ctx: &egui::Context) {
         let draft_count = self
             .document
@@ -465,6 +532,13 @@ impl RowlyApp {
         }
     }
 
+    // {
+    //   責務: [show_editor_grid: CSVのrow・column・cellをvirtualized table gridとして描画し編集操作を処理する。]
+    //   処理: [visible row/columnを描画し、selection・inline edit・allowed value候補・cell commitを更新する。]
+    //   引数: [self: document・selection・editing state。 ui: gridを描画する領域。]
+    //   戻り値: [(): table表示と入力操作を反映する。]
+    //   副作用: [確定操作時にprocess経由でcellを変更する。]
+    // }
     fn show_editor_grid(&mut self, ui: &mut egui::Ui) {
         let document = self.document.as_ref().expect("document checked above");
         let row_count = document.row_count();
@@ -763,6 +837,12 @@ impl RowlyApp {
         }
     }
 
+    // {
+    //   責務: [refresh_code_buffer: CSV documentの現在のtextをeditor bufferへ同期する。]
+    //   処理: [documentがなければbufferをclearし、取得できればtextを置き換えてdirty flagを解除する。]
+    //   引数: [self: document・code buffer・statusを保持する画面状態。]
+    //   戻り値: [(): text取得errorはstatusへ反映する。]
+    // }
     fn refresh_code_buffer(&mut self) {
         let Some(document) = self.document.as_ref() else {
             self.code_buffer.clear();
@@ -778,6 +858,12 @@ impl RowlyApp {
         }
     }
 
+    // {
+    //   責務: [apply_code_buffer: text editorのCSV textをdocumentへ検証付きで適用する。]
+    //   処理: [CsvDocument::apply_csv_textを呼び、成功時にbuffer・selectionを同期し、失敗理由をstatusへ示す。]
+    //   引数: [self: 適用対象documentとcode buffer。]
+    //   戻り値: [(): 適用成否をdirty flag・buffer・statusへ反映する。]
+    // }
     fn apply_code_buffer(&mut self) {
         let Some(document) = self.document.as_mut() else {
             self.status = "適用する CSV がありません".to_owned();
@@ -798,6 +884,12 @@ impl RowlyApp {
         }
     }
 
+    // {
+    //   責務: [set_selection: document bounds内へcell selectionを更新する。]
+    //   処理: [現在のrow・column数を取得しupdate_selectionへselectionとanchor更新を委譲する。]
+    //   引数: [self: selection・anchor・reference入力を保持する画面状態。 reference: 選択先。 extend: anchorを維持するか。]
+    //   戻り値: [(): selection・address入力・editing状態を同期する。]
+    // }
     fn set_selection(&mut self, reference: CellRef, extend: bool) {
         let (row_count, column_count) = self.document.as_ref().map_or((0, 0), |document| {
             (document.row_count(), document.column_count())
@@ -813,6 +905,12 @@ impl RowlyApp {
         );
     }
 
+    // {
+    //   責務: [begin_edit: 選択cellのinline editを開始し、既存値に対応する候補位置を設定する。]
+    //   処理: [入力値をcopyし、allowed values内で一致する候補indexを探す。]
+    //   引数: [self: selection・editing・candidate state。 value: 編集開始時のcell text。]
+    //   戻り値: [(): inline editを有効化する。]
+    // }
     fn begin_edit(&mut self, value: &str) {
         self.edit_value = value.to_owned();
         self.editing = true;
@@ -828,6 +926,13 @@ impl RowlyApp {
             .unwrap_or(0);
     }
 
+    // {
+    //   責務: [set_cell: process APIでcell textを更新し結果をstatusへ反映する。]
+    //   処理: [documentがあればset_cellを呼び、入力規則違反と他のdocument errorを区別する。]
+    //   引数: [self: 更新対象documentとstatus。 row: 0-based row index。 column: 0-based column index。 value: 書き込むtext。]
+    //   戻り値: [bool: 更新成功ならtrue、document不在または失敗ならfalse。]
+    //   副作用: [成功時にdocumentを編集する。]
+    // }
     fn set_cell(&mut self, row: usize, column: usize, value: String) -> bool {
         let Some(document) = self.document.as_mut() else {
             return false;
@@ -848,6 +953,12 @@ impl RowlyApp {
         }
     }
 
+    // {
+    //   責務: [move_selection_after_tab: Tab確定後の次cellへselectionを進める。]
+    //   処理: [同じrowの次columnを優先し、末columnなら次rowの先頭columnへ移動する。]
+    //   引数: [self: documentと現在selectionを保持する画面状態。]
+    //   戻り値: [(): selection更新対象がある場合に次cellへ移動する。]
+    // }
     fn move_selection_after_tab(&mut self) {
         let Some(document) = self.document.as_ref() else {
             return;
@@ -868,6 +979,12 @@ impl RowlyApp {
         self.set_selection(next, false);
     }
 
+    // {
+    //   責務: [navigate_to_cell: reference入力をCellRefとして解析し、該当cellへ移動する。]
+    //   処理: [入力をparseし成功時はselection/statusを更新し、parse errorはstatusへ表示する。]
+    //   引数: [self: reference入力・selection・statusを保持する画面状態。]
+    //   戻り値: [(): reference解析結果を画面状態へ反映する。]
+    // }
     fn navigate_to_cell(&mut self) {
         match self.reference_input.parse::<CellRef>() {
             Ok(reference) => {
@@ -878,6 +995,13 @@ impl RowlyApp {
         }
     }
 
+    // {
+    //   責務: [insert_row: 選択rowの位置へ1行を挿入する。]
+    //   処理: [CsvDocument::insert_rowsを呼び、共通結果処理へ渡す。]
+    //   引数: [self: 選択位置・documentを保持する画面状態。]
+    //   戻り値: [(): 挿入結果をstatus・selectionへ反映する。]
+    //   副作用: [documentがあればrow構造を変更する。]
+    // }
     fn insert_row(&mut self) {
         let result = self
             .document
@@ -886,6 +1010,13 @@ impl RowlyApp {
         self.apply_structure_result(result, "Inserted row");
     }
 
+    // {
+    //   責務: [delete_row: 選択rowを1行削除する。]
+    //   処理: [CsvDocument::delete_rowsを呼び、共通結果処理へ渡す。]
+    //   引数: [self: 選択位置・documentを保持する画面状態。]
+    //   戻り値: [(): 削除結果をstatus・selectionへ反映する。]
+    //   副作用: [documentがあればrow構造を変更する。]
+    // }
     fn delete_row(&mut self) {
         let result = self
             .document
@@ -894,6 +1025,13 @@ impl RowlyApp {
         self.apply_structure_result(result, "Deleted row");
     }
 
+    // {
+    //   責務: [insert_column: 選択columnの位置へ1列を挿入する。]
+    //   処理: [CsvDocument::insert_columnsを呼び、共通結果処理へ渡す。]
+    //   引数: [self: 選択位置・documentを保持する画面状態。]
+    //   戻り値: [(): 挿入結果をstatus・selectionへ反映する。]
+    //   副作用: [documentがあればcolumn構造を変更する。]
+    // }
     fn insert_column(&mut self) {
         let result = self
             .document
@@ -902,6 +1040,13 @@ impl RowlyApp {
         self.apply_structure_result(result, "Inserted column");
     }
 
+    // {
+    //   責務: [delete_column: 選択columnを1列削除する。]
+    //   処理: [CsvDocument::delete_columnsを呼び、共通結果処理へ渡す。]
+    //   引数: [self: 選択位置・documentを保持する画面状態。]
+    //   戻り値: [(): 削除結果をstatus・selectionへ反映する。]
+    //   副作用: [documentがあればcolumn構造を変更する。]
+    // }
     fn delete_column(&mut self) {
         let result = self
             .document
@@ -910,6 +1055,12 @@ impl RowlyApp {
         self.apply_structure_result(result, "Deleted column");
     }
 
+    // {
+    //   責務: [apply_structure_result: row・column構造操作のoption付き結果を画面状態へ反映する。]
+    //   処理: [成功時にstatus設定とselection clampを行い、errorまたはdocument不在をstatusへ表示する。]
+    //   引数: [self: status・selection・editing state。 result: document不在または構造操作結果。 success: 成功時に使うstatus text。]
+    //   戻り値: [(): 操作結果を画面状態へ反映する。]
+    // }
     fn apply_structure_result(
         &mut self,
         result: Option<Result<(), crate::process::DocumentError>>,
@@ -926,6 +1077,12 @@ impl RowlyApp {
         self.editing = false;
     }
 
+    // {
+    //   責務: [clamp_selection: documentのrow・column範囲外にあるselectionを末尾へ収める。]
+    //   処理: [現在位置を各dimensionの最大indexへ制限し、通常のselection更新経路を使う。]
+    //   引数: [self: documentとselectionを保持する画面状態。]
+    //   戻り値: [(): documentがある場合にselectionを範囲内へ更新する。]
+    // }
     fn clamp_selection(&mut self) {
         let Some(document) = self.document.as_ref() else {
             return;
@@ -941,6 +1098,12 @@ impl RowlyApp {
         self.set_selection(CellRef::new(row, column), false);
     }
 
+    // {
+    //   責務: [undo: documentの直近commandを取り消し、selectionを有効範囲へ保つ。]
+    //   処理: [CsvDocument::undo結果をstatusへ反映し、変更時はselectionをclampする。]
+    //   引数: [self: document・selection・statusを保持する画面状態。]
+    //   戻り値: [(): undo結果をstatus・selection・editing stateへ反映する。]
+    // }
     fn undo(&mut self) {
         match self.document.as_mut().map(CsvDocument::undo) {
             Some(Ok(true)) => {
@@ -954,6 +1117,12 @@ impl RowlyApp {
         self.editing = false;
     }
 
+    // {
+    //   責務: [redo: documentの直近undo commandを再適用し、selectionを有効範囲へ保つ。]
+    //   処理: [CsvDocument::redo結果をstatusへ反映し、変更時はselectionをclampする。]
+    //   引数: [self: document・selection・statusを保持する画面状態。]
+    //   戻り値: [(): redo結果をstatus・selection・editing stateへ反映する。]
+    // }
     fn redo(&mut self) {
         match self.document.as_mut().map(CsvDocument::redo) {
             Some(Ok(true)) => {
@@ -967,6 +1136,12 @@ impl RowlyApp {
         self.editing = false;
     }
 
+    // {
+    //   責務: [show_table_preview: documentの全rowをread-only gridとして表示する。]
+    //   処理: [row numberとcell textを描画し、header指定時は先頭rowを強調する。]
+    //   引数: [self: 未使用の画面状態。 ui: preview描画先。 document: 表示対象。 header: 先頭rowを見出し扱いするか。]
+    //   戻り値: [(): document内容を閲覧表示する。]
+    // }
     fn show_table_preview(&self, ui: &mut egui::Ui, document: &CsvDocument, header: bool) {
         egui::ScrollArea::both().show(ui, |ui| {
             egui::Grid::new("csv_preview")
@@ -988,6 +1163,12 @@ impl RowlyApp {
         });
     }
 
+    // {
+    //   責務: [show_status: status・table dimensions・dirty state・zoom controlを下部panelへ表示する。]
+    //   処理: [documentの有無とbuffer/document dirty stateを確認し、help以外でzoom sliderを描画する。]
+    //   引数: [self: status・document・mode・zoomを保持する画面状態。 ctx: status panel描画先。]
+    //   戻り値: [(): status panelを描画し、zoom入力を更新する。]
+    // }
     fn show_status(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -1016,6 +1197,13 @@ impl RowlyApp {
         });
     }
 
+    // {
+    //   責務: [poll_external_changes: watcher通知を受けて外部CSV変更を検出しdocumentを同期する。]
+    //   処理: [change hint時にrefresh APIを呼び、競合・reload・watcher errorをstatusとselectionへ反映する。]
+    //   引数: [self: watcher・document・editor state・statusを保持する画面状態。]
+    //   戻り値: [(): 外部変更がない場合は何もせず、検出時に同期結果を画面状態へ反映する。]
+    //   副作用: [外部変更をdocumentへ取り込み、必要に応じてlocal conflict draftを保持する。]
+    // }
     fn poll_external_changes(&mut self) {
         let hint = self
             .file_watcher
@@ -1088,6 +1276,12 @@ impl RowlyApp {
 }
 
 impl eframe::App for RowlyApp {
+    // {
+    //   責務: [update: egui frameごとに外部変更とGUI操作を処理し各panelを描画する。]
+    //   処理: [change polling・grid keyboard・menu・toolbar・conflict・status・workspaceの順に実行する。]
+    //   引数: [self: frame間で保持するRowlyApp状態。 ctx: 現在のegui context。 _frame: eframe frame handle。]
+    //   戻り値: [(): 1 frame分のGUIを更新する。]
+    // }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll_external_changes();
         self.handle_grid_keys(ctx);
@@ -1099,6 +1293,12 @@ impl eframe::App for RowlyApp {
     }
 }
 
+// {
+//   責務: [column_label: 0-based column indexをspreadsheet形式のcolumn labelへ変換する。]
+//   処理: [indexを26進相当で分解し、A始まりの大文字列に組み立てる。]
+//   引数: [column: 0-based column index。]
+//   戻り値: [String: A・Z・AA形式のcolumn label。]
+// }
 fn column_label(mut column: usize) -> String {
     column += 1;
     let mut letters = Vec::new();
@@ -1110,6 +1310,12 @@ fn column_label(mut column: usize) -> String {
     letters.iter().rev().collect()
 }
 
+// {
+//   責務: [format_validation_violations: 入力規則違反をstatus表示用の短い文字列へ整形する。]
+//   処理: [先頭3件のrow・column・value・ruleを列挙し、残件数を付ける。]
+//   引数: [violations: documentが返した入力規則違反一覧。]
+//   戻り値: [String: 最大3件の詳細と残件数を含むmessage。]
+// }
 fn format_validation_violations(violations: &[ValidationViolation]) -> String {
     let details = violations
         .iter()
@@ -1133,6 +1339,12 @@ fn format_validation_violations(violations: &[ValidationViolation]) -> String {
     }
 }
 
+// {
+//   責務: [cell_range: 2つのcell referenceから包含範囲のrow・column境界を求める。]
+//   処理: [各dimensionの小さい方と大きい方を選ぶ。]
+//   引数: [first: 範囲端のcell。 second: もう一方の範囲端。]
+//   戻り値: [(usize, usize, usize, usize): 最小row・最大row・最小column・最大column。]
+// }
 fn cell_range(first: CellRef, second: CellRef) -> (usize, usize, usize, usize) {
     (
         first.row().min(second.row()),
@@ -1142,6 +1354,12 @@ fn cell_range(first: CellRef, second: CellRef) -> (usize, usize, usize, usize) {
     )
 }
 
+// {
+//   責務: [update_selection: grid selection・anchor・address input・editing stateを同期する。]
+//   処理: [referenceをbounds内へclampし、extendでanchor維持を選び、selectionと入力欄を更新する。]
+//   引数: [selection: 選択中cell。 anchor: 範囲選択起点。 reference_input: address text。 editing: inline edit状態。 reference: 移動先。 extend: 範囲選択を継続するか。 bounds: row・column count。]
+//   戻り値: [(): 4つの画面stateを選択先に同期する。]
+// }
 fn update_selection(
     selection: &mut CellRef,
     anchor: &mut CellRef,
@@ -1164,6 +1382,12 @@ fn update_selection(
 }
 
 impl RowlyApp {
+    // {
+    //   責務: [handle_grid_keys: grid操作中のkeyboard shortcutをselection・edit・undo/redoへ適用する。]
+    //   処理: [text inputへfocus中・grid外・inline edit中を除外し、navigationとcommand keyをdispatchする。]
+    //   引数: [self: mode・selection・document・editing状態。 ctx: key inputとfocus状態を読むegui context。]
+    //   戻り値: [(): keyboard inputに応じた画面操作を実行する。]
+    // }
     fn handle_grid_keys(&mut self, ctx: &egui::Context) {
         if self.mode != WorkspaceMode::TableEditor || ctx.wants_keyboard_input() {
             return;

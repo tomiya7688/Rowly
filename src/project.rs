@@ -508,7 +508,7 @@ impl RowlyProject {
 //     2: temporary fileでdestinationを置換する
 //     3: 失敗時はtemporary fileの削除を試みる
 //   ]
-//   引数: [path: 置換するmanifest path, bytes: 保存するmanifest bytes]
+//   引数: [path: 置換するproject file path, bytes: 保存するproject file bytes]
 //   戻り値: [(): replacement成功時に値を返さない]
 //   副作用: [temporary fileを作成し、成功時はdestinationを置換する]
 //   エラー: [ProjectError: path、temporary file、write、sync、またはreplacementの失敗]

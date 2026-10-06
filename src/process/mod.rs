@@ -1,3 +1,15 @@
+//! ```text
+//! 責務: [
+//! process: CSV documentを扱うA1/range addressing、列検証、編集履歴、validation、metadata機能を公開する
+//! ]
+//! 処理: [
+//! 1: data層の文字列tableを利用する操作型と結果型を再exportする
+//! 2: GUI featureが有効な場合はCSV変更watcherを内部公開する
+//! ]
+//! 補足: [
+//! CSVの読書きやcanonical table modelはcrate::dataが担当する
+//! ]
+//! ```
 mod address;
 mod column;
 mod document;

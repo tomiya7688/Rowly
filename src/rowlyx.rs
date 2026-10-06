@@ -14,9 +14,15 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter, write::SimpleFileOptions};
 use crate::data::replace_file;
 use crate::project::{RowlyProject, SourceKind, resolve_project_reference};
 
-/// Package a project folder into a standard ZIP-compatible `.rowlyx` archive.
-/// Only project-relative references are collected; absolute external references
-/// remain unchanged in the `.rwprj` and are never copied into the archive.
+/// ```text
+/// 責務: [pack_project: project manifestと内部参照fileをZIP互換の.rowlyxへpackする]
+/// 処理: [manifest基準の内部referenceを収集し、一時archiveを検証してから出力先へ置換する]
+/// 引数: [project_file: pack対象の.rwprj, archive_file: 生成する.rowlyx path]
+/// 戻り値: [(): archive保存成功時に値を返さない]
+/// 副作用: [一時archiveを作成し、成功時にarchive_fileを置換する]
+/// エラー: [RowlyxError: manifest、reference、file IO、archive作成または検証の失敗]
+/// 補足: [absolute referenceは外部扱いでpackしない。relative referenceでもproject root外はpackしない]
+/// ```
 pub fn pack_project(
     project_file: impl AsRef<Path>,
     archive_file: impl AsRef<Path>,
@@ -167,6 +173,14 @@ pub fn pack_project(
     result
 }
 
+// {
+//   責務: [create_temporary_archive: archive出力先と同じdirectoryに一意なtemporary pathを確保する]
+//   処理: [process id、時刻、連番を使った候補を最大16回create_newで作成する]
+//   引数: [path: 最終archiveのpath]
+//   戻り値: [PathBuf: 確保したtemporary archive path]
+//   副作用: [空のtemporary fileを作成する]
+//   エラー: [RowlyxError: 親directory、file name、またはtemporary fileの作成失敗]
+// }
 fn create_temporary_archive(path: &Path) -> Result<PathBuf, RowlyxError> {
     let parent = path
         .parent()
@@ -205,7 +219,16 @@ fn create_temporary_archive(path: &Path) -> Result<PathBuf, RowlyxError> {
     ))
 }
 
-/// An opened and validated `.rowlyx` archive.
+/// ```text
+/// 責務: [
+/// RowlyxArchive: 安全性とproject manifest schemaを検証した.rowlyx archiveへの参照
+/// ]
+/// フィールド: [
+/// path: 検証したarchive file path
+/// project_entry: archive内で唯一の.rwprj manifest entry
+/// ]
+/// 補足: [openはarchiveを展開せず、extract_toで展開する]
+/// ```
 #[derive(Debug, Clone)]
 pub struct RowlyxArchive {
     path: PathBuf,
@@ -213,8 +236,14 @@ pub struct RowlyxArchive {
 }
 
 impl RowlyxArchive {
-    /// Open a ZIP container, reject unsafe or duplicate entries, and locate its
-    /// single project manifest without extracting any files.
+    /// ```text
+    /// 責務: [open: ZIP archiveのentryと唯一のproject manifestを検証する]
+    /// 処理: [unsafe path、重複entry、symlink、manifest数、manifest JSON/schemaを検査する]
+    /// 引数: [path: 開く.rowlyx archive path]
+    /// 戻り値: [Self: 検証済みarchiveとmanifest entryへの参照]
+    /// エラー: [RowlyxError: file read、ZIP形式、entry安全性、manifest数またはschemaの失敗]
+    /// 補足: [fileは展開せず、manifestの検証だけをメモリ上で行う]
+    /// ```
     pub fn open(path: impl AsRef<Path>) -> Result<Self, RowlyxError> {
         let path = path.as_ref().to_path_buf();
         let file = File::open(&path).map_err(|error| io_error(&path, error))?;
@@ -273,8 +302,15 @@ impl RowlyxArchive {
         })
     }
 
-    /// Extract the archive into a destination directory and return the project
-    /// manifest path inside that directory.
+    /// ```text
+    /// 責務: [extract_to: archive内容を空のdestinationへ展開しmanifest pathを返す]
+    /// 処理: [destinationを作成し、entry pathとsymlinkを検査しながらfile / directoryを書き出す]
+    /// 引数: [destination: 展開先directory。既存の場合は空であること]
+    /// 戻り値: [PathBuf: 展開先rootを基準にしたproject manifest path]
+    /// 副作用: [destination directoryとarchive entryをdisk上に作成する]
+    /// エラー: [RowlyxError: destination不正、unsafe entry、symlink、archive readまたはfile writeの失敗]
+    /// 補足: [展開途中で失敗した場合、destination内に作成済みentryが残る]
+    /// ```
     pub fn extract_to(&self, destination: impl AsRef<Path>) -> Result<PathBuf, RowlyxError> {
         let destination = destination.as_ref();
         fs::create_dir_all(destination).map_err(|error| io_error(destination, error))?;
@@ -325,12 +361,27 @@ impl RowlyxArchive {
     }
 }
 
+// {
+//   責務: [validate_manifest_value: archive内のJSON valueをcanonical project schemaで検証する]
+//   処理: [project moduleの共通validatorへ委譲し、失敗をManifest errorへ変換する]
+//   引数: [value: parse済みmanifest JSON]
+//   戻り値: [(): schema検証成功時に値を返さない]
+//   エラー: [RowlyxError: project manifest schemaの不正]
+// }
 fn validate_manifest_value(value: serde_json::Value) -> Result<(), RowlyxError> {
     // Keep project schema validation in one place by writing no intermediate file.
     crate::project::validate_project_value(value)
         .map_err(|error| RowlyxError::Manifest(error.to_string()))
 }
 
+// {
+//   責務: [collect_directory: project root内directoryのarchive entryを集める]
+//   処理: [直下fileを追加し、recursive時は子directoryを再帰収集する。symlinkは拒否する]
+//   引数: [root: project root, directory: 収集対象, entries: archive entry集合, recursive: 子directoryも走査するか]
+//   戻り値: [(): entry収集成功時に値を返さない]
+//   副作用: [entriesへrelative pathを追加する]
+//   エラー: [RowlyxError: directory走査、relative path解決またはsymlink検査の失敗]
+// }
 fn collect_directory(
     root: &Path,
     directory: &Path,
@@ -362,6 +413,13 @@ fn collect_directory(
     Ok(())
 }
 
+// {
+//   責務: [lexical_relative: root配下のpathを構成要素だけでrelative pathへ変換する]
+//   処理: [root外への遷移を拒否し、CurDirを除去してParentDirをlexically解決する]
+//   引数: [root: relative化の基準directory, path: 判定するpath]
+//   戻り値: [Option<PathBuf>: root配下ならrelative path、それ以外はNone]
+//   補足: [filesystemのcanonicalizeやentry存在確認は行わない]
+// }
 fn lexical_relative(root: &Path, path: &Path) -> Option<PathBuf> {
     let absolute = if path.is_absolute() {
         path.to_path_buf()
@@ -384,11 +442,24 @@ fn lexical_relative(root: &Path, path: &Path) -> Option<PathBuf> {
     Some(clean)
 }
 
+// {
+//   責務: [relative_entry: root配下のpathをarchive entry用relative pathへ変換する]
+//   引数: [root: archive root directory, path: archiveへ格納するpath]
+//   戻り値: [PathBuf: relative archive entry path]
+//   エラー: [RowlyxError: pathがroot配下にない]
+// }
 fn relative_entry(root: &Path, path: &Path) -> Result<PathBuf, RowlyxError> {
     lexical_relative(root, path)
         .ok_or_else(|| RowlyxError::InvalidReference(path.display().to_string()))
 }
 
+// {
+//   責務: [archive_target_path: archive出力先の比較用pathを構築する]
+//   処理: [parentをcanonicalizeし、既存targetはtarget自身もcanonicalizeする]
+//   引数: [path: archive出力先]
+//   戻り値: [PathBuf: target比較に使うpath]
+//   エラー: [RowlyxError: parentまたは既存targetのcanonicalize失敗]
+// }
 fn archive_target_path(path: &Path) -> Result<PathBuf, RowlyxError> {
     let parent = path
         .parent()
@@ -406,6 +477,12 @@ fn archive_target_path(path: &Path) -> Result<PathBuf, RowlyxError> {
     }
 }
 
+// {
+//   責務: [safe_relative_path: archive entry pathがrelativeな通常pathだけで構成されるか判定する]
+//   処理: [empty、backslash、rooted / drive形式、CurDir、ParentDir、Prefixを拒否する]
+//   引数: [path: 検証するentry path]
+//   戻り値: [bool: 安全なrelative pathならtrue]
+// }
 fn safe_relative_path(path: &Path) -> bool {
     let text = path.to_string_lossy();
     !path.as_os_str().is_empty()
@@ -417,40 +494,69 @@ fn safe_relative_path(path: &Path) -> bool {
             .all(|component| matches!(component, Component::Normal(_)))
 }
 
+// {
+//   責務: [zip_name: platform pathをZIP標準のslash区切りentry名へ変換する]
+//   引数: [path: ZIP entryにするpath]
+//   戻り値: [String: slash区切りのentry名]
+// }
 fn zip_name(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+// {
+//   責務: [io_error: pathを含むIO errorをRowlyxErrorへ変換する]
+//   引数: [path: 失敗したpath, error: 発生したIO error]
+//   戻り値: [RowlyxError: pathとerror messageを保持するIo variant]
+// }
 fn io_error(path: &Path, error: io::Error) -> RowlyxError {
     RowlyxError::Io {
         path: path.display().to_string(),
         message: error.to_string(),
     }
 }
+// {
+//   責務: [zip_error: ZIP library errorをRowlyxErrorへ変換する]
+//   引数: [error: 発生したZIP error]
+//   戻り値: [RowlyxError: error messageを保持するArchive variant]
+// }
 fn zip_error(error: zip::result::ZipError) -> RowlyxError {
     RowlyxError::Archive(error.to_string())
 }
 
 #[derive(Debug, Error)]
+/// ```text
+/// 責務: [RowlyxError: project package / archive操作で呼出元へ返す失敗]
+/// 補足: [Project、IO、archive形式、entry安全性、manifest検証、参照、symlink、展開先の失敗を区別する]
+/// ```
 pub enum RowlyxError {
+    /// project manifestの読込・検証失敗。
     #[error("project error: {0}")]
     Project(#[from] crate::project::ProjectError),
+    /// pathに対するfile / directory操作の失敗。
     #[error("failed to access `{path}`: {message}")]
     Io { path: String, message: String },
+    /// ZIP archiveの読込または生成の失敗。
     #[error("invalid or damaged rowlyx archive: {0}")]
     Archive(String),
+    /// archive entry pathがrelative安全条件を満たさない。
     #[error("unsafe archive entry path `{0}`")]
     UnsafeEntry(String),
+    /// archive内で同じentry名が重複している。
     #[error("archive contains duplicate entry `{0}`")]
     DuplicateEntry(String),
+    /// archive内の`.rwprj` manifest数が1件ではない。
     #[error("archive must contain exactly one `.rwprj` manifest, found {0}")]
     ProjectDefinitionCount(usize),
+    /// archive内manifestのJSONまたはschemaが不正。
     #[error("invalid project manifest inside archive: {0}")]
     Manifest(String),
+    /// project referenceが無効またはroot外を指している。
     #[error("project reference is invalid or escapes its root: {0}")]
     InvalidReference(String),
+    /// symbolic linkを安全にpack / extractできない。
     #[error("project path is a symbolic link and cannot be packaged safely: {0}")]
     UnsupportedLink(String),
+    /// extract destinationが空ではない。
     #[error("extract destination is not empty: {0}")]
     DestinationNotEmpty(String),
 }

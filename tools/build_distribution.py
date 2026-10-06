@@ -19,7 +19,7 @@ ROWLY_NAME = "rowly.exe" if sys.platform == "win32" else "rowly"
 # {
 #   責務: [run: package build用subprocessをrepository rootで実行し、失敗時に停止する。]
 #   引数: [*args: 実行するprogramとargument。]
-#   戻り値: [CompletedProcess: check成功後のsubprocess実行結果。]
+#   戻り値: [None: command成功時は値を返さない。]
 #   副作用: [外部commandを起動する。]
 #   エラー: [command失敗時はsubprocess.CalledProcessErrorを送出する。]
 # }

@@ -1,5 +1,9 @@
 use eframe::egui;
 
+/// {
+///   責務: [HelpDocument: viewerで表示できる文書の種類を識別し、対応する見出し・file・sourceを返す。]
+///   選択肢: [Reference: DSL文法。 Tutorial: DSL手順。 Bindings: 変数・定数規則。 StandardLibrary: 標準関数。]
+/// }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HelpDocument {
     Reference,
@@ -9,6 +13,9 @@ pub enum HelpDocument {
 }
 
 impl HelpDocument {
+    // {
+    //   責務: [ALL: viewerへ読み込む全HelpDocumentを列挙する。]
+    // }
     const ALL: [Self; 4] = [
         Self::Reference,
         Self::Tutorial,
@@ -16,8 +23,16 @@ impl HelpDocument {
         Self::StandardLibrary,
     ];
 
+    // {
+    //   責務: [PRIMARY: navigationの主tabへ表示するhelp文書を列挙する。]
+    // }
     const PRIMARY: [Self; 2] = [Self::Reference, Self::Tutorial];
 
+    // {
+    //   責務: [title: help画面で使う文書表示名を返す。]
+    //   引数: [self: 表示名を求める文書種別。]
+    //   戻り値: [&'static str: 文書の日本語title。]
+    // }
     fn title(self) -> &'static str {
         match self {
             Self::Reference => "DSL 文法リファレンス",
@@ -27,6 +42,11 @@ impl HelpDocument {
         }
     }
 
+    // {
+    //   責務: [file_name: 文書のlink解決とheader表示に使うfile名を返す。]
+    //   引数: [self: file名を求める文書種別。]
+    //   戻り値: [&'static str: docs配下のMarkdown file名。]
+    // }
     fn file_name(self) -> &'static str {
         match self {
             Self::Reference => "DSL_REFERENCE.md",
@@ -36,6 +56,11 @@ impl HelpDocument {
         }
     }
 
+    // {
+    //   責務: [source: compile時に埋め込んだMarkdown本文を返す。]
+    //   引数: [self: sourceを求める文書種別。]
+    //   戻り値: [&'static str: 対応するdocs Markdown本文。]
+    // }
     fn source(self) -> &'static str {
         match self {
             Self::Reference => include_str!("../docs/DSL_REFERENCE.md"),
@@ -46,6 +71,10 @@ impl HelpDocument {
     }
 }
 
+/// {
+///   責務: [HelpTarget: help viewerで開く文書と見出しanchorを指定する。]
+///   フィールド: [document: 表示する文書種別。 anchor: 開始位置として解決するanchorまたは見出し名。]
+/// }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HelpTarget {
     pub document: HelpDocument,
@@ -53,6 +82,12 @@ pub struct HelpTarget {
 }
 
 impl HelpTarget {
+    /// {
+    ///   責務: [new: 文書とanchorからHelpTargetを作成する。]
+    ///   処理: [anchor入力を所有Stringへ変換してfieldへ保存する。]
+    ///   引数: [document: 開く文書。 anchor: 開始位置のanchorまたは見出し名。]
+    ///   戻り値: [HelpTarget: 指定文書の開始位置。]
+    /// }
     pub fn new(document: HelpDocument, anchor: impl Into<String>) -> Self {
         Self {
             document,
@@ -61,6 +96,10 @@ impl HelpTarget {
     }
 }
 
+// {
+//   責務: [HelpSection: 解析済み見出しの識別子・表示名・階層・本文を保持する。]
+//   フィールド: [anchor: link/scroll用id。 title: 表示heading。 level: Markdown heading階層。 body: 見出しから次見出しまでの本文。]
+// }
 #[derive(Debug)]
 struct HelpSection {
     anchor: String,
@@ -69,6 +108,10 @@ struct HelpSection {
     body: String,
 }
 
+// {
+//   責務: [HelpPage: HelpDocumentの見出しsectionを解析して保持する。]
+//   フィールド: [document: 元文書種別。 sections: 順番を保った解析済みsection。]
+// }
 #[derive(Debug)]
 struct HelpPage {
     document: HelpDocument,
@@ -76,6 +119,12 @@ struct HelpPage {
 }
 
 impl HelpPage {
+    // {
+    //   責務: [new: HelpDocumentのsourceをsection一覧へ解析してHelpPageを作成する。]
+    //   処理: [document.sourceをparse_sectionsへ渡してsectionを格納する。]
+    //   引数: [document: 解析対象の文書種別。]
+    //   戻り値: [HelpPage: documentと解析済み見出し一覧。]
+    // }
     fn new(document: HelpDocument) -> Self {
         Self {
             document,
@@ -83,12 +132,23 @@ impl HelpPage {
         }
     }
 
+    // {
+    //   責務: [first_anchor: 最初のsectionのanchorを返す。]
+    //   引数: [self: anchor一覧を保持するpage。]
+    //   戻り値: [&str: 先頭anchor。sectionがない場合は空文字列。]
+    // }
     fn first_anchor(&self) -> &str {
         self.sections
             .first()
             .map_or("", |section| section.anchor.as_str())
     }
 
+    // {
+    //   責務: [anchor_for: requested valueに一致するsection anchorを解決する。]
+    //   処理: [anchorの完全一致またはslug化したtitleの大文字小文字を無視した一致を探す。]
+    //   引数: [self: 検索対象section一覧。 requested: anchorまたはheading名。]
+    //   戻り値: [Option<&str>: 一致したsection anchor。見つからなければNone。]
+    // }
     fn anchor_for(&self, requested: &str) -> Option<&str> {
         self.sections
             .iter()
@@ -100,6 +160,10 @@ impl HelpPage {
     }
 }
 
+/// {
+///   責務: [HelpViewer: DSL文書のnavigation・見出し検索・本文表示・内部link移動状態を管理する。]
+///   フィールド: [pages: 解析済み文書。 active_document: 表示中文書。 selected_anchor: 選択見出し。 heading_filter: 見出し検索入力。 pending_scroll: 次回表示時に移動するanchor。]
+/// }
 #[derive(Debug)]
 pub struct HelpViewer {
     pages: Vec<HelpPage>,
@@ -110,6 +174,12 @@ pub struct HelpViewer {
 }
 
 impl Default for HelpViewer {
+    // {
+    //   責務: [default: 全help文書を読み込み、referenceの先頭sectionを表示する初期viewerを作る。]
+    //   処理: [HelpDocument::ALLからpageを構築し、active documentのfirst anchorを選択する。]
+    //   引数: []
+    //   戻り値: [HelpViewer: referenceを初期表示するviewer state。]
+    // }
     fn default() -> Self {
         let pages = HelpDocument::ALL
             .into_iter()
@@ -131,6 +201,12 @@ impl Default for HelpViewer {
 }
 
 impl HelpViewer {
+    /// {
+    ///   責務: [open: 指定targetへviewerのactive documentと見出し選択を移す。]
+    ///   処理: [文書内でanchorまたはheading名を解決し、見つからない場合は先頭anchorを選んで検索filterをclearする。]
+    ///   引数: [self: 更新対象のviewer state。 target: 開く文書と開始位置。]
+    ///   戻り値: [(): 選択位置と次回scroll先を更新する。]
+    /// }
     pub fn open(&mut self, target: HelpTarget) {
         let page = self.page(target.document);
         let anchor = page
@@ -143,6 +219,13 @@ impl HelpViewer {
         self.pending_scroll = Some(anchor);
     }
 
+    /// {
+    ///   責務: [show: help navigationと選択文書のMarkdown内容をeguiへ描画する。]
+    ///   処理: [document・見出しfilter・anchorを編集可能にし、navigation・section scroll・内部link移動を処理する。]
+    ///   引数: [self: 文書・selection・filter・scroll stateを保持するviewer。 ctx: 表示用egui context。]
+    ///   戻り値: [bool: worksheetへ戻る操作が選択された場合true。]
+    ///   副作用: [navigation選択と内部link操作に応じてviewer stateを更新する。]
+    /// }
     pub fn show(&mut self, ctx: &egui::Context) -> bool {
         let mut close_requested = false;
         let mut requested_document = None;
@@ -277,6 +360,12 @@ impl HelpViewer {
         false
     }
 
+    // {
+    //   責務: [page: document種別に対応する読み込み済みHelpPageを取得する。]
+    //   引数: [self: HelpPage一覧を保持するviewer。 document: 取得する文書種別。]
+    //   戻り値: [&HelpPage: 対応する解析済みpage。]
+    //   補足: [全HelpDocumentをdefault時に読み込むため、未登録は不変条件違反として扱う。]
+    // }
     fn page(&self, document: HelpDocument) -> &HelpPage {
         self.pages
             .iter()
@@ -285,6 +374,12 @@ impl HelpViewer {
     }
 }
 
+// {
+//   責務: [parse_sections: Markdown sourceから見出し単位のHelpSection一覧を生成する。]
+//   処理: [fenced code block外のexplicit anchorとheadingを認識し、本文を直前sectionへ蓄積する。重複anchorにはsuffixを付ける。]
+//   引数: [source: 分割対象のMarkdown text。]
+//   戻り値: [Vec<HelpSection>: 出現順の見出し・anchor・本文一覧。]
+// }
 fn parse_sections(source: &str) -> Vec<HelpSection> {
     let mut sections = Vec::new();
     let mut current: Option<HelpSection> = None;
@@ -339,10 +434,21 @@ fn parse_sections(source: &str) -> Vec<HelpSection> {
     sections
 }
 
+// {
+//   責務: [parse_explicit_anchor: 対応するHTML anchor行からidを取り出す。]
+//   引数: [line: trim済みのMarkdown line。]
+//   戻り値: [Option<&str>: `<a id="..."`形式ならid部分、その他はNone。]
+// }
 fn parse_explicit_anchor(line: &str) -> Option<&str> {
     line.strip_prefix("<a id=\"")?.strip_suffix("\"></a>")
 }
 
+// {
+//   責務: [parse_heading: Markdown ATX headingからlevelとtitleを解析する。]
+//   処理: [先頭#の数と後続spaceを検証し、1〜6 levelのtitleをtrimして返す。]
+//   引数: [line: trim済みの候補line。]
+//   戻り値: [Option<(usize, &str)>: heading levelとtitle。heading形式でなければNone。]
+// }
 fn parse_heading(line: &str) -> Option<(usize, &str)> {
     let level = line
         .chars()
@@ -354,6 +460,12 @@ fn parse_heading(line: &str) -> Option<(usize, &str)> {
     Some((level, line[level + 1..].trim()))
 }
 
+// {
+//   責務: [slugify: heading titleをURL風anchor textへ変換する。]
+//   処理: [小文字化し、alphanumericとunderscoreを保持し、空白・hyphenの連続を単一dashへ畳む。]
+//   引数: [title: anchor化するheading text。]
+//   戻り値: [String: 生成したslug。]
+// }
 fn slugify(title: &str) -> String {
     let mut slug = String::new();
     let mut pending_dash = false;
@@ -371,6 +483,12 @@ fn slugify(title: &str) -> String {
     slug
 }
 
+// {
+//   責務: [render_markdown_body: Markdown bodyの対応要素をegui widgetへ変換する。]
+//   処理: [code fence・空行・table line・list・quote・inline textを識別し、code blockとinline rendererへ委譲する。]
+//   引数: [ui: 描画先。 body: sectionのMarkdown本文。 current_document: relative linkの基準文書。 linked_target: 選択されたhelp linkの出力先。]
+//   戻り値: [(): bodyを描画し、選択linkがあればtargetを記録する。]
+// }
 fn render_markdown_body(
     ui: &mut egui::Ui,
     body: &str,
@@ -419,6 +537,11 @@ fn render_markdown_body(
     }
 }
 
+// {
+//   責務: [render_code_block: code textを横scroll可能なmonospace groupとして描画する。]
+//   引数: [ui: 描画先。 code: 表示するfenced code本文。]
+//   戻り値: [(): code block widgetを描画する。]
+// }
 fn render_code_block(ui: &mut egui::Ui, code: &str) {
     egui::Frame::group(ui.style()).show(ui, |ui| {
         egui::ScrollArea::horizontal().show(ui, |ui| {
@@ -427,6 +550,12 @@ fn render_code_block(ui: &mut egui::Ui, code: &str) {
     });
 }
 
+// {
+//   責務: [render_inline: inline textのMarkdown link表記を解析してlabelと通常textを描画する。]
+//   処理: [link label・destinationを分割し、help文書linkをclick可能にして遷移targetを記録する。]
+//   引数: [ui: 描画先。 text: inline Markdown text。 current_document: relative linkの基準文書。 linked_target: clickされた遷移先。]
+//   戻り値: [(): linkと通常textを描画する。]
+// }
 fn render_inline(
     ui: &mut egui::Ui,
     text: &str,
@@ -471,6 +600,12 @@ fn render_inline(
     });
 }
 
+// {
+//   責務: [is_help_document_link: destinationがviewer内のhelp文書へのlinkか判定する。]
+//   処理: [fragmentを除いたpathを空pathまたはHelpDocumentのfile name一覧と照合する。]
+//   引数: [destination: Markdown linkのdestination。]
+//   戻り値: [bool: viewer内で解決できる文書linkならtrue。]
+// }
 fn is_help_document_link(destination: &str) -> bool {
     let path = destination
         .split_once('#')
@@ -481,6 +616,12 @@ fn is_help_document_link(destination: &str) -> bool {
             .any(|document| document.file_name().eq_ignore_ascii_case(path))
 }
 
+// {
+//   責務: [resolve_link: current document相対のMarkdown destinationをHelpTargetへ解決する。]
+//   処理: [pathから文書を選び、fragmentまたは先頭sectionを既存anchorへ照合する。]
+//   引数: [current_document: 空pathを解決する基準文書。 destination: 文書pathと任意fragment。]
+//   戻り値: [Option<HelpTarget>: 有効な文書・anchorのtarget。文書またはanchorが不明ならNone。]
+// }
 fn resolve_link(current_document: HelpDocument, destination: &str) -> Option<HelpTarget> {
     let (path, requested_anchor) = destination
         .split_once('#')
@@ -501,6 +642,11 @@ fn resolve_link(current_document: HelpDocument, destination: &str) -> Option<Hel
     Some(HelpTarget::new(document, anchor))
 }
 
+// {
+//   責務: [clean_inline_markup: 表示時に対応していないinline bold・code delimiterを除去する。]
+//   引数: [text: 整形対象text。]
+//   戻り値: [String: `**`とbacktickを取り除いた表示text。]
+// }
 fn clean_inline_markup(text: &str) -> String {
     text.replace("**", "").replace('`', "")
 }

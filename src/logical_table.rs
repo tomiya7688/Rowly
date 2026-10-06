@@ -190,7 +190,7 @@ impl LogicalProject {
     /// 戻り値: [
     /// LogicalProject: schema単位に構成したtable群
     /// ]
-    /// エラー: [LogicalLoadError: directory読込、CSV解析、またはheader欠落の理由]
+    /// エラー: [LogicalLoadError: directory読込、CSVのopen / read / parse、またはheader欠落の理由]
     /// ```
     pub fn load(
         project: &RowlyProject,
@@ -295,8 +295,8 @@ impl LogicalTable {
     }
 
     /// ```text
-    /// 責務: [resolve_write_target: 明示source idまたは既定値が有効な書き込み先か解決する]
-    /// 処理: [明示値を優先し、tableに含まれるsource idであることを確認する]
+    /// 責務: [resolve_write_target: 明示source idまたは既定値を選び、tableへの所属を検証する]
+    /// 処理: [明示値を優先し、source idがこのtableに含まれることを確認する]
     /// 引数: [explicit_source_id: 指定があれば使うsource id]
     /// 戻り値: [String: 解決したsource id]
     /// エラー: [LogicalTableError: target未指定、またはtableに含まれないsource id]
@@ -646,7 +646,7 @@ fn open_compatible_source(
 //   処理: [
 //     1: 両CSVのschema、source recordのindexと値、target indexを検証する
 //     2: 両CSVをbackupし、transactionでrecordを削除・挿入して保存する
-//     3: 保存失敗時はtransactionを戻し、両CSVをbackupから復元する
+//     3: 保存処理失敗時、activeなtransactionをrollbackし、backupから両CSVの復元を試みる
 //   ]
 //   引数: [source_path: 移動元CSV, source_record_index: 移動元data record位置, target_path: 移動先CSV, target_record_index: 移動先data record位置, expected_values: 移送対象の期待値, schema: 両CSVに必要なordered header]
 //   戻り値: [(): 両CSVへの移送が完了したとき値を返さない]
@@ -865,7 +865,7 @@ fn is_csv(path: &Path) -> bool {
 /// MissingDirectory: source pathが存在しないかdirectoryではない
 /// MissingHeader: CSVにheader recordがない
 /// ReadDirectory: directoryまたはentryを読み込めない
-/// Csv: CSV fileを開く、または解析できない
+/// Csv: CSV fileを開く、読み込む、または解析できない
 /// ]
 /// ```
 pub enum LogicalLoadError {

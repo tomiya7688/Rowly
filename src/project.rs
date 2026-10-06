@@ -28,13 +28,13 @@ pub const PROJECT_VERSION: u64 = 1;
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// ```text
 /// 責務: [
-/// RowlyProject: source参照、script path、history pathから成るproject manifestのmodel
+/// RowlyProject: source参照、script path、history directoryから成るproject manifestのmodel
 /// ]
 /// フィールド: [
 /// name: projectの表示名
 /// sources: projectが宣言するsource群
-/// scripts: init、generated、user、macro scriptの参照
-/// history: project historyのpath参照
+/// scripts: init、generated、user scriptとmacro directoryの参照
+/// history: project history directoryへのpath参照
 /// ]
 /// ```
 pub struct RowlyProject {
@@ -51,7 +51,7 @@ pub struct RowlyProject {
     /// ```
     pub scripts: ProjectScripts,
     /// ```text
-    /// 責務: [history: project history fileへのpath参照]
+    /// 責務: [history: project history directoryへのpath参照]
     /// ```
     pub history: PathBuf,
 }
@@ -123,7 +123,7 @@ pub enum SourceKind {
 /// init: project configを初期化するscript
 /// generated: アプリが生成・管理するscript
 /// user: user script
-/// macros: project macro script
+/// macros: project macro directoryへのpath参照
 /// ]
 /// ```
 pub struct ProjectScripts {
@@ -140,7 +140,7 @@ pub struct ProjectScripts {
     /// ```
     pub user: PathBuf,
     /// ```text
-    /// 責務: [macros: project macro scriptへのpath参照]
+    /// 責務: [macros: project macro directoryへのpath参照]
     /// ```
     pub macros: PathBuf,
 }
@@ -345,7 +345,7 @@ impl RowlyProject {
     //   ]
     //   処理: [
     //     1: formatとversionを検証する
-    //     2: source、scripts、historyを読み取り型と制約を確認する
+    //     2: source、scripts、historyを読み取る。recursiveはboolean値だけ採用し、それ以外はfalseにする
     //     3: project全体をvalidateして返す
     //   ]
     //   引数: [value: parse済みmanifest JSON]
@@ -811,7 +811,7 @@ fn optional_path_field(
 /// ProjectError: project manifestのread、parse、schema検証、writeの失敗を表す
 /// ]
 /// 補足: [
-/// Read: manifestやsource discovery用directoryを読み込めない
+/// Read: manifest、source CSV、またはsource discovery用directoryを読み込めない
 /// Parse: manifest JSONをparseできない
 /// Schema: manifestの形式またはfield制約に違反する
 /// Write: manifest fileのatomic writeに失敗する

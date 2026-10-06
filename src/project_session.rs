@@ -134,7 +134,7 @@ impl ProjectSession {
     /// 引数: [path: 開くmanifestまたはarchive path]
     /// 戻り値: [Self: projectとbackingを保持するclean session]
     /// 副作用: [package session用にtemporary workspaceを作成する]
-    /// エラー: [ProjectSessionError: backing種別、workspace、archive、manifest、またはinit設定の失敗]
+    /// エラー: [ProjectSessionError: backing種別、workspace、archive、またはmanifestの失敗。init設定はapply_safe_init時に読む]
     /// ```
     pub fn open(path: impl AsRef<Path>) -> Result<Self, ProjectSessionError> {
         let path = path.as_ref().to_path_buf();
@@ -187,7 +187,7 @@ impl ProjectSession {
     /// 処理: [source idを確認し、project initのgenerated設定を更新する]
     /// 引数: [source_id: project source id, document: type宣言を抽出するCSV document]
     /// 戻り値: [(): generated config保存成功時に値を返さない]
-    /// 副作用: [generated init fileを更新し、structure / config dirty flagを立てる]
+    /// 副作用: [必要ならinit.rlyとuser.rlyを作成し、generated init fileを更新してstructure / config dirtyを立てる]
     /// エラー: [ProjectSessionError: source idが不明、document処理、またはgenerated file writeの失敗]
     /// ```
     pub fn save_generated_column_types(
@@ -218,7 +218,7 @@ impl ProjectSession {
     /// 処理: [source idを確認し、project initのgenerated設定を更新する]
     /// 引数: [source_id: project source id, document: validation ruleを抽出するCSV document]
     /// 戻り値: [(): generated config保存成功時に値を返さない]
-    /// 副作用: [generated init fileを更新し、structure / config dirty flagを立てる]
+    /// 副作用: [必要ならinit.rlyとuser.rlyを作成し、generated init fileを更新してstructure / config dirtyを立てる]
     /// エラー: [ProjectSessionError: source idが不明、document処理、またはgenerated file writeの失敗]
     /// ```
     pub fn save_generated_validation_rules(
@@ -246,7 +246,7 @@ impl ProjectSession {
 
     /// ```text
     /// 責務: [open_source_document: 宣言済みfile sourceを開きsafe init configを適用する]
-    /// 処理: [source idと種別を確認し、resolved CSVを開いてconfig-only initを適用する]
+    /// 処理: [source idと種別を確認し、sidecar metadataを読まずにresolved CSVを開いてconfig-only initを適用する]
     /// 引数: [source_id: 開くfile sourceのstable id]
     /// 戻り値: [CsvDocument: safe init適用後のCSV document]
     /// エラー: [ProjectSessionError: source不明 / directory指定、CSV open、またはsafe initの失敗]
@@ -463,7 +463,7 @@ impl ProjectSession {
 /// UnsupportedBacking: .rwprj / .rowlyx以外のpathが指定された
 /// TemporaryWorkspace: package編集用workspaceを作れない
 /// Project: manifest modelのread、parse、validation、save失敗
-/// ProjectInit: config-only initの読込または適用失敗
+/// ProjectInit: config-only initの読込・適用、またはgenerated設定の検証・保存失敗
 /// Rowlyx: archiveのopen、extract、pack、validation失敗
 /// Document: source CSV documentの失敗
 /// SourceNotFound: 指定source idがmanifestにない

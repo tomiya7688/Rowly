@@ -5,6 +5,13 @@ use tempfile::tempdir;
 use super::*;
 use crate::process::CsvDocument;
 
+// {
+//   責務: [open: テスト用CSVを一時作成し、documentとTempDirを返してfile lifetimeを保つ。]
+//   処理: [TempDirを作成しsourceをCSV fileへ書き込み、CsvDocumentとして開く。]
+//   引数: [source: テストで開くCSVの初期内容。]
+//   戻り値: [(TempDir, CsvDocument): 一時ディレクトリと開いたdocument。]
+//   副作用: [一時ディレクトリにCSV fileを作成する。]
+// }
 fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
     let directory = tempdir().unwrap();
     let path = directory.path().join("header_access.csv");
@@ -14,6 +21,12 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 }
 
 #[test]
+// {
+//   責務: [column_index_returns_one_based_position: ColumnIndexがheader位置を1-basedの数値で返すことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn column_index_returns_one_based_position() {
     let (_directory, mut document) = open("ID,名前,状態\n1,山田,\n");
     let report = run(
@@ -30,6 +43,12 @@ fn column_index_returns_one_based_position() {
 }
 
 #[test]
+// {
+//   責務: [header_access_integrates_with_row_loop_and_predicates: header指定のcell読取・日本語predicate・cell更新をrow loop内で組み合わせる。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn header_access_integrates_with_row_loop_and_predicates() {
     let (_directory, mut document) = open("ID,名前,状態\n1,山田,\n2,Alice,\n3,田中,\n");
 
@@ -53,6 +72,12 @@ fn header_access_integrates_with_row_loop_and_predicates() {
 }
 
 #[test]
+// {
+//   責務: [header_access_sees_prior_edits_in_same_script: 同一scriptで先に行ったheader指定cell編集を後続の読取が反映することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn header_access_sees_prior_edits_in_same_script() {
     let (_directory, mut document) = open("名前\nold\n");
     let report = run(
@@ -68,6 +93,12 @@ fn header_access_sees_prior_edits_in_same_script() {
 }
 
 #[test]
+// {
+//   責務: [missing_header_is_reported: 存在しないheader名での読取を診断することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn missing_header_is_reported() {
     let (_directory, mut document) = open("名前\n山田\n");
     let error = run(
@@ -82,6 +113,12 @@ fn missing_header_is_reported() {
 }
 
 #[test]
+// {
+//   責務: [ambiguous_header_is_reported: 重複header名のColumnIndex参照を曖昧として拒否することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn ambiguous_header_is_reported() {
     let (_directory, mut document) = open("名前,名前\n山田,田中\n");
     let error = run(
@@ -96,6 +133,12 @@ fn ambiguous_header_is_reported() {
 }
 
 #[test]
+// {
+//   責務: [header_argument_must_be_text: ColumnIndexへString以外のheader引数を渡したときの型診断を確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn header_argument_must_be_text() {
     let (_directory, mut document) = open("名前\n山田\n");
     let error = run(
@@ -114,6 +157,12 @@ fn header_argument_must_be_text() {
 }
 
 #[test]
+// {
+//   責務: [missing_ragged_cell_by_header_is_reported: ragged CSVの欠落cellをheader指定で参照したときの診断を確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn missing_ragged_cell_by_header_is_reported() {
     let (_directory, mut document) = open("名前,状態\n山田\n");
     let error = run(

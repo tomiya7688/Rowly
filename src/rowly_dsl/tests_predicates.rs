@@ -5,6 +5,13 @@ use tempfile::tempdir;
 use super::*;
 use crate::process::CsvDocument;
 
+// {
+//   責務: [open: テスト用CSVを一時作成し、documentとTempDirを返してfile lifetimeを保つ。]
+//   処理: [TempDirを作成しsourceをCSV fileへ書き込み、CsvDocumentとして開く。]
+//   引数: [source: テストで開くCSVの初期内容。]
+//   戻り値: [(TempDir, CsvDocument): 一時ディレクトリと開いたdocument。]
+//   副作用: [一時ディレクトリにCSV fileを作成する。]
+// }
 fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
     let directory = tempdir().unwrap();
     let path = directory.path().join("predicates.csv");
@@ -14,6 +21,12 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 }
 
 #[test]
+// {
+//   責務: [parser_uses_dedicated_ast_for_standard_namespace_calls: 標準namespace function呼び出しが専用AST nodeとしてparseされることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn parser_uses_dedicated_ast_for_standard_namespace_calls() {
     let program = parse(r#"VAR result = Text.Contains("abc", "b")"#).unwrap();
 
@@ -35,6 +48,12 @@ fn parser_uses_dedicated_ast_for_standard_namespace_calls() {
 }
 
 #[test]
+// {
+//   責務: [namespaced_string_predicates_can_be_used_directly_as_conditions: namespaced string predicateのBoolean結果をIf条件に直接使えることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn namespaced_string_predicates_can_be_used_directly_as_conditions() {
     let (_directory, mut document) = open("値\nold\n");
     run(
@@ -52,6 +71,12 @@ fn namespaced_string_predicates_can_be_used_directly_as_conditions() {
 }
 
 #[test]
+// {
+//   責務: [text_is_japanese_matches_mixed_text_containing_japanese: Text.IsJapaneseが日本語を含む文字列をtrueと判定することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn text_is_japanese_matches_mixed_text_containing_japanese() {
     let (_directory, mut document) = open("値\nold\n");
     let report = run(
@@ -68,6 +93,12 @@ fn text_is_japanese_matches_mixed_text_containing_japanese() {
 }
 
 #[test]
+// {
+//   責務: [namespaced_type_predicates_accept_text_and_typed_values: namespaced type predicateをText値とtyped valueへ適用できることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn namespaced_type_predicates_accept_text_and_typed_values() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -94,6 +125,12 @@ fn namespaced_type_predicates_accept_text_and_typed_values() {
 }
 
 #[test]
+// {
+//   責務: [boolean_return_values_from_standard_namespaces_can_drive_if_conditions: standard namespaceのBoolean戻り値でIf分岐を選べることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn boolean_return_values_from_standard_namespaces_can_drive_if_conditions() {
     let (_directory, mut document) = open("値\nold\n");
     run(
@@ -114,6 +151,12 @@ fn boolean_return_values_from_standard_namespaces_can_drive_if_conditions() {
 }
 
 #[test]
+// {
+//   責務: [standard_namespaces_and_functions_are_case_insensitive: standard namespaceとfunction名の大文字小文字を区別せずに解決することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn standard_namespaces_and_functions_are_case_insensitive() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -132,6 +175,12 @@ fn standard_namespaces_and_functions_are_case_insensitive() {
 }
 
 #[test]
+// {
+//   責務: [non_boolean_expression_condition_is_rejected: Boolean以外のexpressionを条件として使えないことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn non_boolean_expression_condition_is_rejected() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -152,6 +201,12 @@ fn non_boolean_expression_condition_is_rejected() {
 }
 
 #[test]
+// {
+//   責務: [namespaced_string_predicates_require_text_arguments: namespaced string predicateがString以外の引数を拒否することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn namespaced_string_predicates_require_text_arguments() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -170,6 +225,12 @@ fn namespaced_string_predicates_require_text_arguments() {
 }
 
 #[test]
+// {
+//   責務: [namespaced_predicate_argument_count_is_validated: namespaced predicateで必須引数が不足した場合のerrorを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn namespaced_predicate_argument_count_is_validated() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -188,6 +249,12 @@ fn namespaced_predicate_argument_count_is_validated() {
 }
 
 #[test]
+// {
+//   責務: [old_global_predicate_builtins_are_not_available: 廃止されたglobal predicate builtin名を関数として呼べないことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn old_global_predicate_builtins_are_not_available() {
     for old_call in [
         r#"Contains("abc", "a")"#,
@@ -209,6 +276,12 @@ fn old_global_predicate_builtins_are_not_available() {
 }
 
 #[test]
+// {
+//   責務: [unknown_standard_namespace_function_is_explicit: 未定義のstandard namespace functionを明示的に診断することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn unknown_standard_namespace_function_is_explicit() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -228,6 +301,12 @@ fn unknown_standard_namespace_function_is_explicit() {
 }
 
 #[test]
+// {
+//   責務: [standard_namespace_names_are_reserved_for_bindings: standard namespace名をbindingとして宣言できないことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn standard_namespace_names_are_reserved_for_bindings() {
     for name in ["Text", "Number", "Boolean"] {
         let error = parse(&format!("VAR {name} = \"value\"")).unwrap_err();
@@ -254,6 +333,12 @@ fn standard_namespace_names_are_reserved_for_bindings() {
 }
 
 #[test]
+// {
+//   責務: [legacy_predicate_names_can_still_be_user_defined_functions: 旧predicate名をuser-defined functionとして宣言・呼出しできることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn legacy_predicate_names_can_still_be_user_defined_functions() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -272,6 +357,12 @@ fn legacy_predicate_names_can_still_be_user_defined_functions() {
 }
 
 #[test]
+// {
+//   責務: [user_classes_with_namespace_names_do_not_replace_standard_namespaces: 同名user classがstandard namespace解決を置き換えないことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn user_classes_with_namespace_names_do_not_replace_standard_namespaces() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(

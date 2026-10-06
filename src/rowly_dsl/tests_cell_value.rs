@@ -5,6 +5,13 @@ use tempfile::tempdir;
 use super::*;
 use crate::process::CsvDocument;
 
+// {
+//   責務: [open: テスト用CSVを一時作成し、documentとTempDirを返してfile lifetimeを保つ。]
+//   処理: [TempDirを作成しsourceをCSV fileへ書き込み、CsvDocumentとして開く。]
+//   引数: [source: テストで開くCSVの初期内容。]
+//   戻り値: [(TempDir, CsvDocument): 一時ディレクトリと開いたdocument。]
+//   副作用: [一時ディレクトリにCSV fileを作成する。]
+// }
 fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
     let directory = tempdir().unwrap();
     let path = directory.path().join("cell_value.csv");
@@ -14,6 +21,12 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 }
 
 #[test]
+// {
+//   責務: [cell_value_reads_existing_csv_text: CSV既存cellの文字列をCellValueで読み、report変数へ保持できることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn cell_value_reads_existing_csv_text() {
     let (_directory, mut document) = open("名前,点数\n山田,42\n");
     let report = run(
@@ -30,6 +43,12 @@ fn cell_value_reads_existing_csv_text() {
 }
 
 #[test]
+// {
+//   責務: [cell_value_composes_with_predicates_and_conversions: CellValueを日本語predicate・Integer変換と組み合わせてcell値を更新できることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn cell_value_composes_with_predicates_and_conversions() {
     let (_directory, mut document) = open("名前,点数\n山田,42\n");
 
@@ -47,6 +66,12 @@ fn cell_value_composes_with_predicates_and_conversions() {
 }
 
 #[test]
+// {
+//   責務: [cell_value_reads_changes_made_earlier_in_same_script: 同じscript内で先に行ったcell編集を後続のCellValueが読み取ることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn cell_value_reads_changes_made_earlier_in_same_script() {
     let (_directory, mut document) = open("値\nold\n");
 
@@ -63,6 +88,12 @@ fn cell_value_reads_changes_made_earlier_in_same_script() {
 }
 
 #[test]
+// {
+//   責務: [cell_value_rejects_non_text_reference: CellValueへString以外の参照引数を渡すと型診断になることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn cell_value_rejects_non_text_reference() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -81,6 +112,12 @@ fn cell_value_rejects_non_text_reference() {
 }
 
 #[test]
+// {
+//   責務: [cell_value_reports_invalid_a1_reference: 不正なA1参照をCellValueへ渡したときの診断を確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn cell_value_reports_invalid_a1_reference() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -95,6 +132,12 @@ fn cell_value_reports_invalid_a1_reference() {
 }
 
 #[test]
+// {
+//   責務: [cell_value_reports_missing_ragged_cell: ragged CSVに存在しないcellをCellValueで参照したときの診断を確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn cell_value_reports_missing_ragged_cell() {
     let (_directory, mut document) = open("a,b\nc\n");
     let error = run(

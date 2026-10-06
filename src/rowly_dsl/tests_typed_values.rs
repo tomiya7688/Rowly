@@ -5,6 +5,13 @@ use tempfile::tempdir;
 use super::*;
 use crate::process::CsvDocument;
 
+// {
+//   責務: [open: テスト用CSVを一時作成し、documentとTempDirを返してfile lifetimeを保つ。]
+//   処理: [TempDirを作成しsourceをCSV fileへ書き込み、CsvDocumentとして開く。]
+//   引数: [source: テストで開くCSVの初期内容。]
+//   戻り値: [(TempDir, CsvDocument): 一時ディレクトリと開いたdocument。]
+//   副作用: [一時ディレクトリにCSV fileを作成する。]
+// }
 fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
     let directory = tempdir().unwrap();
     let path = directory.path().join("typed-values.csv");
@@ -14,6 +21,12 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 }
 
 #[test]
+// {
+//   責務: [integer_and_decimal_comparisons_are_numeric: Integerの大小比較が数値順になることと、Decimal/Integer比較を条件に使えることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn integer_and_decimal_comparisons_are_numeric() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -39,6 +52,12 @@ fn integer_and_decimal_comparisons_are_numeric() {
 }
 
 #[test]
+// {
+//   責務: [quoted_values_remain_strings_until_explicitly_converted: quoted valueは明示変換まではString比較され、Integer変換後は数値比較される。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn quoted_values_remain_strings_until_explicitly_converted() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -60,6 +79,12 @@ fn quoted_values_remain_strings_until_explicitly_converted() {
 }
 
 #[test]
+// {
+//   責務: [boolean_conversion_and_equality_work: Boolean変換のcase正規化とtyped Boolean同士の比較を確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn boolean_conversion_and_equality_work() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -81,6 +106,12 @@ fn boolean_conversion_and_equality_work() {
 }
 
 #[test]
+// {
+//   責務: [typed_values_can_be_written_to_cells_as_text: Decimal値をCSV cellへ文字列として書き込めることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn typed_values_can_be_written_to_cells_as_text() {
     let (_directory, mut document) = open("値\nold\n");
     run(
@@ -96,6 +127,12 @@ fn typed_values_can_be_written_to_cells_as_text() {
 }
 
 #[test]
+// {
+//   責務: [ordered_comparison_rejects_boolean_and_string_mix: BooleanとStringの大小比較を拒否することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn ordered_comparison_rejects_boolean_and_string_mix() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -116,6 +153,12 @@ fn ordered_comparison_rejects_boolean_and_string_mix() {
 }
 
 #[test]
+// {
+//   責務: [invalid_conversion_is_reported: 小数形式StringからIntegerへの不正変換を診断することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn invalid_conversion_is_reported() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(

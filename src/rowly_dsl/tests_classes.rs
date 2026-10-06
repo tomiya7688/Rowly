@@ -5,6 +5,13 @@ use tempfile::tempdir;
 use super::*;
 use crate::process::CsvDocument;
 
+// {
+//   責務: [open: テスト用CSVを一時作成し、documentとTempDirを返してfile lifetimeを保つ。]
+//   処理: [TempDirを作成しsourceをCSV fileへ書き込み、CsvDocumentとして開く。]
+//   引数: [source: テストで開くCSVの初期内容。]
+//   戻り値: [(TempDir, CsvDocument): 一時ディレクトリと開いたdocument。]
+//   副作用: [一時ディレクトリにCSV fileを作成する。]
+// }
 fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
     let directory = tempdir().unwrap();
     let path = directory.path().join("data.csv");
@@ -14,6 +21,12 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 }
 
 #[test]
+// {
+//   責務: [parses_class_fields_methods_and_new_expression: classのfield・method・New式が期待するASTになることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn parses_class_fields_methods_and_new_expression() {
     let program = parse(
         r#"
@@ -52,6 +65,12 @@ fn parses_class_fields_methods_and_new_expression() {
 }
 
 #[test]
+// {
+//   責務: [parses_single_inheritance: 単一継承classのparent名がASTへ記録されることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn parses_single_inheritance() {
     let program = parse(
         r#"
@@ -73,6 +92,12 @@ fn parses_single_inheritance() {
 }
 
 #[test]
+// {
+//   責務: [inherited_fields_are_initialized_and_child_fields_override_parent_fields: 親fieldの初期化・継承と子classによる同名fieldのoverrideを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn inherited_fields_are_initialized_and_child_fields_override_parent_fields() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -101,6 +126,12 @@ fn inherited_fields_are_initialized_and_child_fields_override_parent_fields() {
 }
 
 #[test]
+// {
+//   責務: [inherited_methods_are_available_and_child_methods_override_parent_methods: 親methodの継承と子classによるmethod overrideを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn inherited_methods_are_available_and_child_methods_override_parent_methods() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -134,6 +165,12 @@ fn inherited_methods_are_available_and_child_methods_override_parent_methods() {
 }
 
 #[test]
+// {
+//   責務: [inherited_init_is_used_when_child_does_not_override_it: 子classがInitを定義しない場合に親Initでfieldを初期化することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn inherited_init_is_used_when_child_does_not_override_it() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -161,6 +198,12 @@ fn inherited_init_is_used_when_child_does_not_override_it() {
 }
 
 #[test]
+// {
+//   責務: [super_calls_parent_method_and_keeps_self_bound_to_child_instance: Superで親methodを呼び、Selfが子instanceを参照し続けることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn super_calls_parent_method_and_keeps_self_bound_to_child_instance() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -192,6 +235,12 @@ fn super_calls_parent_method_and_keeps_self_bound_to_child_instance() {
 }
 
 #[test]
+// {
+//   責務: [super_resolution_starts_at_the_defining_class_parent: Super解決が呼出元method定義classのparentから始まることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn super_resolution_starts_at_the_defining_class_parent() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -235,6 +284,12 @@ fn super_resolution_starts_at_the_defining_class_parent() {
 }
 
 #[test]
+// {
+//   責務: [super_init_can_initialize_parent_part_of_child_instance: Super.Initが子instanceの親fieldを初期化し、子fieldも保つことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn super_init_can_initialize_parent_part_of_child_instance() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -267,6 +322,12 @@ fn super_init_can_initialize_parent_part_of_child_instance() {
 }
 
 #[test]
+// {
+//   責務: [super_outside_method_is_reported: method外のSuper呼び出しをSuperOutsideMethodとして拒否することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn super_outside_method_is_reported() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -284,6 +345,12 @@ fn super_outside_method_is_reported() {
 }
 
 #[test]
+// {
+//   責務: [super_on_root_class_is_reported: parentを持たないroot classでSuperを使うとNoSuperClassになることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn super_on_root_class_is_reported() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -309,6 +376,12 @@ fn super_on_root_class_is_reported() {
 }
 
 #[test]
+// {
+//   責務: [unknown_parent_class_is_reported: 未定義のparent classをUnknownParentClassとして拒否することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn unknown_parent_class_is_reported() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -332,6 +405,12 @@ fn unknown_parent_class_is_reported() {
 }
 
 #[test]
+// {
+//   責務: [inheritance_cycles_are_reported: class継承cycleをInheritanceCycleとして拒否することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn inheritance_cycles_are_reported() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -355,6 +434,12 @@ fn inheritance_cycles_are_reported() {
 }
 
 #[test]
+// {
+//   責務: [constructor_arguments_are_parsed_and_init_runs_automatically: New式のconstructor引数がparseされInitが自動実行されることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn constructor_arguments_are_parsed_and_init_runs_automatically() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -388,6 +473,12 @@ fn constructor_arguments_are_parsed_and_init_runs_automatically() {
 }
 
 #[test]
+// {
+//   責務: [constructor_arguments_can_use_typed_expressions: typed arithmetic expressionをconstructor引数として評価することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn constructor_arguments_can_use_typed_expressions() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -410,6 +501,12 @@ fn constructor_arguments_can_use_typed_expressions() {
 }
 
 #[test]
+// {
+//   責務: [constructor_argument_count_is_reported: Init parameterより少ないconstructor引数をConstructorArgumentCountとして拒否することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn constructor_argument_count_is_reported() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -439,6 +536,12 @@ fn constructor_argument_count_is_reported() {
 }
 
 #[test]
+// {
+//   責務: [class_without_init_rejects_constructor_arguments: Initを持たないclassへのconstructor引数を拒否することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn class_without_init_rejects_constructor_arguments() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -464,6 +567,12 @@ fn class_without_init_rejects_constructor_arguments() {
 }
 
 #[test]
+// {
+//   責務: [instance_fields_can_be_read_and_written: instance fieldの読み書きとFieldSet eventを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn instance_fields_can_be_read_and_written() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -493,6 +602,12 @@ fn instance_fields_can_be_read_and_written() {
 }
 
 #[test]
+// {
+//   責務: [methods_use_self_and_can_mutate_instance_fields: method内のSelfでinstance fieldを更新し、その戻り値とeventを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn methods_use_self_and_can_mutate_instance_fields() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -527,6 +642,12 @@ fn methods_use_self_and_can_mutate_instance_fields() {
 }
 
 #[test]
+// {
+//   責務: [method_return_values_can_feed_csv_edits: methodの戻り値を複数cell編集に渡し、編集をundoできることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn method_return_values_can_feed_csv_edits() {
     let (_directory, mut document) = open("値\n1\n2\n");
     run(
@@ -554,6 +675,12 @@ fn method_return_values_can_feed_csv_edits() {
 }
 
 #[test]
+// {
+//   責務: [object_aliases_share_instance_identity: object aliasからのfield更新が同一instanceへ反映されることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn object_aliases_share_instance_identity() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -577,6 +704,12 @@ fn object_aliases_share_instance_identity() {
 }
 
 #[test]
+// {
+//   責務: [unknown_method_is_reported: 未定義method呼び出しをUnknownMethodとして拒否することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn unknown_method_is_reported() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -600,6 +733,12 @@ fn unknown_method_is_reported() {
 }
 
 #[test]
+// {
+//   責務: [objects_cannot_be_written_directly_to_csv_cells: object値をCSV cellへ直接書き込めないことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn objects_cannot_be_written_directly_to_csv_cells() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -622,6 +761,12 @@ fn objects_cannot_be_written_directly_to_csv_cells() {
 }
 
 #[test]
+// {
+//   責務: [reports_missing_end_class_at_opening_line: End Class欠落をClass開始行の位置情報付きで報告することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn reports_missing_end_class_at_opening_line() {
     let error = parse(
         r#"

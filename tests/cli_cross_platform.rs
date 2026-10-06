@@ -9,6 +9,11 @@ use tempfile::tempdir;
 
 // 親側の非 UTF-8 設定を子 bridge が引き継がないことも検査する。
 // テストプロセス自身の環境を変更しないため、他のテストと並列実行できる。
+// {
+//   責務: [cli: 指定working directoryとUTF-8を制限した環境でRowly CLI commandを作成する。]
+//   引数: [directory: child processのcurrent directory。]
+//   戻り値: [Command: 実行argumentを追加できるRowly CLI command。]
+// }
 fn cli(directory: &Path) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_rowly"));
     command
@@ -18,6 +23,12 @@ fn cli(directory: &Path) -> Command {
     command
 }
 
+// {
+//   責務: [assert_success: CLI成功statusを検査してUTF-8 stdoutを返す。]
+//   引数: [output: 実行済みCLI processの終了status・stdout・stderr。]
+//   戻り値: [String: 成功したCLI stdout。]
+//   エラー: [statusが失敗ならstdoutとstderrを添えてtestを失敗させる。]
+// }
 fn assert_success(output: Output) -> String {
     assert!(
         output.status.success(),
@@ -30,6 +41,12 @@ fn assert_success(output: Output) -> String {
 }
 
 #[test]
+// {
+//   責務: [csv_inspection_accepts_unicode_relative_paths_and_keeps_crlf_input_unchanged: 日本語の相対CSV pathをCLIが読み取り、CRLF source bytesを変更しないことを確認する。]
+//   処理: [一時working directoryへCSVを作成し、表示情報・row/column数・元file bytesを検証する。]
+//   戻り値: [(): assertion成功時は値を返さない。]
+//   副作用: [一時directoryとCRLF CSV fixtureを作成する。]
+// }
 fn csv_inspection_accepts_unicode_relative_paths_and_keeps_crlf_input_unchanged() {
     let directory = tempdir().unwrap();
     let working = directory.path().join("日本語 作業用");
@@ -47,6 +64,12 @@ fn csv_inspection_accepts_unicode_relative_paths_and_keeps_crlf_input_unchanged(
 }
 
 #[test]
+// {
+//   責務: [excel_cli_round_trip_preserves_unicode_values_paths_and_sheet_names: Unicode path・worksheet・CSV文字列を含むExcel CLI round tripでcell値を保持することを確認する。]
+//   処理: [CSVをexport/importし、表示結果・全row・代表cell・改行正規化と入力不変を検査する。]
+//   戻り値: [(): assertion成功時は値を返さない。]
+//   副作用: [一時directoryに入力CSV・workbook・復元CSVを作成する。]
+// }
 fn excel_cli_round_trip_preserves_unicode_values_paths_and_sheet_names() {
     let directory = tempdir().unwrap();
     let working = directory.path().join("日本語 帳票");
@@ -91,6 +114,11 @@ fn excel_cli_round_trip_preserves_unicode_values_paths_and_sheet_names() {
 }
 
 #[test]
+// {
+//   責務: [excel_cli_default_sheet_and_active_sheet_round_trip: sheet名省略時に既定sheetへexportし、active sheetからimportするCLI動作を確認する。]
+//   戻り値: [(): assertion成功時は値を返さない。]
+//   副作用: [一時directory内にCSV・workbook・round-trip CSVを作成する。]
+// }
 fn excel_cli_default_sheet_and_active_sheet_round_trip() {
     let directory = tempdir().unwrap();
     fs::write(directory.path().join("input.csv"), "value\n001\n").unwrap();
@@ -112,6 +140,12 @@ fn excel_cli_default_sheet_and_active_sheet_round_trip() {
 }
 
 #[test]
+// {
+//   責務: [missing_python_override_is_reported_without_creating_output: 存在しないROWLY_PYTHON指定を明示的なCLI errorとして報告し、workbookを作らないことを確認する。]
+//   処理: [invalid launcherでexportを起動し、終了code・stderr・出力未作成・入力保持を検証する。]
+//   戻り値: [(): assertion成功時は値を返さない。]
+//   副作用: [一時directoryに入力CSVを作成し、子CLI processを起動する。]
+// }
 fn missing_python_override_is_reported_without_creating_output() {
     let directory = tempdir().unwrap();
     fs::write(directory.path().join("input.csv"), "value\n1\n").unwrap();
@@ -134,6 +168,11 @@ fn missing_python_override_is_reported_without_creating_output() {
 }
 
 #[test]
+// {
+//   責務: [invalid_arguments_return_usage_exit_code_on_both_platforms: 不正なExcel CLI argumentがplatform共通のusage終了codeと案内を返すことを確認する。]
+//   戻り値: [(): assertion成功時は値を返さない。]
+//   副作用: [一時directoryでchild CLI processを起動する。]
+// }
 fn invalid_arguments_return_usage_exit_code_on_both_platforms() {
     let directory = tempdir().unwrap();
     let output = cli(directory.path())

@@ -49,7 +49,7 @@ pub fn execute(
 /// ```text
 /// 責務: [run: DSL sourceのparseとexecuteを続けて行う]
 /// 引数: [source: 実行するDSL source, document: DSL commandの対象document]
-/// 戻り値: [ExecutionReport: 実行結果のsnapshot]
+/// 戻り値: [ExecutionReport: 記録eventとglobal scalar stateの部分snapshot]
 /// 副作用: [documentへのDSL編集を適用する]
 /// エラー: [DslError: parseまたはruntime実行の失敗]
 /// ```

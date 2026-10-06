@@ -45,8 +45,8 @@ pub struct LogicalProject {
 /// default_write_target: 省略時の行追加先として設定されたsource id
 /// display_order: rowsのindexを表示順に並べた一覧
 /// rows: provenanceを含む論理行
-/// move_undo: 取り消し可能な最新順の行移動履歴
-/// move_redo: 再実行可能な行移動履歴
+/// move_undo: 未処理の行移動undo履歴
+/// move_redo: 未処理の行移動redo履歴
 /// ]
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]

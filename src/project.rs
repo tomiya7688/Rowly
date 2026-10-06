@@ -501,7 +501,7 @@ impl RowlyProject {
 
 // {
 //   責務: [
-//     write_project_file_atomic: bytesをtemporary manifestへ書き、成功後にproject fileを置換する
+//     write_project_file_atomic: bytesをtemporary fileへ書き、成功後に指定されたproject fileを置換する
 //   ]
 //   処理: [
 //     1: 同名temporary fileの衝突を避けて作成し、bytesを書いてsyncする

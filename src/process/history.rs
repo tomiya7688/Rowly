@@ -85,10 +85,13 @@ pub(super) enum EditOperation {
 impl EditOperation {
     // ```text
     // 責務: [
-    // is_empty: 操作が変更内容を持たないかを再帰的に判定する
+    // is_empty: 操作payloadがvariantごとの空・同値条件を満たすか再帰的に判定する
     // ]
     // 処理: [
-    // 1: variantごとに差分を調べ、Batchは各操作を再帰確認する
+    // 1: variantごとにpayloadの空・同値条件を調べ、Batchは各操作を再帰確認する
+    // ]
+    // 補足: [
+    // CellsとColumnsは変更vectorの空だけを見て、各要素のbefore/after等は比較しない
     // ]
     // 引数: [
     // self: 判定対象操作
@@ -110,10 +113,10 @@ impl EditOperation {
 
     // ```text
     // 責務: [
-    // affects_csv: 操作がcanonical CSV内容を変えるか判定する
+    // affects_csv: 操作payloadをCSV変更として扱うか判定する
     // ]
     // 処理: [
-    // 1: CSV変更variantを識別し、Batchは各操作を再帰確認する
+    // 1: CSV変更variantのpayloadを調べ、Batchは各操作を再帰確認する
     // ]
     // 引数: [
     // self: 判定対象操作
@@ -123,6 +126,7 @@ impl EditOperation {
     // ]
     // 補足: [
     // ValidationRulesはsession設定のためCSV dirty状態に含めない
+    // CellsとColumnsは変更vectorが非空ならCSV変更として扱い、要素内の差分は再比較しない
     // ]
     // ```
     fn affects_csv(&self) -> bool {
@@ -182,17 +186,17 @@ pub(super) struct EditHistory {
 impl EditHistory {
     // ```text
     // 責務: [
-    // is_dirty: 現在のCSV内容が最後の保存状態から変わったか判定する
+    // is_dirty: 保存済みCSV状態との相違またはtransaction内のCSV変更操作を判定する
     // ]
     // 処理: [
     // 1: 現在と保存済みCSV状態IDを比較する
-    // 2: active transaction内にCSV変更があればdirtyとする
+    // 2: active transaction内にCSV変更として扱う操作があればdirtyとする
     // ]
     // 引数: [
     // self: 履歴状態
     // ]
     // 戻り値: [
-    // bool: CSV差分が確定またはtransaction内にある場合true
+    // bool: 保存済み状態とCSV状態IDが異なるかtransactionにCSV変更操作があればtrue
     // ]
     // ```
     pub(super) fn is_dirty(&self) -> bool {
@@ -245,7 +249,7 @@ impl EditHistory {
     // record: 空操作を除き、transactionまたはundo履歴へ操作を記録する
     // ]
     // 処理: [
-    // 1: 空操作を無視する
+    // 1: is_emptyがtrueの操作を無視する
     // 2: active transactionへ追加するか、確定commandとして記録する
     // ]
     // 引数: [

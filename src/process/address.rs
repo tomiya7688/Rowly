@@ -149,6 +149,9 @@ impl fmt::Display for CellRef {
     // 戻り値: [
     // fmt::Result: 書き込み結果
     // ]
+    // 補足: [
+    // rowまたはcolumnがusize::MAXの場合、1-based変換でoverflowする。overflow checks有効時はpanicし、無効時は不正な表記になりうる
+    // ]
     // ```
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut number = self.column + 1;
@@ -341,7 +344,7 @@ impl fmt::Display for CellRange {
 /// ]
 /// 補足: [
 /// InvalidCell: A1形式のcell参照が不正
-/// InvalidRange: 範囲区切りまたは範囲端点が不正
+/// InvalidRange: 区切りが複数ある、または末尾側の範囲端点が空
 /// Overflow: 列・行の数値がusizeで表現できない
 /// ]
 /// ```

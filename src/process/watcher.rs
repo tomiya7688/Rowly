@@ -12,11 +12,12 @@ use thiserror::Error;
 /// ]
 /// フィールド: [
 /// _watcher: parent directoryを監視し続けるnotify watcher
-/// receiver: coalesceした変更hintまたは監視errorの受信口
+/// receiver: 容量1のchannelから変更hintまたは届いた監視errorを受け取る
 /// ]
 /// 補足: [
 /// atomic replacement後も監視が継続するようCSVのparent directoryを監視する
 /// hintはCSV内容の変更確定を意味しないため、呼び出し側がfingerprintを検証する
+/// hintとerrorのchannel通知はtry_sendによるbest-effortで、channel満杯時は欠落する
 /// ]
 /// ```
 pub(crate) struct CsvFileWatcher {
@@ -27,11 +28,11 @@ pub(crate) struct CsvFileWatcher {
 impl CsvFileWatcher {
     /// ```text
     /// 責務: [
-    /// new: CSVのparent directoryを監視し、関連eventをcallbackとhint channelへ送る
+    /// new: CSVのparent directoryを監視し、関連eventをcallbackしhint channelへbest-effort通知する
     /// ]
     /// 処理: [
     /// 1: CSV pathをcanonicalizeし、parent pathとfile nameを得る
-    /// 2: 対象file eventと監視errorを受けるwatcherを作成する
+    /// 2: 対象file eventと監視errorをcallbackし、通知を容量1 channelへ試行するwatcherを作成する
     /// 3: parent directoryをnon-recursiveで監視する
     /// ]
     /// 引数: [
@@ -105,10 +106,11 @@ impl CsvFileWatcher {
     /// self: 対象watcher
     /// ]
     /// 戻り値: [
-    /// Result<bool, CsvWatchError>: hintの有無、またはwatcher event/stopped error
+    /// Result<bool, CsvWatchError>: hintの有無、受信済みwatcher error、またはchannel stopped error
     /// ]
     /// 補足: [
     /// hintだけではCSV内容変更を確定できないため、呼び出し側がfingerprintを確認する
+    /// hint/errorは容量1 channelでcoalesceされ、channel満杯時は通知が欠落しうる
     /// ]
     /// ```
     pub(crate) fn take_change_hint(&mut self) -> Result<bool, CsvWatchError> {

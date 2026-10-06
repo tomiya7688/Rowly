@@ -157,7 +157,7 @@ impl ColumnCell {
 /// フィールド: [
 /// column: 検証したzero-based column index
 /// column_type: 適用した型
-/// checked_cells: header以外で値のあるcell数
+/// checked_cells: header以外で列内に存在するcell数。空文字cellも含む
 /// mismatches: 型に適合しなかったcellと文字列値
 /// ]
 /// ```
@@ -207,7 +207,7 @@ impl ColumnTypeReport {
 
     /// ```text
     /// 責務: [
-    /// checked_cells: 型判定した値ありcell数を返す
+    /// checked_cells: 型判定したcell数（空文字cellを含む）を返す
     /// ]
     /// 処理: [
     /// 1: 保持している判定件数を返す
@@ -267,7 +267,7 @@ impl ColumnTypeReport {
 /// ]
 /// フィールド: [
 /// column: 検証したzero-based column index
-/// checked_cells: header以外で値のあるcell数
+/// checked_cells: header以外で列内に存在するcell数。空文字cellも含む
 /// matches: 対象文字範囲に一致したcell
 /// mismatches: 対象文字範囲に一致しなかったcell
 /// ]
@@ -300,7 +300,7 @@ impl JapaneseCheckReport {
 
     /// ```text
     /// 責務: [
-    /// checked_cells: 日本語文字判定した値ありcell数を返す
+    /// checked_cells: 日本語文字を判定したcell数（空文字cellを含む）を返す
     /// ]
     /// 処理: [
     /// 1: 保持している判定件数を返す
@@ -426,7 +426,7 @@ impl CsvDocument {
     /// ]
     /// 処理: [
     /// 1: 指定columnの存在を確認する
-    /// 2: 値のあるdata cellを型判定し、位置と元値を集める
+    /// 2: header以外の全cell（空文字を含む）を型判定し、位置と元値を集める
     /// ]
     /// 引数: [
     /// self: 検証対象document
@@ -499,7 +499,7 @@ impl CsvDocument {
     /// ]
     /// 処理: [
     /// 1: 指定columnの存在を確認する
-    /// 2: 値のあるdata cellを検査し、一致と不一致に分ける
+    /// 2: header以外の全cell（空文字を含む）を検査し、一致と不一致に分ける
     /// ]
     /// 引数: [
     /// self: 検証対象document

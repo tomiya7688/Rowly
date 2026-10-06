@@ -214,7 +214,7 @@ impl ColumnMetadata {
     // self: 列挙対象metadata
     // ]
     // 戻り値: [
-    // impl Iterator<Item = (&str, ColumnType)>: 宣言順のheader/type pairs
+    // impl Iterator<Item = (&str, ColumnType)>: header keyの昇順に並ぶheader/type pairs
     // ]
     // ```
     pub(super) fn declarations(&self) -> impl Iterator<Item = (&str, ColumnType)> {

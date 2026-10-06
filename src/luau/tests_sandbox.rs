@@ -4,6 +4,13 @@ use tempfile::tempdir;
 
 use super::*;
 
+// {
+//   責務: [sample_document: Luau security test用のCSV fixtureを一時作成してCsvDocumentを開く。]
+//   処理: [TempDirへ固定のName/Score CSVを書き込み、CsvDocument::openへ渡す。]
+//   引数: []
+//   戻り値: [(TempDir, CsvDocument): 一時ディレクトリと開いたdocument。]
+//   副作用: [一時ディレクトリにsample.csvを作成する。]
+// }
 fn sample_document() -> (tempfile::TempDir, CsvDocument) {
     let directory = tempdir().unwrap();
     let path = directory.path().join("sample.csv");
@@ -12,6 +19,12 @@ fn sample_document() -> (tempfile::TempDir, CsvDocument) {
     (directory, document)
 }
 
+// {
+//   責務: [all_public_entrypoints_expose_only_the_documented_surface: 全公開execute入口が許可globalと8個のRowly APIだけを公開し、編集historyを維持することを確認する。]
+//   処理: [global/Rowly allowlistと禁止名をscript内で走査し、4実行入口の各VMでcell編集とhistoryを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 #[test]
 fn all_public_entrypoints_expose_only_the_documented_surface() {
     // 実装側の許可リストを流用せず、公開契約を独立に検査する。
@@ -80,6 +93,12 @@ fn all_public_entrypoints_expose_only_the_documented_surface() {
     }
 }
 
+// {
+//   責務: [sandbox_keeps_safe_standard_libraries_and_user_tables_usable: 許可した標準library・table操作・coroutineとRowly cell編集がsandbox内で使えることを確認する。]
+//   処理: [table/string/math/bit32/utf8/buffer/vector/metatable/coroutine操作を実行し、Rowly編集結果を確認する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 #[test]
 fn sandbox_keeps_safe_standard_libraries_and_user_tables_usable() {
     let (_directory, mut document) = sample_document();
@@ -117,6 +136,12 @@ fn sandbox_keeps_safe_standard_libraries_and_user_tables_usable() {
     assert_eq!(document.cell_a1("B2").unwrap(), Some("42"));
 }
 
+// {
+//   責務: [rowly_and_standard_tables_cannot_be_modified_even_with_raw_operations: Rowly API・標準library・global・metatableをraw操作でも変更できないことを確認する。]
+//   処理: [Rowly・library・global・string metatableへの通常/raw mutationを失敗させ、安全な読取と編集を確認する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 #[test]
 fn rowly_and_standard_tables_cannot_be_modified_even_with_raw_operations() {
     let (_directory, mut document) = sample_document();
@@ -146,6 +171,12 @@ fn rowly_and_standard_tables_cannot_be_modified_even_with_raw_operations() {
     assert_eq!(document.cell_a1("B2").unwrap(), Some("42"));
 }
 
+// {
+//   責務: [global_shadowing_and_user_state_do_not_escape_the_current_execution: global shadowingを許しつつuser stateを次のVM実行へ持ち越さないことを確認する。]
+//   処理: [1回目のVMでglobalと標準名をshadowし、2回目のVMでuser state非共有と標準global復元を検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 #[test]
 fn global_shadowing_and_user_state_do_not_escape_the_current_execution() {
     let (_directory, mut document) = sample_document();
@@ -178,6 +209,12 @@ fn global_shadowing_and_user_state_do_not_escape_the_current_execution() {
     assert!(!document.is_dirty());
 }
 
+// {
+//   責務: [forbidden_access_fails_and_rolls_back_the_scripts_pending_transaction: 禁止globalやdynamic loading accessで失敗し、pending transactionとCSV fileをrollbackすることを確認する。]
+//   処理: [禁止API候補ごとにtransaction内編集を行ってから呼び出し、error・rollback・元CSV bytesを照合する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 #[test]
 fn forbidden_access_fails_and_rolls_back_the_scripts_pending_transaction() {
     for attempt in [
@@ -205,6 +242,12 @@ fn forbidden_access_fails_and_rolls_back_the_scripts_pending_transaction() {
     }
 }
 
+// {
+//   責務: [sandbox_does_not_disable_vm_memory_or_duration_limits: sandbox有効時もmemory上限と実行時間上限が機能することを確認する。]
+//   処理: [小さいmemory上限で大きなstring allocationを試み、続けてzero durationで無限loopを制限する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 #[test]
 fn sandbox_does_not_disable_vm_memory_or_duration_limits() {
     let (_directory, mut document) = sample_document();
@@ -232,6 +275,12 @@ fn sandbox_does_not_disable_vm_memory_or_duration_limits() {
     assert!(!document.is_dirty());
 }
 
+// {
+//   責務: [non_source_input_is_rejected_without_changing_the_document: sourceでないbyte列を拒否しdocumentを変更しないことを確認する。]
+//   処理: [control byteとNULを含むinputをexecuteへ渡し、Runtime errorとclean documentを確認する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 #[test]
 fn non_source_input_is_rejected_without_changing_the_document() {
     let (_directory, mut document) = sample_document();

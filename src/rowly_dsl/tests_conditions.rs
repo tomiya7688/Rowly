@@ -39,7 +39,7 @@ fn else_executes_when_condition_is_false() {
 
 #[test]
 // {
-//   責務: [logical_precedence_is_not_then_and_then_or: Not > And > Orの論理優先順位を確認する。]
+//   責務: [logical_precedence_is_not_then_and_then_or: 複合論理条件を評価しThen分岐が選ばれることを確認する。]
 // }
 fn logical_precedence_is_not_then_and_then_or() {
     let (_directory, mut document) = open("値\n1\n");
@@ -105,7 +105,7 @@ fn comparison_operators_use_text_ordering() {
 
 #[test]
 // {
-//   責務: [parenthesized_conditions_override_precedence: 括弧が論理演算子の既定優先順位を上書きすることを確認する。]
+//   責務: [parenthesized_conditions_override_precedence: 括弧を含む複合条件を評価しElse分岐が選ばれることを確認する。]
 // }
 fn parenthesized_conditions_override_precedence() {
     let (_directory, mut document) = open("値\n1\n");

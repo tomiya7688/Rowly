@@ -44,7 +44,7 @@ fn for_loop_walks_rows_and_updates_dynamic_cells() {
 
 #[test]
 // {
-//   責務: [row_and_column_count_are_one_based_loop_friendly: RowCount/ColumnCountを1-based loop境界として使い、表を走査できることを確認する。]
+//   責務: [row_and_column_count_are_one_based_loop_friendly: RowCountとColumnCountが返す現在の件数を取得することを確認する。]
 // }
 fn row_and_column_count_are_one_based_loop_friendly() {
     let (_directory, mut document) = open("a,b,c\n1,2,3\n");
@@ -132,7 +132,7 @@ fn loop_variable_does_not_leak_after_loop() {
 
 #[test]
 // {
-//   責務: [zero_step_is_rejected: 0 StepをZeroLoopStepとして拒否することを確認する。]
+//   責務: [zero_step_is_rejected: 0 Stepを指定した場合のerror診断メッセージを確認する。]
 // }
 fn zero_step_is_rejected() {
     let (_directory, mut document) = open("値\n1\n");
@@ -150,7 +150,7 @@ fn zero_step_is_rejected() {
 
 #[test]
 // {
-//   責務: [dynamic_cell_indices_must_be_positive_integers: 動的cell indexに不正な型や1未満の値を渡した場合のerrorを確認する。]
+//   責務: [dynamic_cell_indices_must_be_positive_integers: 動的cell indexに0を指定した場合のerrorを確認する。]
 // }
 fn dynamic_cell_indices_must_be_positive_integers() {
     let (_directory, mut document) = open("値\n1\n");

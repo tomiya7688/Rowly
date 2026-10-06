@@ -198,7 +198,7 @@ fn local_declarations_and_parameters_shadow_without_mutating_outer_const() {
 
 #[test]
 // {
-//   責務: [assignment_resolves_the_nearest_visible_binding: 代入が最も内側の可視bindingを更新することを確認する。]
+//   責務: [assignment_resolves_the_nearest_visible_binding: 関数やloop内の代入が外側の可視bindingを更新することを確認する。]
 // }
 fn assignment_resolves_the_nearest_visible_binding() {
     let (_directory, mut document) = open();
@@ -444,7 +444,7 @@ fn malformed_declarations_and_reserved_bindings_are_rejected() {
 
 #[test]
 // {
-//   責務: [declarations_require_initialized_visible_values: 宣言に初期値が必要で、右辺が有効な値を参照することを確認する。]
+//   責務: [declarations_require_initialized_visible_values: 宣言の右辺が未定義bindingを参照した場合にerrorとなることを確認する。]
 // }
 fn declarations_require_initialized_visible_values() {
     for source in ["VAR value = value", "CONST value = missing"] {

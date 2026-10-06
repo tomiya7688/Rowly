@@ -18,7 +18,7 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 
 #[test]
 // {
-//   責務: [parses_basic_style_if_column_checks_and_range_set: BASIC風のIf、列型・日本語チェック、範囲代入が期待するASTを生成することを確認する。]
+//   責務: [parses_basic_style_if_column_checks_and_range_set: BASIC風のIf条件AST、If本体の文数、範囲代入ASTを確認する。]
 // }
 fn parses_basic_style_if_column_checks_and_range_set() {
     let program = parse(

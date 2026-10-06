@@ -18,7 +18,7 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 
 #[test]
 // {
-//   責務: [arithmetic_precedence_and_parentheses_work: 乗除算の優先順位と括弧による変更をcell出力で確認する。]
+//   責務: [arithmetic_precedence_and_parentheses_work: 乗除算の優先順位と括弧による変更を変数の評価結果で確認する。]
 // }
 fn arithmetic_precedence_and_parentheses_work() {
     let (_directory, mut document) = open("値\n1\n");
@@ -40,7 +40,7 @@ fn arithmetic_precedence_and_parentheses_work() {
 
 #[test]
 // {
-//   責務: [subtraction_is_left_associative_and_unary_minus_works: 減算の左結合、単項マイナス、括弧内の符号反転を確認する。]
+//   責務: [subtraction_is_left_associative_and_unary_minus_works: 減算の左結合と単項マイナスを確認する。]
 // }
 fn subtraction_is_left_associative_and_unary_minus_works() {
     let (_directory, mut document) = open("値\n1\n");
@@ -139,7 +139,7 @@ fn function_and_method_results_participate_in_arithmetic() {
 
 #[test]
 // {
-//   責務: [division_by_zero_is_explicit: 0除算をDivisionByZeroとして返すことを確認する。]
+//   責務: [division_by_zero_is_explicit: 0除算時のerror診断メッセージを確認する。]
 // }
 fn division_by_zero_is_explicit() {
     let (_directory, mut document) = open("値\n1\n");
@@ -156,7 +156,7 @@ fn division_by_zero_is_explicit() {
 
 #[test]
 // {
-//   責務: [arithmetic_rejects_non_numeric_values: textやBooleanを二項算術operandにした際の型errorを確認する。]
+//   責務: [arithmetic_rejects_non_numeric_values: Stringを二項算術operandにした際の型error診断を確認する。]
 // }
 fn arithmetic_rejects_non_numeric_values() {
     let (_directory, mut document) = open("値\n1\n");
@@ -198,7 +198,7 @@ fn unary_minus_rejects_non_numeric_values() {
 
 #[test]
 // {
-//   責務: [integer_overflow_is_explicit: Integer加算overflowをArithmeticOverflowとして報告することを確認する。]
+//   責務: [integer_overflow_is_explicit: Integer加算overflow時のerror診断メッセージを確認する。]
 // }
 fn integer_overflow_is_explicit() {
     let (_directory, mut document) = open("値\n1\n");

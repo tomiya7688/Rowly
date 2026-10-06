@@ -237,7 +237,7 @@ pub struct RowlyxArchive {
 
 impl RowlyxArchive {
     /// ```text
-    /// 責務: [open: ZIP archiveのentryと唯一のproject manifestを検証する]
+    /// 責務: [open: ZIP archiveのentryと唯一のroot-level project manifestを検証する]
     /// 処理: [unsafe path、重複entry、symlink、manifest数、manifest JSON/schemaを検査する]
     /// 引数: [path: 開く.rowlyx archive path]
     /// 戻り値: [Self: 検証済みarchiveとmanifest entryへの参照]

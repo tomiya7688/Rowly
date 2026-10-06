@@ -225,7 +225,7 @@ fn create_temporary_archive(path: &Path) -> Result<PathBuf, RowlyxError> {
 /// ]
 /// フィールド: [
 /// path: 検証したarchive file path
-/// project_entry: archive内で唯一の.rwprj manifest entry
+/// project_entry: archive root直下で唯一の.rwprj manifest entry
 /// ]
 /// 補足: [openはarchiveを展開せず、extract_toで展開する]
 /// ```

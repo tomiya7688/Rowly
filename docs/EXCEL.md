@@ -52,7 +52,9 @@ export 元のデータは `CsvDocument` から受け取り、import 結果は `C
 ## 数式
 
 import は `data_only=False` で workbook を読み込む。
-数式セルは計算結果ではなく式文字列を CSV へ取り込む。
+現在の実装は数式セルから式文字列を読み、その文字列を通常のCSV文字列として取り込む。Rowlyは式を評価せず、Calculation Bindingへ変換しない。
+
+これは現行実装の動作です。XLSX式Importを拡張するときは、[CSV・計算・表示の設計原則](DATA_MODEL_PRINCIPLES.md)に従い、計算済み値の取込、利用者が明示したBindingへの変換、変換できない式への警告を設計する。
 
 export は Rowly の CSV 文字列を数式として再解釈せず、Excel の文字列セルとして書き込む。
 

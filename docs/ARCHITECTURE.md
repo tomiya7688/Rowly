@@ -1,5 +1,7 @@
 # アーキテクチャ
 
+CSV値、計算、表示の境界は [`DATA_MODEL_PRINCIPLES.md`](DATA_MODEL_PRINCIPLES.md) を正本とします。data層はraw CSV文字列を保持し、Calculation Bindingとderived result、View上のgroupingは正本データから分離します。
+
 ## 目的
 
 Rowly は CSV-first のエディタです。表示、スクリプト、外部連携のコードが第二の正本を作らない構造を維持します。

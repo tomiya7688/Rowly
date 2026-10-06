@@ -7,6 +7,10 @@ use crate::process::CsvDocument;
 
 // {
 //   責務: [open: loopテスト用CSVを一時作成し、documentと一時file保持用TempDirを返す。]
+//   処理: [TempDirを作成しsourceをCSV fileへ書き込み、CsvDocumentとして開く。]
+//   引数: [source: テストで開くCSVの初期内容。]
+//   戻り値: [(TempDir, CsvDocument): 一時ディレクトリと開いたdocument。]
+//   副作用: [一時ディレクトリにCSV fileを作成する。]
 // }
 fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
     let directory = tempdir().unwrap();
@@ -19,6 +23,9 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 #[test]
 // {
 //   責務: [for_loop_walks_rows_and_updates_dynamic_cells: Forで行を走査し、動的cell参照を通じて行ごとに更新することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn for_loop_walks_rows_and_updates_dynamic_cells() {
     let (_directory, mut document) = open("名前,状態\n山田,\nAlice,\n田中,\n");
@@ -45,6 +52,9 @@ fn for_loop_walks_rows_and_updates_dynamic_cells() {
 #[test]
 // {
 //   責務: [row_and_column_count_are_one_based_loop_friendly: RowCountとColumnCountが返す現在の件数を取得することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn row_and_column_count_are_one_based_loop_friendly() {
     let (_directory, mut document) = open("a,b,c\n1,2,3\n");
@@ -64,6 +74,9 @@ fn row_and_column_count_are_one_based_loop_friendly() {
 #[test]
 // {
 //   責務: [descending_for_loop_and_step_work: 負のStepを使う降順loopの反復値と終了条件を確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn descending_for_loop_and_step_work() {
     let (_directory, mut document) = open("値\na\nb\nc\nd\ne\n");
@@ -88,6 +101,9 @@ fn descending_for_loop_and_step_work() {
 #[test]
 // {
 //   責務: [nested_for_loops_can_visit_rectangular_cells: nested loopで矩形範囲の各cellを訪問できることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn nested_for_loops_can_visit_rectangular_cells() {
     let (_directory, mut document) = open("a,b\n1,2\n");
@@ -113,6 +129,9 @@ fn nested_for_loops_can_visit_rectangular_cells() {
 #[test]
 // {
 //   責務: [loop_variable_does_not_leak_after_loop: loop終了後にloop variableが外側scopeへ残らないことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn loop_variable_does_not_leak_after_loop() {
     let (_directory, mut document) = open("値\n1\n");
@@ -133,6 +152,9 @@ fn loop_variable_does_not_leak_after_loop() {
 #[test]
 // {
 //   責務: [zero_step_is_rejected: 0 Stepを指定した場合のerror診断メッセージを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn zero_step_is_rejected() {
     let (_directory, mut document) = open("値\n1\n");
@@ -151,6 +173,9 @@ fn zero_step_is_rejected() {
 #[test]
 // {
 //   責務: [dynamic_cell_indices_must_be_positive_integers: 動的cell indexに0を指定した場合のerrorを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn dynamic_cell_indices_must_be_positive_integers() {
     let (_directory, mut document) = open("値\n1\n");
@@ -168,6 +193,9 @@ fn dynamic_cell_indices_must_be_positive_integers() {
 #[test]
 // {
 //   責務: [mismatched_next_variable_is_parse_error: Next変数名とFor変数名が異なる場合のparse errorを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn mismatched_next_variable_is_parse_error() {
     let error = parse(

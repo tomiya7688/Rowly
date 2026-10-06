@@ -6,6 +6,10 @@ use super::*;
 
 // {
 //   責務: [open: bindingテスト向けCSVを一時作成し、documentとfile lifetime保持用TempDirを返す。]
+//   処理: [TempDirを作成しsourceをCSV fileへ書き込み、CsvDocumentとして開く。]
+//   引数: [source: テストで開くCSVの初期内容。]
+//   戻り値: [(TempDir, CsvDocument): 一時ディレクトリと開いたdocument。]
+//   副作用: [一時ディレクトリにCSV fileを作成する。]
 // }
 fn open() -> (tempfile::TempDir, CsvDocument) {
     let directory = tempdir().unwrap();
@@ -18,6 +22,9 @@ fn open() -> (tempfile::TempDir, CsvDocument) {
 #[test]
 // {
 //   責務: [ast_distinguishes_var_const_and_assignment: VAR/CONST宣言と既存binding代入が異なるAST nodeとしてparseされることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn ast_distinguishes_var_const_and_assignment() {
     let program = parse("VAR count = 0\nCONST title = \"名前\"\ncount = 1").unwrap();
@@ -45,6 +52,9 @@ fn ast_distinguishes_var_const_and_assignment() {
 #[test]
 // {
 //   責務: [declaration_keywords_handle_case_whitespace_and_identifier_boundaries: keywordの大小文字・空白を許容し、識別子prefixとの誤一致を防ぐことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn declaration_keywords_handle_case_whitespace_and_identifier_boundaries() {
     let (_directory, mut document) = open();
@@ -61,6 +71,9 @@ fn declaration_keywords_handle_case_whitespace_and_identifier_boundaries() {
 #[test]
 // {
 //   責務: [var_reassignment_preserves_typed_values_and_csv_process_history: VAR再代入で型を保ち、CSV編集をprocess historyに記録することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn var_reassignment_preserves_typed_values_and_csv_process_history() {
     let (_directory, mut document) = open();
@@ -99,6 +112,9 @@ fn var_reassignment_preserves_typed_values_and_csv_process_history() {
 #[test]
 // {
 //   責務: [const_and_unknown_assignment_reject_before_rhs_side_effects: CONST・未知名への代入を右辺評価前に拒否し、副作用を起こさないことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn const_and_unknown_assignment_reject_before_rhs_side_effects() {
     for (declaration, expected_constant) in [("CONST value = \"fixed\"", true), ("", false)] {
@@ -136,6 +152,9 @@ fn const_and_unknown_assignment_reject_before_rhs_side_effects() {
 #[test]
 // {
 //   責務: [duplicate_declarations_cannot_change_mutability_or_execute_initializers: 同一scopeの重複宣言がmutabilityを変えず、初期化式を実行しないことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn duplicate_declarations_cannot_change_mutability_or_execute_initializers() {
     for first in ["VAR", "CONST"] {
@@ -165,6 +184,9 @@ fn duplicate_declarations_cannot_change_mutability_or_execute_initializers() {
 #[test]
 // {
 //   責務: [local_declarations_and_parameters_shadow_without_mutating_outer_const: local宣言とparameterのshadowingが外側CONSTを変更しないことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn local_declarations_and_parameters_shadow_without_mutating_outer_const() {
     let (_directory, mut document) = open();
@@ -199,6 +221,9 @@ fn local_declarations_and_parameters_shadow_without_mutating_outer_const() {
 #[test]
 // {
 //   責務: [assignment_resolves_the_nearest_visible_binding: 関数やloop内の代入が外側の可視bindingを更新することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn assignment_resolves_the_nearest_visible_binding() {
     let (_directory, mut document) = open();
@@ -225,6 +250,9 @@ fn assignment_resolves_the_nearest_visible_binding() {
 #[test]
 // {
 //   責務: [outer_const_cannot_be_assigned_from_functions_methods_or_loops: function・method・loopから外側CONSTへの代入を拒否することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn outer_const_cannot_be_assigned_from_functions_methods_or_loops() {
     for body in [
@@ -246,6 +274,9 @@ fn outer_const_cannot_be_assigned_from_functions_methods_or_loops() {
 #[test]
 // {
 //   責務: [nested_loop_declarations_are_fresh_each_iteration_and_return_unwinds_scopes: 反復ごとのlocal宣言とReturn時のnested scope unwindを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn nested_loop_declarations_are_fresh_each_iteration_and_return_unwinds_scopes() {
     let (_directory, mut document) = open();
@@ -293,6 +324,9 @@ fn nested_loop_declarations_are_fresh_each_iteration_and_return_unwinds_scopes()
 #[test]
 // {
 //   責務: [constructors_and_inherited_methods_keep_local_binding_rules: 継承methodのlocal bindingがglobal bindingを上書きしないことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn constructors_and_inherited_methods_keep_local_binding_rules() {
     let (_directory, mut document) = open();
@@ -339,6 +373,9 @@ fn constructors_and_inherited_methods_keep_local_binding_rules() {
 #[test]
 // {
 //   責務: [const_protects_the_binding_not_the_aliased_object_fields: CONST bindingへの再代入を拒否し、参照先objectのfield更新は許すことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn const_protects_the_binding_not_the_aliased_object_fields() {
     let (_directory, mut document) = open();
@@ -379,6 +416,9 @@ fn const_protects_the_binding_not_the_aliased_object_fields() {
 #[test]
 // {
 //   責務: [legacy_declarations_are_parse_errors_even_in_unexecuted_blocks: 未実行block内もLET/DIMをparse errorにすることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn legacy_declarations_are_parse_errors_even_in_unexecuted_blocks() {
     for declaration in [
@@ -414,6 +454,9 @@ fn legacy_declarations_are_parse_errors_even_in_unexecuted_blocks() {
 #[test]
 // {
 //   責務: [malformed_declarations_and_reserved_bindings_are_rejected: 不正宣言と予約語bindingを拒否することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn malformed_declarations_and_reserved_bindings_are_rejected() {
     for source in [
@@ -445,6 +488,9 @@ fn malformed_declarations_and_reserved_bindings_are_rejected() {
 #[test]
 // {
 //   責務: [declarations_require_initialized_visible_values: 宣言の右辺が未定義bindingを参照した場合にerrorとなることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn declarations_require_initialized_visible_values() {
     for source in ["VAR value = value", "CONST value = missing"] {

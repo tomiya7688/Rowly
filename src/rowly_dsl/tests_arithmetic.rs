@@ -7,6 +7,10 @@ use crate::process::CsvDocument;
 
 // {
 //   責務: [open: 算術テスト用CSVを一時作成し、documentとfile lifetime保持用TempDirを返す。]
+//   処理: [TempDirを作成しsourceをCSV fileへ書き込み、CsvDocumentとして開く。]
+//   引数: [source: テストで開くCSVの初期内容。]
+//   戻り値: [(TempDir, CsvDocument): 一時ディレクトリと開いたdocument。]
+//   副作用: [一時ディレクトリにCSV fileを作成する。]
 // }
 fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
     let directory = tempdir().unwrap();
@@ -19,6 +23,9 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 #[test]
 // {
 //   責務: [arithmetic_precedence_and_parentheses_work: 乗算の優先順位と括弧による変更を変数の評価結果で確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn arithmetic_precedence_and_parentheses_work() {
     let (_directory, mut document) = open("値\n1\n");
@@ -41,6 +48,9 @@ fn arithmetic_precedence_and_parentheses_work() {
 #[test]
 // {
 //   責務: [subtraction_is_left_associative_and_unary_minus_works: 減算の左結合と単項マイナスを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn subtraction_is_left_associative_and_unary_minus_works() {
     let (_directory, mut document) = open("値\n1\n");
@@ -62,7 +72,10 @@ fn subtraction_is_left_associative_and_unary_minus_works() {
 
 #[test]
 // {
-//   責務: [mixed_numeric_arithmetic_promotes_to_decimal: IntegerとDecimalの混合演算がDecimalへ昇格することを確認する。]
+//   責務: [mixed_numeric_arithmetic_promotes_to_decimal: Integer + DecimalとDecimal * Integerの結果がDecimalになることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn mixed_numeric_arithmetic_promotes_to_decimal() {
     let (_directory, mut document) = open("値\n1\n");
@@ -86,6 +99,9 @@ fn mixed_numeric_arithmetic_promotes_to_decimal() {
 #[test]
 // {
 //   責務: [arithmetic_can_feed_comparisons_and_csv_edits: 算術結果を比較条件とCSV編集へ渡せることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn arithmetic_can_feed_comparisons_and_csv_edits() {
     let (_directory, mut document) = open("値\nold\n");
@@ -110,6 +126,9 @@ fn arithmetic_can_feed_comparisons_and_csv_edits() {
 #[test]
 // {
 //   責務: [function_and_method_results_participate_in_arithmetic: functionとmethodの戻り値を算術operandに使えることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn function_and_method_results_participate_in_arithmetic() {
     let (_directory, mut document) = open("値\n1\n");
@@ -140,6 +159,9 @@ fn function_and_method_results_participate_in_arithmetic() {
 #[test]
 // {
 //   責務: [division_by_zero_is_explicit: 0除算時のerror診断メッセージを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn division_by_zero_is_explicit() {
     let (_directory, mut document) = open("値\n1\n");
@@ -157,6 +179,9 @@ fn division_by_zero_is_explicit() {
 #[test]
 // {
 //   責務: [arithmetic_rejects_non_numeric_values: Stringを二項算術operandにした際の型error診断を確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn arithmetic_rejects_non_numeric_values() {
     let (_directory, mut document) = open("値\n1\n");
@@ -178,6 +203,9 @@ fn arithmetic_rejects_non_numeric_values() {
 #[test]
 // {
 //   責務: [unary_minus_rejects_non_numeric_values: String値への単項マイナスを拒否することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn unary_minus_rejects_non_numeric_values() {
     let (_directory, mut document) = open("値\n1\n");
@@ -199,6 +227,9 @@ fn unary_minus_rejects_non_numeric_values() {
 #[test]
 // {
 //   責務: [integer_overflow_is_explicit: Integer加算overflow時のerror診断メッセージを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
 // }
 fn integer_overflow_is_explicit() {
     let (_directory, mut document) = open("値\n1\n");

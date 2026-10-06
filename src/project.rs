@@ -172,33 +172,43 @@ impl RowlyProject {
     /// 引数: [project_path: 保存先manifest path]
     /// 戻り値: [(): manifest保存成功時に値を返さない]
     /// 副作用: [manifest fileを置換する。source dataはcopyもembedもしない]
-    /// エラー: [ProjectError: model不正またはmanifest file writeの失敗]
-    /// 補足: [PathBuf fieldにUTF-8化できないpathがある場合、JSON value構築時にpanicする]
+    /// エラー: [ProjectError: model不正、JSON表現不能なpath、またはmanifest file writeの失敗]
     /// ```
     pub fn save(&self, project_path: impl AsRef<Path>) -> Result<(), ProjectError> {
         self.validate()?;
+        let mut sources = Vec::with_capacity(self.sources.len());
+        for (source_index, source) in self.sources.iter().enumerate() {
+            let mut item = json!({
+                "id": source.id,
+                "type": match source.kind { SourceKind::File => "file", SourceKind::Directory => "directory" },
+                "path": manifest_path_text(&source.path, &format!("sources[{source_index}].path"))?,
+            });
+            if source.kind == SourceKind::Directory {
+                item["recursive"] = json!(source.recursive);
+            }
+            if let Some(search_root) = &source.search_root {
+                item["search_root"] = json!(manifest_path_text(
+                    search_root,
+                    &format!("sources[{source_index}].search_root")
+                )?);
+            }
+            if let Some(schema) = &source.schema {
+                item["schema"] = json!(schema);
+            }
+            sources.push(item);
+        }
         let value = json!({
             "format": PROJECT_FORMAT,
             "version": PROJECT_VERSION,
             "name": self.name,
-            "sources": self.sources.iter().map(|source| {
-                let mut item = json!({
-                    "id": source.id,
-                    "type": match source.kind { SourceKind::File => "file", SourceKind::Directory => "directory" },
-                    "path": source.path,
-                });
-                if source.kind == SourceKind::Directory { item["recursive"] = json!(source.recursive); }
-                if let Some(search_root) = &source.search_root { item["search_root"] = json!(search_root); }
-                if let Some(schema) = &source.schema { item["schema"] = json!(schema); }
-                item
-            }).collect::<Vec<_>>(),
+            "sources": sources,
             "scripts": {
-                "init": self.scripts.init,
-                "generated": self.scripts.generated,
-                "user": self.scripts.user,
-                "macros": self.scripts.macros,
+                "init": manifest_path_text(&self.scripts.init, "scripts.init")?,
+                "generated": manifest_path_text(&self.scripts.generated, "scripts.generated")?,
+                "user": manifest_path_text(&self.scripts.user, "scripts.user")?,
+                "macros": manifest_path_text(&self.scripts.macros, "scripts.macros")?,
             },
-            "history": self.history,
+            "history": manifest_path_text(&self.history, "history")?,
         });
         let bytes = serde_json::to_vec_pretty(&value)
             .map_err(|error| ProjectError::Schema(error.to_string()))?;
@@ -497,6 +507,18 @@ impl RowlyProject {
         }
         Ok(())
     }
+}
+
+/// ```text
+/// 責務: [manifest_path_text: project manifestのpath fieldをJSONで表現可能なUTF-8文字列にする]
+/// 引数: [path: 保存対象path, field: manifest内でのfield名]
+/// 戻り値: [&str: 有効なUTF-8文字列, ProjectError: UTF-8で表現できないpath field]
+/// ```
+fn manifest_path_text<'a>(path: &'a Path, field: &str) -> Result<&'a str, ProjectError> {
+    path.to_str()
+        .ok_or_else(|| ProjectError::UnrepresentablePath {
+            field: field.to_owned(),
+        })
 }
 
 // {
@@ -815,6 +837,7 @@ fn optional_path_field(
 /// Read: manifest、source CSV、またはsource discovery用directoryを読み込めない
 /// Parse: manifest JSONをparseできない
 /// Schema: manifestの形式またはfield制約に違反する
+/// UnrepresentablePath: path fieldをmanifest JSON文字列に変換できない
 /// Write: manifestまたはgenerated project fileのatomic writeに失敗する
 /// ]
 /// ```
@@ -825,6 +848,63 @@ pub enum ProjectError {
     Parse { path: String, message: String },
     #[error("invalid Rowly project schema: {0}")]
     Schema(String),
+    #[error("Rowly project path field `{field}` cannot be represented as UTF-8 JSON text")]
+    UnrepresentablePath { field: String },
     #[error("failed to write Rowly project `{path}`: {message}")]
     Write { path: String, message: String },
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::{ffi::OsString, os::unix::ffi::OsStringExt};
+
+    use tempfile::tempdir;
+
+    use super::*;
+
+    // {
+    //   責務: [
+    //     save_returns_error_for_non_utf8_source_path: UTF-8化できないsource pathをpanicせずfield付きerrorで返す
+    //   ]
+    //   処理: [
+    //     1: Unix byte列から非UTF-8 PathBufを作る
+    //     2: pathを含むproject manifestの保存結果を確認する
+    //     3: fieldを示すProjectErrorとなりmanifestが作られないことを確認する
+    //   ]
+    //   引数: []
+    //   戻り値: [(): assertion成功時に値を返さない]
+    // }
+    #[test]
+    fn save_returns_error_for_non_utf8_source_path() {
+        let directory = tempdir().unwrap();
+        let manifest_path = directory.path().join("project.rwprj");
+        let invalid_source_path =
+            PathBuf::from(OsString::from_vec(vec![b'd', b'a', b't', b'a', 0xff]));
+        let project = RowlyProject {
+            name: "test project".to_owned(),
+            sources: vec![ProjectSource {
+                id: "source-1".to_owned(),
+                kind: SourceKind::File,
+                path: invalid_source_path,
+                recursive: false,
+                search_root: None,
+                schema: None,
+            }],
+            scripts: ProjectScripts {
+                init: PathBuf::from("scripts/init.rly"),
+                generated: PathBuf::from("scripts/generated.rly"),
+                user: PathBuf::from("scripts/user.rly"),
+                macros: PathBuf::from("scripts/macros"),
+            },
+            history: PathBuf::from(".rowly/history"),
+        };
+
+        let error = project.save(&manifest_path).unwrap_err();
+
+        assert!(matches!(
+            error,
+            ProjectError::UnrepresentablePath { ref field } if field == "sources[0].path"
+        ));
+        assert!(!manifest_path.exists());
+    }
 }

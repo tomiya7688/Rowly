@@ -325,10 +325,10 @@ pub enum Condition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// ```text
 /// 責務: [ColumnSelector: DSLからcolumnを指定するindexまたはheader名を表す]
-/// 補足: [Indexは1-basedのuser向けcolumn番号を保持する]
+/// 補足: [DSL column番号は1-based。Index payloadはCsvDocument APIへ渡すzero-based index]
 /// ```
 pub enum ColumnSelector {
-    /// 1-based column index。
+    /// zero-based column index。parserがDSLの1-based番号から変換する。
     Index(usize),
     /// exact matchで検索するheader text。
     Header(String),
@@ -360,15 +360,15 @@ impl ValidationRuleDefinition {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// ```text
-/// 責務: [ExecutionReport: DSL実行eventと最終runtime stateのread-only snapshot]
-/// フィールド: [events: 実行順event, variables: 最終variable値, object_fields: 最終object field値, validation_rules: source順rule宣言]
+/// 責務: [ExecutionReport: 記録対象のDSL eventと最終global scalar stateのread-only snapshot]
+/// フィールド: [events: 実行順の記録event, variables: 最終global scalar variable値, object_fields: 最終global objectのscalar field値, validation_rules: source順rule宣言]
 /// ```
 pub struct ExecutionReport {
     /// statement実行中に生成されたeventをsource実行順で保持する。
     pub(super) events: Vec<ExecutionEvent>,
     /// 実行完了時に可視のvariable値。
     pub(super) variables: HashMap<String, String>,
-    /// objectごとの実行完了時field値。
+    /// global bindingされたobjectごとの実行完了時scalar field値。
     pub(super) object_fields: HashMap<String, HashMap<String, String>>,
     /// validation rule宣言をsource実行順で保持する。
     pub(super) validation_rules: Vec<ValidationRuleDefinition>,
@@ -385,14 +385,14 @@ impl ExecutionReport {
         &self.validation_rules
     }
 
-    /// variable名をcase-insensitiveで検索し、最終値を返す。
+    /// variable名をASCII case-insensitiveで検索し、final global scalar値を返す。
     pub fn variable(&self, name: &str) -> Option<&str> {
         self.variables
             .get(&normalize_identifier(name))
             .map(String::as_str)
     }
 
-    /// object variable名とfield名をcase-insensitiveで検索し、最終値を返す。
+    /// global object variable名とfield名をASCII case-insensitiveで検索し、scalar field値を返す。nested object fieldは含まない。
     pub fn object_field(&self, variable: &str, field: &str) -> Option<&str> {
         self.object_fields
             .get(&normalize_identifier(variable))?
@@ -403,8 +403,8 @@ impl ExecutionReport {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// ```text
-/// 責務: [ExecutionEvent: AST実行中に起きた条件評価、state変更、process commandを記録する]
-/// 補足: [eventはExecutionReport内に実行順で格納される]
+/// 責務: [ExecutionEvent: runtimeが実行順で記録するDSL eventのsubsetを表す]
+/// 補足: [eventはExecutionReport内に格納される。transaction controlはこのenumでは記録しない]
 /// ```
 pub enum ExecutionEvent {
     ConditionEvaluated {
@@ -452,7 +452,7 @@ pub enum ExecutionEvent {
 }
 
 // {
-//   責務: [normalize_identifier: DSL identifierをcase-insensitive lookup用に正規化する]
+//   責務: [normalize_identifier: DSL identifierをASCII case-insensitive lookup用に正規化する]
 //   引数: [identifier: 正規化するidentifier]
 //   戻り値: [String: ASCII lowercaseへ変換したidentifier]
 // }

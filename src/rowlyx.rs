@@ -21,7 +21,7 @@ use crate::project::{RowlyProject, SourceKind, resolve_project_reference};
 /// 戻り値: [(): archive保存成功時に値を返さない]
 /// 副作用: [一時archiveを作成し、成功時にarchive_fileを置換する]
 /// エラー: [RowlyxError: manifest、reference、file IO、archive作成または検証の失敗]
-/// 補足: [absolute referenceは外部扱いでpackしない。relative referenceでもproject root外はpackしない]
+/// 補足: [absolute referenceは外部扱いでpackしない。relative referenceはlexical path上でroot配下と判定されたものを収集する]
 /// ```
 pub fn pack_project(
     project_file: impl AsRef<Path>,

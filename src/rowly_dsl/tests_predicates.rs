@@ -226,7 +226,7 @@ fn namespaced_string_predicates_require_text_arguments() {
 
 #[test]
 // {
-//   責務: [namespaced_predicate_argument_count_is_validated: namespaced predicateの不足・過剰引数を検証することを確認する。]
+//   責務: [namespaced_predicate_argument_count_is_validated: namespaced predicateで必須引数が不足した場合のerrorを確認する。]
 //   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
 //   引数: []
 //   戻り値: [(): assertion成功時に値を返さない。]

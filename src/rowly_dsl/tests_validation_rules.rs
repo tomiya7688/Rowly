@@ -22,7 +22,7 @@ fn open() -> (tempfile::TempDir, CsvDocument) {
 
 #[test]
 // {
-//   責務: [allowed_values_support_multiline_lists_and_report_ordered_configuration: 複数行AllowedValuesの順序・候補照合・設定eventを確認する。]
+//   責務: [allowed_values_support_multiline_lists_and_report_ordered_configuration: 複数行AllowedValuesの候補照合と設定eventを確認する。]
 //   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
 //   引数: []
 //   戻り値: [(): assertion成功時に値を返さない。]
@@ -138,7 +138,7 @@ fn allowed_values_and_expression_have_matching_behavior() {
 
 #[test]
 // {
-//   責務: [validation_expression_rejects_calls_variables_and_non_boolean_expressions: Validation.Expressionがfunction call・外部variable・Boolean以外の式を拒否する。]
+//   責務: [validation_expression_rejects_calls_variables_and_non_boolean_expressions: Validation.Expressionがfunction call・外部variable・Boolean以外の式と、候補Valueを参照しないBoolean式を拒否する。]
 //   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
 //   引数: []
 //   戻り値: [(): assertion成功時に値を返さない。]

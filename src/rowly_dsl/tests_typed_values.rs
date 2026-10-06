@@ -22,7 +22,7 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 
 #[test]
 // {
-//   責務: [integer_and_decimal_comparisons_are_numeric: IntegerとDecimalの大小比較が文字列順でなく数値順になることを確認する。]
+//   責務: [integer_and_decimal_comparisons_are_numeric: Integerの大小比較が数値順になることと、Decimal/Integer比較を条件に使えることを確認する。]
 //   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
 //   引数: []
 //   戻り値: [(): assertion成功時に値を返さない。]

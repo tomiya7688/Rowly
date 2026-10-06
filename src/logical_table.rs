@@ -83,16 +83,16 @@ pub struct LogicalTable {
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// ```text
 /// 責務: [
-/// LogicalRow: CSVの値とそのsource上の位置を一行分まとめる
+/// LogicalRow: CSVの値と現在の格納先の位置を一行分まとめる
 /// ]
 /// フィールド: [
-/// values: schema順のcell値
-/// origin: 値を読み込んだsource、path、record index
+/// values: CSV record順のcell値。schema幅と異なる場合がある
+/// origin: 現在このrowを保持しているsource、path、record index
 /// ]
 /// ```
 pub struct LogicalRow {
     /// ```text
-    /// 責務: [values: schema順に並んだcell値]
+    /// 責務: [values: CSV record順のcell値。schema幅と異なる場合がある]
     /// ```
     pub values: Vec<String>,
     /// ```text
@@ -104,7 +104,7 @@ pub struct LogicalRow {
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// ```text
 /// 責務: [
-/// SourceRecord: CSV data recordのsource id、path、headerを除くzero-based indexを保持する
+/// SourceRecord: rowを現在保持しているsource id、path、headerを除くzero-based indexを保持する
 /// ]
 /// フィールド: [
 /// source_id: project上のsource識別子
@@ -189,8 +189,8 @@ impl LogicalProject {
     /// ]
     /// 戻り値: [
     /// LogicalProject: schema単位に構成したtable群
-    /// LogicalLoadError: directory読込、CSV解析、またはheader欠落の理由
     /// ]
+    /// エラー: [LogicalLoadError: directory読込、CSV解析、またはheader欠落の理由]
     /// ```
     pub fn load(
         project: &RowlyProject,
@@ -267,7 +267,8 @@ impl LogicalTable {
     /// 責務: [set_default_write_target: 行追加時にsource idを省略した場合の書き込み先を設定する]
     /// 処理: [tableに含まれるsource idだけをdefault_write_targetへ保存する]
     /// 引数: [source_id: このtableにCSVを提供しているsource id]
-    /// 戻り値: [Result<(), LogicalTableError>: 設定成功、またはtableに含まれないsource idのエラー]
+    /// 戻り値: [(): 設定成功時に値を返さない]
+    /// エラー: [LogicalTableError: tableに含まれないsource idが指定された]
     /// 副作用: [default_write_targetを更新する]
     /// ```
     pub fn set_default_write_target(
@@ -297,7 +298,8 @@ impl LogicalTable {
     /// 責務: [resolve_write_target: 明示source idまたは既定値が有効な書き込み先か解決する]
     /// 処理: [明示値を優先し、tableに含まれるsource idであることを確認する]
     /// 引数: [explicit_source_id: 指定があれば使うsource id]
-    /// 戻り値: [Result<String, LogicalTableError>: 解決したsource id、未指定または不適合時のエラー]
+    /// 戻り値: [String: 解決したsource id]
+    /// エラー: [LogicalTableError: target未指定、またはtableに含まれないsource id]
     /// ```
     pub fn resolve_write_target(
         &self,
@@ -321,8 +323,9 @@ impl LogicalTable {
     /// values: schema幅に一致するcell値
     /// explicit_source_id: 書き込み先source id。Noneなら既定値を使う
     /// ]
-    /// 戻り値: [Result<usize, LogicalTableError>: 追加した論理row index、または対象・CSV更新エラー]
+    /// 戻り値: [usize: 追加した論理row index]
     /// 副作用: [CSVを保存し、rowsとdisplay_orderを更新してredo履歴を消去する]
+    /// エラー: [LogicalTableError: row幅、target、CSV、schema、または保存の失敗]
     /// ```
     pub fn append_row(
         &mut self,
@@ -397,8 +400,9 @@ impl LogicalTable {
     /// row_index: 移動対象の論理row index
     /// target_source_id: 移動先source id
     /// ]
-    /// 戻り値: [Result<(), LogicalTableError>: 移動成功、またはindex・source・CSV更新エラー]
+    /// 戻り値: [(): 移動成功時に値を返さない]
     /// 副作用: [両CSVとrow provenanceを更新し、undo履歴へ記録してredo履歴を消去する]
+    /// エラー: [LogicalTableError: index、source、schema、record、またはCSV更新の失敗]
     /// ```
     pub fn move_row(
         &mut self,
@@ -451,20 +455,20 @@ impl LogicalTable {
     }
 
     /// ```text
-    /// 責務: [can_undo_move: 取り消せるrow移動があるか返す]
+    /// 責務: [can_undo_move: undo履歴が空でないかを返す]
     /// 処理: [move_undoが空でないか確認する]
     /// 引数: []
-    /// 戻り値: [bool: undo可能な移動があればtrue]
+    /// 戻り値: [bool: undo履歴があればtrue。CSV状態と照合した実行可否は確認しない]
     /// ```
     pub fn can_undo_move(&self) -> bool {
         !self.move_undo.is_empty()
     }
 
     /// ```text
-    /// 責務: [can_redo_move: 再実行できるrow移動があるか返す]
+    /// 責務: [can_redo_move: redo履歴が空でないかを返す]
     /// 処理: [move_redoが空でないか確認する]
     /// 引数: []
-    /// 戻り値: [bool: redo可能な移動があればtrue]
+    /// 戻り値: [bool: redo履歴があればtrue。CSV状態と照合した実行可否は確認しない]
     /// ```
     pub fn can_redo_move(&self) -> bool {
         !self.move_redo.is_empty()
@@ -474,8 +478,9 @@ impl LogicalTable {
     /// 責務: [undo_move: 最新のrow移動を元のCSVへ戻す]
     /// 処理: [CSV間でrecordを戻し、provenanceとundo / redo履歴を更新する]
     /// 引数: []
-    /// 戻り値: [Result<bool, LogicalTableError>: 移動を取り消した場合true、履歴が空ならfalse、失敗時はエラー]
+    /// 戻り値: [bool: 移動を取り消した場合true、履歴が空ならfalse]
     /// 副作用: [CSV、row provenance、移動履歴を更新する]
+    /// エラー: [LogicalTableError: CSVのschemaまたはrecordの検証・移送に失敗した]
     /// ```
     pub fn undo_move(&mut self) -> Result<bool, LogicalTableError> {
         let Some(operation) = self.move_undo.last().cloned() else {
@@ -506,8 +511,9 @@ impl LogicalTable {
     /// 責務: [redo_move: 最新のundo済みrow移動を再実行する]
     /// 処理: [CSV間でrecordを再移送し、provenanceとundo / redo履歴を更新する]
     /// 引数: []
-    /// 戻り値: [Result<bool, LogicalTableError>: 移動を再実行した場合true、履歴が空ならfalse、失敗時はエラー]
+    /// 戻り値: [bool: 移動を再実行した場合true、履歴が空ならfalse]
     /// 副作用: [CSV、row provenance、移動履歴を更新する]
+    /// エラー: [LogicalTableError: CSVのschemaまたはrecordの検証・移送に失敗した]
     /// ```
     pub fn redo_move(&mut self) -> Result<bool, LogicalTableError> {
         let Some(operation) = self.move_redo.last().cloned() else {
@@ -644,7 +650,7 @@ fn open_compatible_source(
 //   ]
 //   引数: [source_path: 移動元CSV, source_record_index: 移動元data record位置, target_path: 移動先CSV, target_record_index: 移動先data record位置, expected_values: 移送対象の期待値, schema: 両CSVに必要なordered header]
 //   戻り値: [(): 両CSVへの移送が完了したとき値を返さない]
-//   副作用: [両CSV fileを更新し、一時backup fileを作成・削除する]
+//   副作用: [両CSV fileを更新し、一時backup fileを作成する。backup削除はbest-effortで、失敗時はfileが残り得る]
 //   エラー: [LogicalTableError: schema、record、I/O、transaction、save、復元の失敗]
 // }
 fn transfer_csv_record(
@@ -747,7 +753,7 @@ fn transfer_csv_record(
 
 // {
 //   責務: [
-//     make_backup: CSV fileの隣に一意な名前のbackupを作成する
+//     make_backup: CSV fileの隣に衝突しにくい名前のbackupを作成する
 //   ]
 //   処理: [process idと時刻を名前に含め、元fileをcopyする]
 //   引数: [path: backup元のCSV file]
@@ -779,7 +785,7 @@ fn make_backup(path: &Path) -> Result<PathBuf, LogicalTableError> {
 //   処理: [recursive設定でdirectoryを探索し、結果をsortする]
 //   引数: [root: 探索するdirectory, recursive: 子directoryも探索するか]
 //   戻り値: [Vec<PathBuf>: path順のCSV一覧]
-//   エラー: [LogicalLoadError: root directoryが存在しない、または読込できない]
+//   エラー: [LogicalLoadError: rootが存在しないかdirectoryではない、または読込できない]
 // }
 fn collect_csv_files(root: &Path, recursive: bool) -> Result<Vec<PathBuf>, LogicalLoadError> {
     if !root.is_dir() {
@@ -801,6 +807,7 @@ fn collect_csv_files(root: &Path, recursive: bool) -> Result<Vec<PathBuf>, Logic
 //   ]
 //   引数: [root: 現在の探索directory, recursive: 子directoryを探索するか, paths: 発見したCSV pathの出力先]
 //   戻り値: [(): path追加後は値を返さない]
+//   副作用: [発見したCSV pathをpathsへ追加する]
 //   エラー: [LogicalLoadError: directory entryの読込に失敗した理由]
 // }
 fn collect_csv_files_into(
@@ -854,15 +861,15 @@ fn is_csv(path: &Path) -> bool {
 /// 責務: [
 /// LogicalLoadError: projectのsource CSVを論理tableへ読み込めない理由を表す
 /// ]
-/// バリアント: [
-/// MissingDirectory: source directoryが存在しない
+/// 補足: [
+/// MissingDirectory: source pathが存在しないかdirectoryではない
 /// MissingHeader: CSVにheader recordがない
 /// ReadDirectory: directoryまたはentryを読み込めない
 /// Csv: CSV fileを開く、または解析できない
 /// ]
 /// ```
 pub enum LogicalLoadError {
-    /// source directoryが存在しない場合。
+    /// source pathが存在しないか、directoryでない場合。
     #[error("project source directory does not exist: {0}")]
     MissingDirectory(PathBuf),
     /// CSVの先頭にheader recordがない場合。
@@ -885,7 +892,7 @@ pub enum LogicalLoadError {
 /// 責務: [
 /// LogicalTableError: logical tableのsource選択、row操作、CSV更新の失敗理由を表す
 /// ]
-/// バリアント: [
+/// 補足: [
 /// NoDefaultWriteTarget: 明示値も既定書き込み先もない
 /// IncompatibleWriteTarget: source idがlogical tableに含まれない
 /// InvalidRowIndex: 論理row indexが範囲外

@@ -73,7 +73,7 @@ impl HelpDocument {
 
 /// {
 ///   責務: [HelpTarget: help viewerで開く文書と見出しanchorを指定する。]
-///   フィールド: [document: 表示する文書種別。 anchor: 開始位置として解決するanchorまたは見出し名。]
+///   フィールド: [document: 表示する文書種別。 anchor: 開始位置として解決するanchorまたはslug化した見出し名。]
 /// }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HelpTarget {
@@ -85,7 +85,7 @@ impl HelpTarget {
     /// {
     ///   責務: [new: 文書とanchorからHelpTargetを作成する。]
     ///   処理: [anchor入力を所有Stringへ変換してfieldへ保存する。]
-    ///   引数: [document: 開く文書。 anchor: 開始位置のanchorまたは見出し名。]
+    ///   引数: [document: 開く文書。 anchor: 開始位置のanchorまたはslug化した見出し名。]
     ///   戻り値: [HelpTarget: 指定文書の開始位置。]
     /// }
     pub fn new(document: HelpDocument, anchor: impl Into<String>) -> Self {
@@ -145,8 +145,8 @@ impl HelpPage {
 
     // {
     //   責務: [anchor_for: requested valueに一致するsection anchorを解決する。]
-    //   処理: [anchorの完全一致またはslug化したtitleの大文字小文字を無視した一致を探す。]
-    //   引数: [self: 検索対象section一覧。 requested: anchorまたはheading名。]
+    //   処理: [anchorの完全一致またはslug化したtitleとの大文字小文字を無視した一致を探す。]
+    //   引数: [self: 検索対象section一覧。 requested: anchorまたはslug化したheading名。]
     //   戻り値: [Option<&str>: 一致したsection anchor。見つからなければNone。]
     // }
     fn anchor_for(&self, requested: &str) -> Option<&str> {
@@ -203,7 +203,7 @@ impl Default for HelpViewer {
 impl HelpViewer {
     /// {
     ///   責務: [open: 指定targetへviewerのactive documentと見出し選択を移す。]
-    ///   処理: [文書内でanchorまたはheading名を解決し、見つからない場合は先頭anchorを選んで検索filterをclearする。]
+    ///   処理: [文書内でanchorまたはslug化したheading名を解決し、見つからない場合は先頭anchorを選ぶ。どのtargetでも検索filterをclearする。]
     ///   引数: [self: 更新対象のviewer state。 target: 開く文書と開始位置。]
     ///   戻り値: [(): 選択位置と次回scroll先を更新する。]
     /// }
@@ -601,10 +601,10 @@ fn render_inline(
 }
 
 // {
-//   責務: [is_help_document_link: destinationがviewer内のhelp文書へのlinkか判定する。]
+//   責務: [is_help_document_link: destinationのpathがviewer内help文書名として認識されるかを判定する。]
 //   処理: [fragmentを除いたpathを空pathまたはHelpDocumentのfile name一覧と照合する。]
 //   引数: [destination: Markdown linkのdestination。]
-//   戻り値: [bool: viewer内で解決できる文書linkならtrue。]
+//   戻り値: [bool: 空pathまたは既知のhelp文書file名ならtrue。fragmentの有効性は検証しない。]
 // }
 fn is_help_document_link(destination: &str) -> bool {
     let path = destination

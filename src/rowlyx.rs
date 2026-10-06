@@ -21,7 +21,7 @@ use crate::project::{RowlyProject, SourceKind, resolve_project_reference};
 /// 戻り値: [(): archive保存成功時に値を返さない]
 /// 副作用: [一時archiveを作成し、成功時にarchive_fileを置換する]
 /// エラー: [RowlyxError: manifest、reference、file IO、archive作成または検証の失敗]
-/// 補足: [absolute referenceは外部扱いでpackしない。relative referenceはlexical path上でroot配下と判定されたものを収集する]
+/// 補足: [absolute referenceとcanonical pathがproject root外へ解決されるreferenceはpackしない]
 /// ```
 pub fn pack_project(
     project_file: impl AsRef<Path>,
@@ -107,6 +107,12 @@ pub fn pack_project(
             continue;
         }
         let canonical = fs::canonicalize(&path).map_err(|error| io_error(&path, error))?;
+        if !canonical.starts_with(&root) {
+            return Err(RowlyxError::InvalidReference(format!(
+                "reference resolves outside project root: {}",
+                path.display()
+            )));
+        }
         if canonical == archive_target {
             return Err(RowlyxError::InvalidReference(format!(
                 "archive output would overwrite project data `{}`",
@@ -560,4 +566,68 @@ pub enum RowlyxError {
     /// extract destinationが空ではない。
     #[error("extract destination is not empty: {0}")]
     DestinationNotEmpty(String),
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::{os::unix::fs::symlink, path::PathBuf};
+
+    use tempfile::tempdir;
+
+    use crate::project::{ProjectScripts, ProjectSource};
+
+    use super::*;
+
+    // {
+    //   責務: [
+    //     pack_rejects_reference_through_external_directory_symlink: project外を指すdirectory symlink経由のreferenceをpackしない
+    //   ]
+    //   処理: [
+    //     1: project外にCSVを作りproject内directory symlinkから参照する
+    //     2: referenceを含むprojectのpackを試す
+    //     3: project root外へ解決されるreferenceを拒否しarchiveを作らないことを確認する
+    //   ]
+    //   引数: []
+    //   戻り値: [(): assertion成功時に値を返さない]
+    // }
+    #[test]
+    fn pack_rejects_reference_through_external_directory_symlink() {
+        let directory = tempdir().unwrap();
+        let project_root = directory.path().join("project");
+        let external_directory = directory.path().join("external");
+        fs::create_dir(&project_root).unwrap();
+        fs::create_dir(&external_directory).unwrap();
+        fs::write(external_directory.join("records.csv"), "name\nprivate\n").unwrap();
+        symlink(&external_directory, project_root.join("linked")).unwrap();
+
+        let project_file = project_root.join("project.rwprj");
+        let project = RowlyProject {
+            name: "symlink test".to_owned(),
+            sources: vec![ProjectSource {
+                id: "records".to_owned(),
+                kind: SourceKind::File,
+                path: PathBuf::from("linked/records.csv"),
+                recursive: false,
+                search_root: None,
+                schema: None,
+            }],
+            scripts: ProjectScripts {
+                init: PathBuf::from("scripts/init.rly"),
+                generated: PathBuf::from("scripts/generated.rly"),
+                user: PathBuf::from("scripts/user.rly"),
+                macros: PathBuf::from("scripts/macros"),
+            },
+            history: PathBuf::from(".rowly/history"),
+        };
+        project.save(&project_file).unwrap();
+        let archive_file = directory.path().join("project.rowlyx");
+
+        let error = pack_project(&project_file, &archive_file).unwrap_err();
+
+        assert!(matches!(
+            error,
+            RowlyxError::InvalidReference(message) if message.contains("outside project root")
+        ));
+        assert!(!archive_file.exists());
+    }
 }

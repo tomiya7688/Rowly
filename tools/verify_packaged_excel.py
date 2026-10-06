@@ -7,10 +7,22 @@ import sys
 from pathlib import Path
 
 
+# {
+#   責務: [executable_name: 実行platformで使うexecutable suffixをnameへ付ける。]
+#   引数: [name: suffix付与前のexecutable名。]
+#   戻り値: [str: platform向けexecutable名。]
+# }
 def executable_name(name: str) -> str:
     return f"{name}.exe" if sys.platform == "win32" else name
 
 
+# {
+#   責務: [run: packaged smoke test用subprocessを指定環境で実行し、失敗出力を報告する。]
+#   引数: [command: 起動するargv。 env: child processへ渡すenvironment。]
+#   戻り値: [None: 成功時は値を返さない。]
+#   副作用: [外部Rowly processを起動する。]
+#   エラー: [終了codeが0以外ならstdout/stderrを含むSystemExitを送出する。]
+# }
 def run(command: list[str], env: dict[str, str]) -> None:
     result = subprocess.run(command, env=env, text=True, capture_output=True)
     if result.returncode != 0:
@@ -20,6 +32,14 @@ def run(command: list[str], env: dict[str, str]) -> None:
         )
 
 
+# {
+#   責務: [main: system Pythonや未同梱backendへ依存せず配布RowlyでXLSX import/export round tripを確認する。]
+#   処理: [子process環境を制限し、fixtureをCSVへimport、XLSXへexport、CSVへ再importして生成物を検査する。]
+#   戻り値: [None: 成功したCSV pathをstdoutへ表示する。]
+#   引数: [CLI: 配布directory・Excel fixture・一時work directoryを受け取る。]
+#   副作用: [work directoryを削除・再作成し、import結果CSVとround-trip workbookを生成する。]
+#   エラー: [配布executable不足またはsubprocess失敗時はSystemExitを送出する。]
+# }
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--distribution", type=Path, required=True)

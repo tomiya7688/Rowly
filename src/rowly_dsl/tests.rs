@@ -5,6 +5,13 @@ use tempfile::tempdir;
 use super::*;
 use crate::process::{CsvDocument, DocumentError};
 
+// {
+//   責務: [open: DSLテスト用CSVを一時ディレクトリに作成してCsvDocumentを開く。TempDirも返し、テスト中のfile lifetimeを保つ。]
+//   処理: [TempDirを作成しsourceをCSV fileへ書き込み、CsvDocumentとして開く。]
+//   引数: [source: テストで開くCSVの初期内容。]
+//   戻り値: [(TempDir, CsvDocument): 一時ディレクトリと開いたdocument。]
+//   副作用: [一時ディレクトリにCSV fileを作成する。]
+// }
 fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
     let directory = tempdir().unwrap();
     let path = directory.path().join("data.csv");
@@ -14,6 +21,12 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 }
 
 #[test]
+// {
+//   責務: [parses_basic_style_if_column_checks_and_range_set: BASIC風のIf条件AST、If本体の文数、範囲代入ASTを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn parses_basic_style_if_column_checks_and_range_set() {
     let program = parse(
         r#"
@@ -56,6 +69,12 @@ fn parses_basic_style_if_column_checks_and_range_set() {
 }
 
 #[test]
+// {
+//   責務: [executes_column_type_and_japanese_checks: 列型・日本語検査eventの順序と件数、検査結果および不一致cell参照を確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn executes_column_type_and_japanese_checks() {
     let (_directory, mut document) = open("名前,年齢\n田中太郎,20\nAlice,21\n");
     let execution = run(
@@ -100,6 +119,12 @@ fn executes_column_type_and_japanese_checks() {
 }
 
 #[test]
+// {
+//   責務: [false_if_condition_skips_body: false条件ではIf bodyを実行せず、条件eventだけが記録されることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn false_if_condition_skips_body() {
     let (_directory, mut document) = open("氏名\n田中\n");
     let report = run(
@@ -120,6 +145,12 @@ fn false_if_condition_skips_body() {
 }
 
 #[test]
+// {
+//   責務: [header_selector_and_range_set_use_process_boundary: 列型指定と複数cellの範囲編集を実行し、編集をundoできることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn header_selector_and_range_set_use_process_boundary() {
     let (_directory, mut document) = open("名前,年齢\n田中,20\n山田,21\n");
     let report = run(
@@ -141,6 +172,12 @@ fn header_selector_and_range_set_use_process_boundary() {
 }
 
 #[test]
+// {
+//   責務: [transaction_commit_groups_multiple_dsl_edits_into_one_undo: DSLの複数編集をcommitすると1回のundo/redo単位になることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn transaction_commit_groups_multiple_dsl_edits_into_one_undo() {
     let (_directory, mut document) = open("Name,Score\nAlice,10\nBob,20\n");
 
@@ -170,6 +207,12 @@ fn transaction_commit_groups_multiple_dsl_edits_into_one_undo() {
 }
 
 #[test]
+// {
+//   責務: [transaction_rollback_restores_dsl_edits_without_history: rollback後に編集内容とdirty状態が戻り、transactionが終了してundo不可になることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn transaction_rollback_restores_dsl_edits_without_history() {
     let (_directory, mut document) = open("Name,Score\nAlice,10\nBob,20\n");
 
@@ -191,6 +234,12 @@ fn transaction_rollback_restores_dsl_edits_without_history() {
 }
 
 #[test]
+// {
+//   責務: [transaction_control_requires_zero_arguments_and_process_state_rules: BeginTransactionの引数数と、未開始transactionへのCommit失敗を確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn transaction_control_requires_zero_arguments_and_process_state_rules() {
     let (_directory, mut document) = open("Name,Score\nAlice,10\n");
 
@@ -212,6 +261,12 @@ fn transaction_control_requires_zero_arguments_and_process_state_rules() {
 }
 
 #[test]
+// {
+//   責務: [variables_can_feed_edits_and_conditions: variable値をcell編集と条件へ渡し、編集結果を確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn variables_can_feed_edits_and_conditions() {
     let (_directory, mut document) = open("名前\n田中\n山田\n");
     let report = run(
@@ -232,6 +287,12 @@ fn variables_can_feed_edits_and_conditions() {
 }
 
 #[test]
+// {
+//   責務: [functions_accept_arguments_return_values_and_edit_through_process_api: function引数・戻り値とprocess経由の編集を組み合わせて確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn functions_accept_arguments_return_values_and_edit_through_process_api() {
     let (_directory, mut document) = open("値\n1\n2\n");
     let report = run(
@@ -264,6 +325,12 @@ fn functions_accept_arguments_return_values_and_edit_through_process_api() {
 }
 
 #[test]
+// {
+//   責務: [function_scope_does_not_overwrite_global_variables: function local bindingがglobal bindingを上書きしないことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn function_scope_does_not_overwrite_global_variables() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -286,6 +353,12 @@ fn function_scope_does_not_overwrite_global_variables() {
 }
 
 #[test]
+// {
+//   責務: [return_inside_nested_if_exits_function: nested If内のReturnが関数を終了させ、値を返すことを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn return_inside_nested_if_exits_function() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -307,6 +380,12 @@ fn return_inside_nested_if_exits_function() {
 }
 
 #[test]
+// {
+//   責務: [function_used_as_value_requires_return_value: 値式に使ったfunctionに戻り値がないと明示エラーになることを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn function_used_as_value_requires_return_value() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -328,6 +407,12 @@ fn function_used_as_value_requires_return_value() {
 }
 
 #[test]
+// {
+//   責務: [argument_count_is_checked: parameter数より実引数が少ない呼び出しのerrorを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn argument_count_is_checked() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -353,6 +438,12 @@ fn argument_count_is_checked() {
 }
 
 #[test]
+// {
+//   責務: [reports_missing_end_if_at_opening_line: End If欠落を開始行番号付きで報告することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn reports_missing_end_if_at_opening_line() {
     let error = parse(
         r#"
@@ -367,6 +458,12 @@ fn reports_missing_end_if_at_opening_line() {
 }
 
 #[test]
+// {
+//   責務: [reports_missing_end_def_at_opening_line: End Def欠落を開始行番号付きで報告することを確認する。]
+//   処理: [固定入力で対象のparse/runtime APIを実行し、AST・report・document状態またはerrorを検証する。]
+//   引数: []
+//   戻り値: [(): assertion成功時に値を返さない。]
+// }
 fn reports_missing_end_def_at_opening_line() {
     let error = parse(
         r#"

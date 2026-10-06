@@ -172,7 +172,8 @@ impl RowlyProject {
     /// 引数: [project_path: 保存先manifest path]
     /// 戻り値: [(): manifest保存成功時に値を返さない]
     /// 副作用: [manifest fileを置換する。source dataはcopyもembedもしない]
-    /// エラー: [ProjectError: model不正、serialization、またはfile writeの失敗]
+    /// エラー: [ProjectError: model不正またはmanifest file writeの失敗]
+    /// 補足: [PathBuf fieldにUTF-8化できないpathがある場合、JSON value構築時にpanicする]
     /// ```
     pub fn save(&self, project_path: impl AsRef<Path>) -> Result<(), ProjectError> {
         self.validate()?;
@@ -814,7 +815,7 @@ fn optional_path_field(
 /// Read: manifest、source CSV、またはsource discovery用directoryを読み込めない
 /// Parse: manifest JSONをparseできない
 /// Schema: manifestの形式またはfield制約に違反する
-/// Write: manifest fileのatomic writeに失敗する
+/// Write: manifestまたはgenerated project fileのatomic writeに失敗する
 /// ]
 /// ```
 pub enum ProjectError {

@@ -188,7 +188,7 @@ impl ProjectSession {
     /// 引数: [source_id: project source id, document: type宣言を抽出するCSV document]
     /// 戻り値: [(): generated config保存成功時に値を返さない]
     /// 副作用: [必要ならinit.rlyとuser.rlyを作成し、generated init fileを更新してstructure / config dirtyを立てる]
-    /// エラー: [ProjectSessionError: source idが不明、document処理、またはgenerated file writeの失敗]
+    /// エラー: [ProjectSessionError: source id、設定検証・既存script読込、init / user / generated fileの作成・writeの失敗]
     /// ```
     pub fn save_generated_column_types(
         &mut self,
@@ -219,7 +219,7 @@ impl ProjectSession {
     /// 引数: [source_id: project source id, document: validation ruleを抽出するCSV document]
     /// 戻り値: [(): generated config保存成功時に値を返さない]
     /// 副作用: [必要ならinit.rlyとuser.rlyを作成し、generated init fileを更新してstructure / config dirtyを立てる]
-    /// エラー: [ProjectSessionError: source idが不明、document処理、またはgenerated file writeの失敗]
+    /// エラー: [ProjectSessionError: source id、設定検証・既存script読込、init / user / generated fileの作成・writeの失敗]
     /// ```
     pub fn save_generated_validation_rules(
         &mut self,

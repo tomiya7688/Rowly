@@ -5,6 +5,9 @@ use tempfile::tempdir;
 use super::*;
 use crate::process::CsvDocument;
 
+// {
+//   責務: [open: loopテスト用CSVを一時作成し、documentと一時file保持用TempDirを返す。]
+// }
 fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
     let directory = tempdir().unwrap();
     let path = directory.path().join("for_loop.csv");
@@ -14,6 +17,9 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 }
 
 #[test]
+// {
+//   責務: [for_loop_walks_rows_and_updates_dynamic_cells: Forで行を走査し、動的cell参照を通じて行ごとに更新することを確認する。]
+// }
 fn for_loop_walks_rows_and_updates_dynamic_cells() {
     let (_directory, mut document) = open("名前,状態\n山田,\nAlice,\n田中,\n");
 
@@ -37,6 +43,9 @@ fn for_loop_walks_rows_and_updates_dynamic_cells() {
 }
 
 #[test]
+// {
+//   責務: [row_and_column_count_are_one_based_loop_friendly: RowCount/ColumnCountを1-based loop境界として使い、表を走査できることを確認する。]
+// }
 fn row_and_column_count_are_one_based_loop_friendly() {
     let (_directory, mut document) = open("a,b,c\n1,2,3\n");
     let report = run(
@@ -53,6 +62,9 @@ fn row_and_column_count_are_one_based_loop_friendly() {
 }
 
 #[test]
+// {
+//   責務: [descending_for_loop_and_step_work: 負のStepを使う降順loopの反復値と終了条件を確認する。]
+// }
 fn descending_for_loop_and_step_work() {
     let (_directory, mut document) = open("値\na\nb\nc\nd\ne\n");
 
@@ -74,6 +86,9 @@ fn descending_for_loop_and_step_work() {
 }
 
 #[test]
+// {
+//   責務: [nested_for_loops_can_visit_rectangular_cells: nested loopで矩形範囲の各cellを訪問できることを確認する。]
+// }
 fn nested_for_loops_can_visit_rectangular_cells() {
     let (_directory, mut document) = open("a,b\n1,2\n");
 
@@ -96,6 +111,9 @@ fn nested_for_loops_can_visit_rectangular_cells() {
 }
 
 #[test]
+// {
+//   責務: [loop_variable_does_not_leak_after_loop: loop終了後にloop variableが外側scopeへ残らないことを確認する。]
+// }
 fn loop_variable_does_not_leak_after_loop() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -113,6 +131,9 @@ fn loop_variable_does_not_leak_after_loop() {
 }
 
 #[test]
+// {
+//   責務: [zero_step_is_rejected: 0 StepをZeroLoopStepとして拒否することを確認する。]
+// }
 fn zero_step_is_rejected() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -128,6 +149,9 @@ fn zero_step_is_rejected() {
 }
 
 #[test]
+// {
+//   責務: [dynamic_cell_indices_must_be_positive_integers: 動的cell indexに不正な型や1未満の値を渡した場合のerrorを確認する。]
+// }
 fn dynamic_cell_indices_must_be_positive_integers() {
     let (_directory, mut document) = open("値\n1\n");
     let error = run(
@@ -142,6 +166,9 @@ fn dynamic_cell_indices_must_be_positive_integers() {
 }
 
 #[test]
+// {
+//   責務: [mismatched_next_variable_is_parse_error: Next変数名とFor変数名が異なる場合のparse errorを確認する。]
+// }
 fn mismatched_next_variable_is_parse_error() {
     let error = parse(
         r#"

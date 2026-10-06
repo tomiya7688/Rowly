@@ -5,6 +5,9 @@ use tempfile::tempdir;
 use super::*;
 use crate::process::CsvDocument;
 
+// {
+//   責務: [open: 条件テスト用CSVを一時作成し、documentと一時file保持用TempDirを返す。]
+// }
 fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
     let directory = tempdir().unwrap();
     let path = directory.path().join("conditions.csv");
@@ -14,6 +17,9 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 }
 
 #[test]
+// {
+//   責務: [else_executes_when_condition_is_false: If条件がfalseのときElse側だけが実行されることを確認する。]
+// }
 fn else_executes_when_condition_is_false() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -32,6 +38,9 @@ fn else_executes_when_condition_is_false() {
 }
 
 #[test]
+// {
+//   責務: [logical_precedence_is_not_then_and_then_or: Not > And > Orの論理優先順位を確認する。]
+// }
 fn logical_precedence_is_not_then_and_then_or() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -50,6 +59,9 @@ fn logical_precedence_is_not_then_and_then_or() {
 }
 
 #[test]
+// {
+//   責務: [and_and_or_short_circuit_rhs: And/Orが右辺の不要な評価とその副作用を省くことを確認する。]
+// }
 fn and_and_or_short_circuit_rhs() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -73,6 +85,9 @@ fn and_and_or_short_circuit_rhs() {
 }
 
 #[test]
+// {
+//   責務: [comparison_operators_use_text_ordering: Text同士の順序比較が辞書順に基づくことを確認する。]
+// }
 fn comparison_operators_use_text_ordering() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -89,6 +104,9 @@ fn comparison_operators_use_text_ordering() {
 }
 
 #[test]
+// {
+//   責務: [parenthesized_conditions_override_precedence: 括弧が論理演算子の既定優先順位を上書きすることを確認する。]
+// }
 fn parenthesized_conditions_override_precedence() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -107,6 +125,9 @@ fn parenthesized_conditions_override_precedence() {
 }
 
 #[test]
+// {
+//   責務: [class_methods_use_the_same_condition_evaluator: class method内で同じ条件評価結果を使えることを確認する。]
+// }
 fn class_methods_use_the_same_condition_evaluator() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(
@@ -134,6 +155,9 @@ fn class_methods_use_the_same_condition_evaluator() {
 }
 
 #[test]
+// {
+//   責務: [else_supports_nested_if_blocks: Else body内のnested Ifで対象分岐だけを実行することを確認する。]
+// }
 fn else_supports_nested_if_blocks() {
     let (_directory, mut document) = open("値\n1\n");
     let report = run(

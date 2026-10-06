@@ -11,9 +11,21 @@ use super::ast::{
     UnaryOperator, ValidationRuleDefinition, normalize_identifier,
 };
 
+// {
+//   責務: [MAX_CALL_DEPTH: Rowly DSL関数呼び出しの最大ネスト数を定義する]
+//   値: [64: 再帰による実行の過剰な積み上がりを抑える上限]
+// }
 const MAX_CALL_DEPTH: usize = 64;
+// {
+//   責務: [ObjectId: Runtime内のobjects配列を参照する識別子型]
+//   型: [usize: objects配列の添字]
+// }
 type ObjectId = usize;
 
+// {
+//   責務: [Value: DSL実行時に評価される値の型を表す]
+//   バリアント: [Text / Integer / Decimal / Boolean: スカラー値, Object: 実行時オブジェクトID]
+// }
 #[derive(Debug, Clone)]
 enum Value {
     Text(String),
@@ -23,6 +35,10 @@ enum Value {
     Object(ObjectId),
 }
 
+// {
+//   責務: [Binding: スコープ内の値とVAR/CONST宣言種別を保持する]
+//   フィールド: [value: 現在の実行時値, kind: 再代入可否を決める宣言種別]
+// }
 #[derive(Debug, Clone)]
 struct Binding {
     value: Value,
@@ -30,6 +46,11 @@ struct Binding {
 }
 
 impl Binding {
+    // {
+    //   責務: [variable: 可変VAR bindingを作成する]
+    //   引数: [value: 初期実行時値]
+    //   戻り値: [Binding: DeclarationKind::Varを持つ束縛]
+    // }
     fn variable(value: Value) -> Self {
         Self {
             value,
@@ -38,12 +59,23 @@ impl Binding {
     }
 }
 
+// {
+//   責務: [ObjectInstance: DSL実行中だけ存在するclass instanceの状態を保持する]
+//   フィールド: [class_name: class名, fields: 正規化したfield名と実行時値]
+// }
 #[derive(Debug, Clone)]
 struct ObjectInstance {
     class_name: String,
     fields: HashMap<String, Value>,
 }
 
+/// ```text
+/// 責務: [execute: DSL ProgramをCsvDocumentに対して実行する]
+/// 処理: [Runtimeを構築してtop-level statementを評価し、実行レポートを返す]
+/// 引数: [program: parserが生成したAST, document: 操作対象のCSV document]
+/// 戻り値: [ExecutionReport: events、global scalar variable、global object直下のscalar field、validation rule]
+/// エラー: [ExecutionError: DSL実行またはCsvDocument操作の失敗]
+/// ```
 pub fn execute(
     program: &Program,
     document: &mut CsvDocument,
@@ -51,6 +83,10 @@ pub fn execute(
     Runtime::new(program, document).execute()
 }
 
+// {
+//   責務: [ExecutionError: DSL評価、型検査、呼び出し、document操作の失敗を表す]
+//   バリアント: [原因ごとに区別可能なruntime errorとprocess error]
+// }
 #[derive(Debug, Error)]
 pub enum ExecutionError {
     #[error(transparent)]
@@ -158,12 +194,22 @@ pub enum ExecutionError {
     CallDepthExceeded { limit: usize },
 }
 
+// {
+//   責務: [Flow: 文列実行の継続または関数からの戻りを伝える]
+//   バリアント: [Continue: 次の文へ進む, Return: 関数戻り値の有無を保持する]
+// }
 #[derive(Debug, Clone)]
 enum Flow {
     Continue,
     Return(Option<Value>),
 }
 
+// {
+//   責務: [Runtime: DSL programの評価状態とdocumentへの操作を管理する]
+//   フィールド: [program/document: 実行入力と編集対象, scopes: lexical binding stack]
+//   フィールド: [objects: 実行時instance, events: 実行event, validation_rules: 設定履歴]
+//   フィールド: [call_depth: 再帰深度, method_context: 現在のmethod class履歴]
+// }
 struct Runtime<'a> {
     program: &'a Program,
     document: &'a mut CsvDocument,
@@ -176,6 +222,11 @@ struct Runtime<'a> {
 }
 
 impl<'a> Runtime<'a> {
+    // {
+    //   責務: [new: 空のglobal scopeと実行用stateでRuntimeを初期化する]
+    //   引数: [program: 実行AST, document: 操作対象のmutable document]
+    //   戻り値: [Runtime: 指定programとdocumentを保持した実行state]
+    // }
     fn new(program: &'a Program, document: &'a mut CsvDocument) -> Self {
         Self {
             program,
@@ -189,6 +240,13 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [execute: top-level文を実行し、公開用ExecutionReportを構築する]
+    //   処理: [return位置を検査し、global scalar値とglobal object直下のscalar fieldを抽出する]
+    //   引数: [self: 初期化済みの実行state]
+    //   戻り値: [Result<ExecutionReport, ExecutionError>: 実行eventと公開可能な結果]
+    //   エラー: [ExecutionError: statement失敗またはtop-level Return]
+    // }
     fn execute(mut self) -> Result<ExecutionReport, ExecutionError> {
         let program = self.program;
         if !matches!(
@@ -235,6 +293,13 @@ impl<'a> Runtime<'a> {
         })
     }
 
+    // {
+    //   責務: [execute_statements: 文列を順に評価し制御flowを伝播する]
+    //   処理: [条件分岐、loop、宣言、代入、呼び出し、document操作を実行する]
+    //   引数: [statements: 評価するAST文列]
+    //   戻り値: [Result<Flow, ExecutionError>: 継続またはreturn値]
+    //   エラー: [ExecutionError: 式評価、binding、object、document操作の失敗]
+    // }
     fn execute_statements(&mut self, statements: &[Statement]) -> Result<Flow, ExecutionError> {
         for statement in statements {
             match statement {
@@ -429,6 +494,13 @@ impl<'a> Runtime<'a> {
         Ok(Flow::Continue)
     }
 
+    // {
+    //   責務: [evaluate_condition: 条件ASTをBooleanへ評価する]
+    //   処理: [and/orは短絡評価し、column条件は現時点のdocument状態を参照する]
+    //   引数: [condition: 評価する条件AST]
+    //   戻り値: [Result<bool, ExecutionError>: 条件結果]
+    //   エラー: [ExecutionError: 式型、列参照、または比較が不正]
+    // }
     fn evaluate_condition(&mut self, condition: &Condition) -> Result<bool, ExecutionError> {
         match condition {
             Condition::ColumnExists { selector } => Ok(match selector {
@@ -472,6 +544,13 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [compare_values: DSL値を指定比較演算子で比較する]
+    //   処理: [数値はInteger/Decimal間を比較し、等値比較では同型object identityも扱う]
+    //   引数: [left: 左値, operator: 比較演算子, right: 右値]
+    //   戻り値: [Result<bool, ExecutionError>: 比較結果]
+    //   エラー: [ExecutionError: 順序比較できない値の組み合わせ]
+    // }
     fn compare_values(
         &self,
         left: Value,
@@ -522,6 +601,13 @@ impl<'a> Runtime<'a> {
         })
     }
 
+    // {
+    //   責務: [evaluate_expression: 式ASTを実行時Valueへ評価する]
+    //   処理: [variable、call、standard namespace、object、field、arithmeticを解決する]
+    //   引数: [expression: 評価する式AST]
+    //   戻り値: [Result<Value, ExecutionError>: 式の評価値]
+    //   エラー: [ExecutionError: 未定義名、戻り値なし、型不一致、または評価失敗]
+    // }
     fn evaluate_expression(&mut self, expression: &Expression) -> Result<Value, ExecutionError> {
         match expression {
             Expression::Literal(value) => Ok(Value::Text(value.clone())),
@@ -579,6 +665,12 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [evaluate_unary: 単項演算子を実行時値へ適用する]
+    //   引数: [operator: 単項演算子, value: 演算対象]
+    //   戻り値: [Result<Value, ExecutionError>: 演算結果]
+    //   エラー: [ExecutionError: 非数値への適用またはInteger符号反転overflow]
+    // }
     fn evaluate_unary(
         &self,
         operator: UnaryOperator,
@@ -599,6 +691,13 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [evaluate_arithmetic: 算術演算子を数値値へ適用する]
+    //   処理: [Integer演算はchecked arithmetic、Decimalを含む演算はfinite値を検査する]
+    //   引数: [left: 左値, operator: 算術演算子, right: 右値]
+    //   戻り値: [Result<Value, ExecutionError>: IntegerまたはDecimalの結果]
+    //   エラー: [ExecutionError: 型不一致、0除算、または演算overflow]
+    // }
     fn evaluate_arithmetic(
         &self,
         left: Value,
@@ -663,6 +762,13 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [call_statement_builtin: transaction制御関数を文として処理する]
+    //   処理: [引数なしを確認し、CsvDocumentのbegin/commit/rollbackへ委譲する]
+    //   引数: [name: 呼び出し名, arguments: DSL引数式列]
+    //   戻り値: [Result<bool, ExecutionError>: 対応builtinとして処理したか]
+    //   エラー: [ExecutionError: 引数数またはdocument transaction操作の失敗]
+    // }
     fn call_statement_builtin(
         &mut self,
         name: &str,
@@ -698,6 +804,12 @@ impl<'a> Runtime<'a> {
         Ok(true)
     }
 
+    // {
+    //   責務: [call_standard_namespace: Text/Number/Boolean標準関数を評価する]
+    //   引数: [namespace: 標準namespace, name: 関数名, arguments: 引数式列]
+    //   戻り値: [Result<Value, ExecutionError>: 標準関数の結果]
+    //   エラー: [ExecutionError: 未知関数、引数数、引数型、または変換の失敗]
+    // }
     fn call_standard_namespace(
         &mut self,
         namespace: StandardNamespace,
@@ -812,6 +924,13 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [call_builtin: 型変換、CSV読み書き、行列数等の組み込み関数を評価する]
+    //   処理: [大文字小文字を無視して名前を解決し、引数評価後にdocument操作を行う]
+    //   引数: [name: 呼び出し名, arguments: 引数式列]
+    //   戻り値: [Result<Option<Value>, ExecutionError>: builtin結果。対象外の名前はNone]
+    //   エラー: [ExecutionError: 引数数、型、参照、変換、またはdocument操作の失敗]
+    // }
     fn call_builtin(
         &mut self,
         name: &str,
@@ -960,6 +1079,12 @@ impl<'a> Runtime<'a> {
         }))
     }
 
+    // {
+    //   責務: [convert_integer: 値をIntegerへ変換する]
+    //   引数: [value: 変換対象値]
+    //   戻り値: [Result<Value, ExecutionError>: Integer値]
+    //   エラー: [ExecutionError: Integerとして解釈できない値]
+    // }
     fn convert_integer(&self, value: Value) -> Result<Value, ExecutionError> {
         match value {
             Value::Integer(value) => Ok(Value::Integer(value)),
@@ -975,6 +1100,12 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [convert_decimal: 値を有限Decimalへ変換する]
+    //   引数: [value: 変換対象値]
+    //   戻り値: [Result<Value, ExecutionError>: Decimal値]
+    //   エラー: [ExecutionError: 数値化できない値または非有限数]
+    // }
     fn convert_decimal(&self, value: Value) -> Result<Value, ExecutionError> {
         match value {
             Value::Decimal(value) => Ok(Value::Decimal(value)),
@@ -993,6 +1124,12 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [convert_boolean: Boolean値またはtrue/false文字列をBooleanへ変換する]
+    //   引数: [value: 変換対象値]
+    //   戻り値: [Result<Value, ExecutionError>: Boolean値]
+    //   エラー: [ExecutionError: true/falseとして解釈できない値]
+    // }
     fn convert_boolean(&self, value: Value) -> Result<Value, ExecutionError> {
         match value {
             Value::Boolean(value) => Ok(Value::Boolean(value)),
@@ -1007,6 +1144,12 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [convert_string: object以外の値を表示文字列へ変換する]
+    //   引数: [value: 変換対象値]
+    //   戻り値: [Result<Value, ExecutionError>: Text値]
+    //   エラー: [ExecutionError: objectは暗黙に文字列化しない]
+    // }
     fn convert_string(&self, value: Value) -> Result<Value, ExecutionError> {
         match value {
             Value::Object(_) => Err(ExecutionError::ExpectedText {
@@ -1016,6 +1159,12 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [instantiate_class: class instanceを生成し、親から子のfield初期化とInitを実行する]
+    //   引数: [class_name: 生成するclass名, arguments: constructor引数式列]
+    //   戻り値: [Result<Value, ExecutionError>: 新しいinstanceを指すObject値]
+    //   エラー: [ExecutionError: class/継承解決、引数数、初期値式、constructorの失敗]
+    // }
     fn instantiate_class(
         &mut self,
         class_name: &str,
@@ -1061,6 +1210,13 @@ impl<'a> Runtime<'a> {
         Ok(Value::Object(object_id))
     }
 
+    // {
+    //   責務: [call_function: top-level functionをlocal scopeで呼び出す]
+    //   処理: [引数を評価し、呼び出しeventを記録してscopeと深度を復元する]
+    //   引数: [name: 関数名, arguments: 引数式列]
+    //   戻り値: [Result<Option<Value>, ExecutionError>: Return値。明示ReturnがなければNone]
+    //   エラー: [ExecutionError: 関数解決、引数数、深度上限、またはbody実行の失敗]
+    // }
     fn call_function(
         &mut self,
         name: &str,
@@ -1110,6 +1266,12 @@ impl<'a> Runtime<'a> {
         Ok(return_value)
     }
 
+    // {
+    //   責務: [call_method: instanceのclass階層からmethodを解決して呼び出す]
+    //   引数: [object_id: 呼び出し対象ID, name: method名, arguments: 引数式列]
+    //   戻り値: [Result<Option<Value>, ExecutionError>: Return値またはNone]
+    //   エラー: [ExecutionError: instance、method、引数数、または実行失敗]
+    // }
     fn call_method(
         &mut self,
         object_id: ObjectId,
@@ -1135,6 +1297,12 @@ impl<'a> Runtime<'a> {
         self.invoke_method_with_values(object_id, defining_class, method, values)
     }
 
+    // {
+    //   責務: [call_super_method: 現在のmethod定義元より上位からSuper methodを解決する]
+    //   引数: [name: 親側method名, arguments: 引数式列]
+    //   戻り値: [Result<Option<Value>, ExecutionError>: 親methodのReturn値]
+    //   エラー: [ExecutionError: method外、親なし、method不明、引数数またはbodyの失敗]
+    // }
     fn call_super_method(
         &mut self,
         name: &str,
@@ -1171,6 +1339,13 @@ impl<'a> Runtime<'a> {
         self.invoke_method_with_values(object_id, defining_class, method, values)
     }
 
+    // {
+    //   責務: [invoke_method_with_values: 評価済み引数でmethod本体を実行する]
+    //   処理: [SelfをCONSTで束縛し、scope / method context / call depthを復元する]
+    //   引数: [object_id: 対象instance, defining_class: method定義class, method: method AST, values: 引数値]
+    //   戻り値: [Result<Option<Value>, ExecutionError>: methodのReturn値またはNone]
+    //   エラー: [ExecutionError: 呼び出し深度またはmethod bodyの失敗]
+    // }
     fn invoke_method_with_values(
         &mut self,
         object_id: ObjectId,
@@ -1218,6 +1393,12 @@ impl<'a> Runtime<'a> {
         Ok(return_value)
     }
 
+    // {
+    //   責務: [class_by_name: 大文字小文字を無視してProgramからclassを検索する]
+    //   引数: [name: 検索するclass名]
+    //   戻り値: [Result<&ClassDefinition, ExecutionError>: class定義参照]
+    //   エラー: [ExecutionError: classが存在しない]
+    // }
     fn class_by_name(&self, name: &str) -> Result<&'a super::ast::ClassDefinition, ExecutionError> {
         self.program
             .classes
@@ -1226,6 +1407,12 @@ impl<'a> Runtime<'a> {
             .ok_or_else(|| ExecutionError::UnknownClass(name.to_owned()))
     }
 
+    // {
+    //   責務: [class_lineage: class自身からroot parentまでの継承列を構築する]
+    //   引数: [class_name: 起点class名]
+    //   戻り値: [Result<Vec<&ClassDefinition>, ExecutionError>: rootからchild順のclass列]
+    //   エラー: [ExecutionError: class/parent不明または継承cycle]
+    // }
     fn class_lineage(
         &self,
         class_name: &str,
@@ -1260,6 +1447,12 @@ impl<'a> Runtime<'a> {
         Ok(lineage)
     }
 
+    // {
+    //   責務: [find_method_in_hierarchy: 最も派生したclassからmethodを探す]
+    //   引数: [class_name: 検索開始class名, method_name: method名]
+    //   戻り値: [Result<Option<(&str, &FunctionDefinition)>, ExecutionError>: 定義元classとmethod]
+    //   エラー: [ExecutionError: 継承列を解決できない]
+    // }
     fn find_method_in_hierarchy(
         &self,
         class_name: &str,
@@ -1275,6 +1468,12 @@ impl<'a> Runtime<'a> {
         }))
     }
 
+    // {
+    //   責務: [evaluate_arguments: 引数式列を左から順番に評価する]
+    //   引数: [arguments: 引数式列]
+    //   戻り値: [Result<Vec<Value>, ExecutionError>: 評価済み引数値列]
+    //   エラー: [ExecutionError: いずれかの引数評価が失敗]
+    // }
     fn evaluate_arguments(
         &mut self,
         arguments: &[Expression],
@@ -1285,6 +1484,12 @@ impl<'a> Runtime<'a> {
             .collect()
     }
 
+    // {
+    //   責務: [ensure_call_depth: 次のfunction/method呼び出しが深度上限内か検査する]
+    //   引数: [self: 現在のcall depthを持つruntime]
+    //   戻り値: [Result<(), ExecutionError>: 上限未満ならOk(())]
+    //   エラー: [ExecutionError: MAX_CALL_DEPTHに達している]
+    // }
     fn ensure_call_depth(&self) -> Result<(), ExecutionError> {
         if self.call_depth >= MAX_CALL_DEPTH {
             Err(ExecutionError::CallDepthExceeded {
@@ -1295,6 +1500,12 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [resolve_object: variable名をobject instance IDへ解決する]
+    //   引数: [variable: objectを保持するvariable名]
+    //   戻り値: [Result<ObjectId, ExecutionError>: object配列の識別子]
+    //   エラー: [ExecutionError: variableが不明またはobjectでない]
+    // }
     fn resolve_object(&self, variable: &str) -> Result<ObjectId, ExecutionError> {
         match self.lookup_variable(variable) {
             Some(Value::Object(object_id)) => Ok(*object_id),
@@ -1303,6 +1514,12 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [get_field: objectから大小文字を無視してfield値を取得する]
+    //   引数: [object_id: 対象object ID, field: field名]
+    //   戻り値: [Result<Value, ExecutionError>: cloneしたfield値]
+    //   エラー: [ExecutionError: object IDまたはfield名が不正]
+    // }
     fn get_field(&self, object_id: ObjectId, field: &str) -> Result<Value, ExecutionError> {
         let object = self.object(object_id)?;
         object
@@ -1315,6 +1532,12 @@ impl<'a> Runtime<'a> {
             })
     }
 
+    // {
+    //   責務: [set_field: 既存fieldの値を更新する]
+    //   引数: [object_id: 対象object ID, field: field名, value: 新しい値]
+    //   戻り値: [Result<(), ExecutionError>: 更新成功時Ok(())]
+    //   エラー: [ExecutionError: object IDまたはfield名が不正]
+    // }
     fn set_field(
         &mut self,
         object_id: ObjectId,
@@ -1333,18 +1556,36 @@ impl<'a> Runtime<'a> {
         Ok(())
     }
 
+    // {
+    //   責務: [object: IDからimmutableなinstance参照を取得する]
+    //   引数: [object_id: objects配列の識別子]
+    //   戻り値: [Result<&ObjectInstance, ExecutionError>: instance参照]
+    //   エラー: [ExecutionError: IDがobjects配列の範囲外]
+    // }
     fn object(&self, object_id: ObjectId) -> Result<&ObjectInstance, ExecutionError> {
         self.objects
             .get(object_id)
             .ok_or_else(|| ExecutionError::ExpectedObject(format!("object#{object_id}")))
     }
 
+    // {
+    //   責務: [object_mut: IDからmutableなinstance参照を取得する]
+    //   引数: [object_id: objects配列の識別子]
+    //   戻り値: [Result<&mut ObjectInstance, ExecutionError>: instanceのmutable参照]
+    //   エラー: [ExecutionError: IDがobjects配列の範囲外]
+    // }
     fn object_mut(&mut self, object_id: ObjectId) -> Result<&mut ObjectInstance, ExecutionError> {
         self.objects
             .get_mut(object_id)
             .ok_or_else(|| ExecutionError::ExpectedObject(format!("object#{object_id}")))
     }
 
+    // {
+    //   責務: [expect_integer: 値がIntegerか検査してi64を取り出す]
+    //   引数: [value: 検査対象値, context: errorに示す用途]
+    //   戻り値: [Result<i64, ExecutionError>: Integer値]
+    //   エラー: [ExecutionError: 値がIntegerでない]
+    // }
     fn expect_integer(&self, value: Value, context: &str) -> Result<i64, ExecutionError> {
         match value {
             Value::Integer(value) => Ok(value),
@@ -1354,6 +1595,12 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [expect_one_based_index: 正のInteger値をusizeの1-based indexとして検証する]
+    //   引数: [value: 検査対象値, context: errorに示す用途]
+    //   戻り値: [Result<usize, ExecutionError>: 1以上のindex]
+    //   エラー: [ExecutionError: Integerでない、1未満、またはusize範囲外]
+    // }
     fn expect_one_based_index(&self, value: Value, context: &str) -> Result<usize, ExecutionError> {
         let value = self.expect_integer(value, context)?;
         if value < 1 {
@@ -1366,6 +1613,12 @@ impl<'a> Runtime<'a> {
         })
     }
 
+    // {
+    //   責務: [expect_text: 値がTextか検査してStringを取り出す]
+    //   引数: [value: 検査対象値, context: errorに示す用途]
+    //   戻り値: [Result<String, ExecutionError>: Text内容]
+    //   エラー: [ExecutionError: 値がTextでない]
+    // }
     fn expect_text(&self, value: Value, context: &str) -> Result<String, ExecutionError> {
         match value {
             Value::Text(value) => Ok(value),
@@ -1375,6 +1628,12 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [expect_boolean: 値がBooleanか検査してboolを取り出す]
+    //   引数: [value: 検査対象値, context: errorに示す用途]
+    //   戻り値: [Result<bool, ExecutionError>: Boolean値]
+    //   エラー: [ExecutionError: 値がBooleanでない]
+    // }
     fn expect_boolean(&self, value: Value, context: &str) -> Result<bool, ExecutionError> {
         match value {
             Value::Boolean(value) => Ok(value),
@@ -1384,6 +1643,12 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [cell_text: scalar値をCSV cellへ書けるtextへ変換する]
+    //   引数: [value: cellへ書き込む値]
+    //   戻り値: [Result<String, ExecutionError>: cell文字列]
+    //   エラー: [ExecutionError: object値はCSV cellへ書き込めない]
+    // }
     fn cell_text(&self, value: Value) -> Result<String, ExecutionError> {
         match value {
             Value::Text(value) => Ok(value),
@@ -1396,6 +1661,11 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [scalar_text: scalar値を実行レポート用文字列へ変換する]
+    //   引数: [value: 変換対象値]
+    //   戻り値: [Option<String>: scalarの文字列表現。objectはNone]
+    // }
     fn scalar_text(&self, value: &Value) -> Option<String> {
         match value {
             Value::Text(value) => Some(value.clone()),
@@ -1406,6 +1676,11 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [describe_value: eventとerrorに使う実行時値の文字列表現を作る]
+    //   引数: [value: 説明する値]
+    //   戻り値: [String: scalar表現またはclass名付きobject表現]
+    // }
     fn describe_value(&self, value: &Value) -> String {
         match value {
             Value::Text(value) => value.clone(),
@@ -1420,6 +1695,11 @@ impl<'a> Runtime<'a> {
         }
     }
 
+    // {
+    //   責務: [lookup_variable: 現在scopeから外側へbindingを検索する]
+    //   引数: [name: 検索するvariable名]
+    //   戻り値: [Option<&Value>: 最も近いscopeの値]
+    // }
     fn lookup_variable(&self, name: &str) -> Option<&Value> {
         let key = normalize_identifier(name);
         self.scopes
@@ -1428,6 +1708,12 @@ impl<'a> Runtime<'a> {
             .find_map(|scope| scope.get(&key).map(|binding| &binding.value))
     }
 
+    // {
+    //   責務: [current_scope_mut: 宣言・代入対象の現在scopeを取得する]
+    //   引数: [self: scope stackを持つruntime]
+    //   戻り値: [&mut HashMap<String, Binding>: 最内側scope]
+    //   前提: [Runtimeはglobal scopeを常に最低1つ保持する]
+    // }
     fn current_scope_mut(&mut self) -> &mut HashMap<String, Binding> {
         self.scopes
             .last_mut()
@@ -1435,6 +1721,11 @@ impl<'a> Runtime<'a> {
     }
 }
 
+// {
+//   責務: [contains_japanese: 文字列に対象の日本語Unicode範囲が含まれるか調べる]
+//   引数: [value: 検査する文字列]
+//   戻り値: [bool: かな、漢字等の対象範囲が含まれればtrue]
+// }
 fn contains_japanese(value: &str) -> bool {
     value.chars().any(|ch| {
         matches!(
@@ -1450,6 +1741,11 @@ fn contains_japanese(value: &str) -> bool {
     })
 }
 
+// {
+//   責務: [is_integer_value: 値がInteger、またはi64にparse可能なTextか判定する]
+//   引数: [value: 検査対象値]
+//   戻り値: [bool: Integerとして解釈できればtrue]
+// }
 fn is_integer_value(value: &Value) -> bool {
     match value {
         Value::Integer(_) => true,
@@ -1458,6 +1754,11 @@ fn is_integer_value(value: &Value) -> bool {
     }
 }
 
+// {
+//   責務: [is_decimal_value: 値が有限数値型、またはfinite f64にparse可能なTextか判定する]
+//   引数: [value: 検査対象値]
+//   戻り値: [bool: Decimalとして解釈できればtrue]
+// }
 fn is_decimal_value(value: &Value) -> bool {
     match value {
         Value::Integer(_) | Value::Decimal(_) => true,
@@ -1466,6 +1767,11 @@ fn is_decimal_value(value: &Value) -> bool {
     }
 }
 
+// {
+//   責務: [is_boolean_value: 値がBoolean、またはtrue/false Textか判定する]
+//   引数: [value: 検査対象値]
+//   戻り値: [bool: Booleanとして解釈できればtrue]
+// }
 fn is_boolean_value(value: &Value) -> bool {
     match value {
         Value::Boolean(_) => true,
@@ -1476,11 +1782,22 @@ fn is_boolean_value(value: &Value) -> bool {
     }
 }
 
+// {
+//   責務: [compare_f64: 有限f64値を比較順序へ変換する]
+//   引数: [left: 左値, right: 右値]
+//   戻り値: [Ordering: 数値の比較順序]
+//   前提: [Decimal値は生成時に有限値として検証される]
+// }
 fn compare_f64(left: f64, right: f64) -> Ordering {
     left.partial_cmp(&right)
         .expect("Rowly DSL decimal values are always finite")
 }
 
+// {
+//   責務: [value_type: runtime値の型名をerror表示向けに返す]
+//   引数: [value: 型名を調べる値]
+//   戻り値: [&'static str: Text、Integer、Decimal、Boolean、Objectの型名]
+// }
 fn value_type(value: &Value) -> &'static str {
     match value {
         Value::Text(_) => "String",
@@ -1491,6 +1808,12 @@ fn value_type(value: &Value) -> &'static str {
     }
 }
 
+// {
+//   責務: [arithmetic_numbers: 数値value対をf64へ変換する]
+//   引数: [left: 左値, right: 右値, operator: error表示用演算子]
+//   戻り値: [Result<(f64, f64), ExecutionError>: 両辺の数値]
+//   エラー: [ExecutionError: いずれかのoperandがInteger/Decimalでない]
+// }
 fn arithmetic_numbers(
     left: &Value,
     right: &Value,
@@ -1511,6 +1834,11 @@ fn arithmetic_numbers(
     }
 }
 
+// {
+//   責務: [arithmetic_operator_text: 算術演算子を記号表現へ変換する]
+//   引数: [operator: DSL算術演算子]
+//   戻り値: [&'static str: +、-、*、/のいずれか]
+// }
 fn arithmetic_operator_text(operator: ArithmeticOperator) -> &'static str {
     match operator {
         ArithmeticOperator::Add => "+",
@@ -1520,6 +1848,11 @@ fn arithmetic_operator_text(operator: ArithmeticOperator) -> &'static str {
     }
 }
 
+// {
+//   責務: [comparison_operator_text: 比較演算子を記号表現へ変換する]
+//   引数: [operator: DSL比較演算子]
+//   戻り値: [&'static str: 比較演算子の記号]
+// }
 fn comparison_operator_text(operator: ComparisonOperator) -> &'static str {
     match operator {
         ComparisonOperator::Equal => "=",
@@ -1531,6 +1864,11 @@ fn comparison_operator_text(operator: ComparisonOperator) -> &'static str {
     }
 }
 
+// {
+//   責務: [conversion_error: 型変換失敗の詳細を持つExecutionErrorを作成する]
+//   引数: [value_type: 入力型名, value: 入力表示値, target: 変換先型名]
+//   戻り値: [ExecutionError: 変換元と変換先を含むConversion error]
+// }
 fn conversion_error(
     value_type: &'static str,
     value: String,
@@ -1543,6 +1881,12 @@ fn conversion_error(
     }
 }
 
+// {
+//   責務: [resolve_column: 列選択子をdocument内の0-based列indexへ解決する]
+//   引数: [selector: 0-based indexまたはheader選択子, document: 列情報の参照元]
+//   戻り値: [Result<usize, ColumnError>: document列index]
+//   エラー: [ColumnError: indexまたはheaderが解決できない]
+// }
 fn resolve_column(selector: &ColumnSelector, document: &CsvDocument) -> Result<usize, ColumnError> {
     match selector {
         ColumnSelector::Index(column) => {

@@ -479,9 +479,10 @@ fn archive_target_path(path: &Path) -> Result<PathBuf, RowlyxError> {
 
 // {
 //   責務: [safe_relative_path: archive entry pathがrelativeな通常pathだけで構成されるか判定する]
-//   処理: [empty、backslash、rooted / drive形式、CurDir、ParentDir、Prefixを拒否する]
+//   処理: [empty、backslash、rooted / drive形式、componentsで検出されるCurDir / ParentDir / Prefixを拒否する]
 //   引数: [path: 検証するentry path]
 //   戻り値: [bool: 安全なrelative pathならtrue]
+//   補足: [Pathがembedded / trailing `.` componentを正規化する場合、その表記は受理される]
 // }
 fn safe_relative_path(path: &Path) -> bool {
     let text = path.to_string_lossy();
@@ -526,7 +527,7 @@ fn zip_error(error: zip::result::ZipError) -> RowlyxError {
 #[derive(Debug, Error)]
 /// ```text
 /// 責務: [RowlyxError: project package / archive操作で呼出元へ返す失敗]
-/// 補足: [Project、IO、archive形式、entry安全性、manifest検証、参照、symlink、展開先の失敗を区別する]
+/// 補足: [Project、IO、ZIP library error、entry安全性、manifest検証、参照、symlink、展開先の失敗を区別する]
 /// ```
 pub enum RowlyxError {
     /// project manifestの読込・検証失敗。
@@ -535,7 +536,7 @@ pub enum RowlyxError {
     /// pathに対するfile / directory操作の失敗。
     #[error("failed to access `{path}`: {message}")]
     Io { path: String, message: String },
-    /// ZIP archiveの読込または生成の失敗。
+    /// ZIP library operationがZipErrorを返した失敗。
     #[error("invalid or damaged rowlyx archive: {0}")]
     Archive(String),
     /// archive entry pathがrelative安全条件を満たさない。
@@ -544,13 +545,13 @@ pub enum RowlyxError {
     /// archive内で同じentry名が重複している。
     #[error("archive contains duplicate entry `{0}`")]
     DuplicateEntry(String),
-    /// archive内の`.rwprj` manifest数が1件ではない。
+    /// archive root直下の非directory `.rwprj` manifest数が1件ではない。
     #[error("archive must contain exactly one `.rwprj` manifest, found {0}")]
     ProjectDefinitionCount(usize),
     /// archive内manifestのJSONまたはschemaが不正。
     #[error("invalid project manifest inside archive: {0}")]
     Manifest(String),
-    /// project referenceが無効またはroot外を指している。
+    /// archive出力pathが無効、project dataと衝突、またはreferenceの種別が実体と合わない。
     #[error("project reference is invalid or escapes its root: {0}")]
     InvalidReference(String),
     /// symbolic linkを安全にpack / extractできない。

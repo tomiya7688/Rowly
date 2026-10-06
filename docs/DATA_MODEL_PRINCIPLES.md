@@ -63,7 +63,7 @@ rowly excel import input.xlsx output.csv [sheet-name]
 rowly excel export input.csv output.xlsx [sheet-name]
 ```
 
-現在のGUI、Calculation Binding、Materialize、View groupingは未実装です。実装後は、利用者がEditまたはDSLで計算規則を明示し、Viewで結果を確認し、必要な場合だけMaterializeを実行できるようにします。Codeは常にcanonical CSVのraw textを表示・編集します。
+Calculation Binding、Materialize、View groupingは未実装です。既存GUIでは表の閲覧・編集ができますが、これらの機能は利用できません。実装後は、利用者がEditまたはDSLで計算規則を明示し、Viewで結果を確認し、必要な場合だけMaterializeを実行できるようにします。Codeは常にcanonical CSVのraw textを表示・編集します。
 
 ## 採用判断
 

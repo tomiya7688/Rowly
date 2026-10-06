@@ -19,24 +19,24 @@ use super::{
 };
 
 #[derive(Debug)]
-// {
-//   責務: [
-//     CsvDocument: CSV内容、保存基準、編集履歴、検証規則と外部変更状態を管理する
-//   ]
-//   フィールド: [
-//     path: 操作対象CSVのパス
-//     source_encoding: 現在のCSV文字コード
-//     table: 編集中のtable
-//     baseline: 最後に読み込んだ、または保存したtable
-//     history: undo/redoと保存状態を管理する編集履歴
-//     validation_rules: sessionの列検証規則
-//     metadata: 列型宣言
-//     metadata_error: メタデータ処理で発生したエラー
-//     save_metadata_sidecar: sidecar保存の可否
-//     disk_fingerprint: 最後に確認したディスク内容の指紋
-//     external_conflicts: 自動統合できなかった外部変更
-//   ]
-// }
+/// ```text
+/// 責務: [
+/// CsvDocument: CSV内容、保存基準、編集履歴、検証規則と外部変更状態を管理する
+/// ]
+/// フィールド: [
+/// path: 操作対象CSVのパス
+/// source_encoding: 現在のCSV文字コード
+/// table: 編集中のtable
+/// baseline: 最後に読み込んだ、または保存したtable
+/// history: undo/redoと保存状態を管理する編集履歴
+/// validation_rules: sessionの列検証規則
+/// metadata: 列型宣言
+/// metadata_error: メタデータ処理で発生したエラー
+/// save_metadata_sidecar: sidecar保存の可否
+/// disk_fingerprint: 最後に確認したディスク内容の指紋
+/// external_conflicts: 自動統合できなかった外部変更
+/// ]
+/// ```
 pub struct CsvDocument {
     path: PathBuf,
     source_encoding: SourceEncoding,
@@ -52,18 +52,21 @@ pub struct CsvDocument {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-// {
-//   責務: [
-//     ExternalConflictDraft: 自動マージできなかった変更の基準・ローカル・ディスクの各スナップショットを保持する
-//   ]
-//   フィールド: [
-//     baseline: 外部編集前の共通内容
-//     local: Rowly内の編集内容
-//     disk: 外部編集後の内容
-//     cell_conflicts: 値が衝突したcell一覧
-//     structural_conflict: 構造上の競合理由
-//   ]
-// }
+/// ```text
+/// 責務: [
+/// ExternalConflictDraft: 自動マージできなかった変更の基準・ローカル・ディスクの各スナップショットを保持する
+/// ]
+/// フィールド: [
+/// baseline: 外部編集前の共通内容
+/// local: Rowly内の編集内容
+/// disk: 外部編集後の内容
+/// cell_conflicts: 値が衝突したcell一覧
+/// structural_conflict: 構造上の競合理由
+/// ]
+/// 補足: [
+/// 競合時はdisk snapshotが現在内容となり、安全に適用できたlocal cell変更も現在内容に残る
+/// ]
+/// ```
 pub struct ExternalConflictDraft {
     pub baseline: Vec<Vec<String>>,
     pub local: Vec<Vec<String>>,
@@ -73,18 +76,18 @@ pub struct ExternalConflictDraft {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-// {
-//   責務: [
-//     ExternalCellConflict: 同じcellに対するローカルとディスクの競合値を保持する
-//   ]
-//   フィールド: [
-//     row: 衝突cellのzero-based row index
-//     column: 衝突cellのzero-based column index
-//     baseline: 共通基準値
-//     local: Rowly内の値
-//     disk: ディスク上の値
-//   ]
-// }
+/// ```text
+/// 責務: [
+/// ExternalCellConflict: 同じcellに対するローカルとディスクの競合値を保持する
+/// ]
+/// フィールド: [
+/// row: 衝突cellのzero-based row index
+/// column: 衝突cellのzero-based column index
+/// baseline: 共通基準値
+/// local: Rowly内の値
+/// disk: ディスク上の値
+/// ]
+/// ```
 pub struct ExternalCellConflict {
     pub row: usize,
     pub column: usize,
@@ -94,11 +97,11 @@ pub struct ExternalCellConflict {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-// {
-//   責務: [
-//     ExternalStructureConflict: 外部変更を安全に統合できない構造上の理由を表す
-//   ]
-// }
+/// ```text
+/// 責務: [
+/// ExternalStructureConflict: 外部変更を安全に統合できない構造上の理由を表す
+/// ]
+/// ```
 pub enum ExternalStructureConflict {
     RowCountChanged,
     RowShapeChanged,
@@ -108,21 +111,21 @@ pub enum ExternalStructureConflict {
 }
 
 impl CsvDocument {
-    // {
-    //   責務: [
-    //     create: 指定行からUTF-8 CSVを作成し、保存済み状態のdocumentを返す
-    //   ]
-    //   引数: [
-    //     path: impl AsRef<Path>
-    //     rows: Vec<Vec<String>>
-    //   ]
-    //   戻り値: [
-    //     Self: 処理成功時の結果
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// create: 指定行からUTF-8 CSVを作成し、保存済み状態のdocumentを返す
+    /// ]
+    /// 引数: [
+    /// path: impl AsRef<Path>
+    /// rows: Vec<Vec<String>>
+    /// ]
+    /// 戻り値: [
+    /// Self: 処理成功時の結果
+    /// ]
+    /// エラー: [
+    /// DocumentError: CSVファイルを作成・書き込みできない場合
+    /// ]
+    /// ```
     pub fn create(path: impl AsRef<Path>, rows: Vec<Vec<String>>) -> Result<Self, DocumentError> {
         let path = path.as_ref().to_path_buf();
         let table = Table::new(rows);
@@ -149,56 +152,56 @@ impl CsvDocument {
         })
     }
 
-    // {
-    //   責務: [
-    //     open: CSVと隣接するRowlyメタデータを読み込んで開く
-    //   ]
-    //   引数: [
-    //     path: impl AsRef<Path>
-    //   ]
-    //   戻り値: [
-    //     Self: 処理成功時の結果
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// open: CSVと隣接するRowlyメタデータを読み込んで開く
+    /// ]
+    /// 引数: [
+    /// path: impl AsRef<Path>
+    /// ]
+    /// 戻り値: [
+    /// Self: 処理成功時の結果
+    /// ]
+    /// エラー: [
+    /// DocumentError: CSVを読み込めない場合
+    /// ]
+    /// ```
     pub fn open(path: impl AsRef<Path>) -> Result<Self, DocumentError> {
         Self::open_with_metadata(path.as_ref(), true)
     }
 
     // {
-    //   責務: [
-    //     open_without_metadata: Rowlyメタデータを読み書きせずCSVを開く
-    //   ]
-    //   引数: [
-    //     path: impl AsRef<Path>
-    //   ]
-    //   戻り値: [
-    //     Self: 処理成功時の結果
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
+    // 責務: [
+    // open_without_metadata: Rowlyメタデータを読み書きせずCSVを開く
+    // ]
+    // 引数: [
+    // path: impl AsRef<Path>
+    // ]
+    // 戻り値: [
+    // Self: 処理成功時の結果
+    // ]
+    // エラー: [
+    // DocumentError: CSVを読み込めない場合
+    // ]
     // }
     pub(crate) fn open_without_metadata(path: impl AsRef<Path>) -> Result<Self, DocumentError> {
         Self::open_with_metadata(path.as_ref(), false)
     }
 
     // {
-    //   責務: [
-    //     open_with_metadata: CSVを読み込み、指定に応じて隣接メタデータも読み込む
-    //   ]
-    //   引数: [
-    //     path: &Path
-    //     load_metadata: bool
-    //   ]
-    //   戻り値: [
-    //     Self: 処理成功時の結果
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
+    // 責務: [
+    // open_with_metadata: CSVを読み込み、指定に応じて隣接メタデータも読み込む
+    // ]
+    // 引数: [
+    // path: &Path
+    // load_metadata: bool
+    // ]
+    // 戻り値: [
+    // Self: 処理成功時の結果
+    // ]
+    // エラー: [
+    // DocumentError: CSVを読み込めない場合
+    // ]
     // }
     fn open_with_metadata(path: &Path, load_metadata: bool) -> Result<Self, DocumentError> {
         let path = path.to_path_buf();
@@ -232,94 +235,97 @@ impl CsvDocument {
         })
     }
 
-    // {
-    //   責務: [
-    //     path: 操作対象CSVのパスを返す
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     &Path: 処理成功時の結果
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// path: 操作対象CSVのパスを返す
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// &Path: 処理成功時の結果
+    /// ]
+    /// ```
     pub fn path(&self) -> &Path {
         &self.path
     }
 
-    // {
-    //   責務: [
-    //     source_encoding: CSVの現在の文字コードを返す
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     SourceEncoding: 処理成功時の結果
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// source_encoding: CSVの現在の文字コードを返す
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// SourceEncoding: 処理成功時の結果
+    /// ]
+    /// ```
     pub fn source_encoding(&self) -> SourceEncoding {
         self.source_encoding
     }
 
-    // {
-    //   責務: [
-    //     is_dirty: 保存後にCSV内容の編集があるか返す
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     bool: 判定または変更結果
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// is_dirty: 保存後にCSV内容の編集があるか返す
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// bool: 判定または変更結果
+    /// ]
+    /// ```
     pub fn is_dirty(&self) -> bool {
         self.history.is_dirty()
     }
 
-    // {
-    //   責務: [
-    //     refresh_if_external_change: ディスク上の外部変更を検出して安全に同期する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     bool: 判定または変更結果
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// refresh_if_external_change: ディスク上の変更を統合し処理結果を返す
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// bool: ディスク内容が変化して同期処理を行った場合true
+    /// ]
+    /// エラー: [
+    /// DocumentError: 編集中transactionがある、またはディスク確認・統合に失敗した場合
+    /// ]
+    /// 補足: [
+    /// 安全な差分は統合し、競合はdraftに保存してdisk snapshotを現在内容にする
+    /// ]
+    /// ```
     pub fn refresh_if_external_change(&mut self) -> Result<bool, DocumentError> {
         self.ensure_no_transaction("refresh external changes")?;
         self.merge_external_disk()
     }
 
-    // {
-    //   責務: [
-    //     external_conflict_drafts: 保留中の外部変更競合スナップショットを返す
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     &[ExternalConflictDraft]: 処理成功時の結果
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// external_conflict_drafts: 保留中の外部変更競合スナップショットを返す
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// &[ExternalConflictDraft]: 処理成功時の結果
+    /// ]
+    /// ```
     pub fn external_conflict_drafts(&self) -> &[ExternalConflictDraft] {
         &self.external_conflicts
     }
 
-    // {
-    //   責務: [
-    //     reapply_local_cell_conflicts: 競合draftのローカルcell値を現在のtableへ再適用する
-    //   ]
-    //   引数: [
-    //     draft_index: usize
-    //   ]
-    //   戻り値: [
-    //     usize: 対象または適用件数
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// reapply_local_cell_conflicts: 競合draftのローカルcell値を現在のtableへ再適用する
+    /// ]
+    /// 引数: [
+    /// draft_index: usize
+    /// ]
+    /// 戻り値: [
+    /// usize: 対象または適用件数
+    /// ]
+    /// エラー: [
+    /// DocumentError: draftが存在しない、構造競合がある、cellが変化済み、または再適用値が検証規則に反する場合
+    /// ]
+    /// ```
     pub fn reapply_local_cell_conflicts(
         &mut self,
         draft_index: usize,
@@ -372,23 +378,23 @@ impl CsvDocument {
         Ok(changes.len())
     }
 
-    // {
-    //   責務: [
-    //     reapply_local_structural_draft: 競合draftのローカル構造全体を現在のtableへ再適用する
-    //   ]
-    //   引数: [
-    //     draft_index: usize
-    //   ]
-    //   戻り値: [
-    //     usize: 対象または適用件数
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    //   補足: [
-    //     現在内容が記録済みdisk snapshotと一致する場合だけlocal snapshotを適用する
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// reapply_local_structural_draft: 競合draftのローカル構造全体を現在のtableへ再適用する
+    /// ]
+    /// 引数: [
+    /// draft_index: usize
+    /// ]
+    /// 戻り値: [
+    /// usize: 対象または適用件数
+    /// ]
+    /// エラー: [
+    /// DocumentError: draftが存在しない、現在内容がdisk snapshotと異なる、またはtableを置換できない場合
+    /// ]
+    /// 補足: [
+    /// 現在内容が記録済みdisk snapshotと一致する場合だけlocal snapshotを適用する
+    /// ]
+    /// ```
     pub fn reapply_local_structural_draft(
         &mut self,
         draft_index: usize,
@@ -432,49 +438,49 @@ impl CsvDocument {
         Ok(local.len())
     }
 
-    // {
-    //   責務: [
-    //     metadata_path: CSVに隣接するメタデータファイルのパスを返す
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     PathBuf: 処理成功時の結果
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// metadata_path: CSVに隣接するメタデータファイルのパスを返す
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// PathBuf: 処理成功時の結果
+    /// ]
+    /// ```
     pub fn metadata_path(&self) -> PathBuf {
         sidecar_path(&self.path)
     }
 
-    // {
-    //   責務: [
-    //     metadata_error: メタデータ処理時のエラーを返す
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     Option<&str>: 値が存在するときの結果
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// metadata_error: メタデータ処理時のエラーを返す
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// Option<&str>: 値が存在するときの結果
+    /// ]
+    /// ```
     pub fn metadata_error(&self) -> Option<&str> {
         self.metadata_error.as_deref()
     }
 
-    // {
-    //   責務: [
-    //     set_column_type_declaration_by_header: header名に対応する列の型宣言を設定する
-    //   ]
-    //   引数: [
-    //     header: &str
-    //     column_type: ColumnType
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// set_column_type_declaration_by_header: header名に対応する列の型宣言を設定する
+    /// ]
+    /// 引数: [
+    /// header: &str
+    /// column_type: ColumnType
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: headerが存在しないか一意でない場合
+    /// ]
+    /// ```
     pub fn set_column_type_declaration_by_header(
         &mut self,
         header: &str,
@@ -486,20 +492,20 @@ impl CsvDocument {
         Ok(())
     }
 
-    // {
-    //   責務: [
-    //     remove_column_type_declaration_by_header: header名に対応する列の型宣言を削除する
-    //   ]
-    //   引数: [
-    //     header: &str
-    //   ]
-    //   戻り値: [
-    //     bool: 判定または変更結果
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// remove_column_type_declaration_by_header: header名に対応する列の型宣言を削除する
+    /// ]
+    /// 引数: [
+    /// header: &str
+    /// ]
+    /// 戻り値: [
+    /// bool: 判定または変更結果
+    /// ]
+    /// エラー: [
+    /// DocumentError: headerが存在しないか一意でない場合
+    /// ]
+    /// ```
     pub fn remove_column_type_declaration_by_header(
         &mut self,
         header: &str,
@@ -508,20 +514,20 @@ impl CsvDocument {
         Ok(self.metadata.remove(header))
     }
 
-    // {
-    //   責務: [
-    //     column_type_declaration_by_header: header名に対応する列の型宣言を取得する
-    //   ]
-    //   引数: [
-    //     header: &str
-    //   ]
-    //   戻り値: [
-    //     Option<ColumnType>: 値が存在するときの結果
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// column_type_declaration_by_header: header名に対応する列の型宣言を取得する
+    /// ]
+    /// 引数: [
+    /// header: &str
+    /// ]
+    /// 戻り値: [
+    /// Option<ColumnType>: 値が存在するときの結果
+    /// ]
+    /// エラー: [
+    /// DocumentError: headerが存在しないか一意でない場合
+    /// ]
+    /// ```
     pub fn column_type_declaration_by_header(
         &self,
         header: &str,
@@ -530,33 +536,33 @@ impl CsvDocument {
         Ok(self.metadata.get(header))
     }
 
-    // {
-    //   責務: [
-    //     column_type_declarations: 保存対象の列型宣言を列挙する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     impl Iterator<Item = (&str, ColumnType)>: 遅延評価される項目列
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// column_type_declarations: 保存対象の列型宣言を列挙する
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// impl Iterator<Item = (&str, ColumnType)>: 遅延評価される項目列
+    /// ]
+    /// ```
     pub fn column_type_declarations(&self) -> impl Iterator<Item = (&str, ColumnType)> {
         self.metadata.declarations()
     }
 
-    // {
-    //   責務: [
-    //     save_metadata: 列型宣言をRowlyメタデータとして保存する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// save_metadata: 列型宣言をRowlyメタデータとして保存する
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: メタデータsidecarを書き込めない場合
+    /// ]
+    /// ```
     pub fn save_metadata(&mut self) -> Result<(), DocumentError> {
         if !self.save_metadata_sidecar {
             return Ok(());
@@ -568,21 +574,24 @@ impl CsvDocument {
         Ok(())
     }
 
-    // {
-    //   責務: [
-    //     set_validation_rule: 列の入力検証規則を設定し編集履歴へ記録する
-    //   ]
-    //   引数: [
-    //     target: ValidationTarget
-    //     rule: ValidationRule
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// set_validation_rule: 列の入力検証規則を設定し編集履歴へ記録する
+    /// ]
+    /// 引数: [
+    /// target: ValidationTarget
+    /// rule: ValidationRule
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: target列を解決できない場合
+    /// ]
+    /// 補足: [
+    /// session限定の規則。変更はundo可能だがCSVをdirtyにせず、CSV保存では永続化しない
+    /// ]
+    /// ```
     pub fn set_validation_rule(
         &mut self,
         target: ValidationTarget,
@@ -609,18 +618,18 @@ impl CsvDocument {
     }
 
     // {
-    //   責務: [
-    //     replace_project_validation_rules: project由来の入力検証規則一式を置き換え履歴へ記録する
-    //   ]
-    //   引数: [
-    //     rules: BTreeMap<ValidationTarget, ValidationRule>
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   補足: [
-    //     規則変更をundo可能な編集履歴へ記録する
-    //   ]
+    // 責務: [
+    // replace_project_validation_rules: project設定由来の検証規則一式を置き換える
+    // ]
+    // 引数: [
+    // rules: BTreeMap<ValidationTarget, ValidationRule>
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
+    // 補足: [
+    // 変更はundo可能な履歴に記録されるがCSV dirty状態には影響しない
+    // ]
     // }
     pub(crate) fn replace_project_validation_rules(
         &mut self,
@@ -637,20 +646,17 @@ impl CsvDocument {
         });
     }
 
-    // {
-    //   責務: [
-    //     remove_validation_rule: 列に紐づく入力検証規則を削除する
-    //   ]
-    //   引数: [
-    //     target: &ValidationTarget
-    //   ]
-    //   戻り値: [
-    //     bool: 判定または変更結果
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// remove_validation_rule: 列に紐づく入力検証規則を削除する
+    /// ]
+    /// 引数: [
+    /// target: &ValidationTarget
+    /// ]
+    /// 戻り値: [
+    /// bool: 判定または変更結果
+    /// ]
+    /// ```
     pub fn remove_validation_rule(
         &mut self,
         target: &ValidationTarget,
@@ -680,46 +686,46 @@ impl CsvDocument {
         Ok(true)
     }
 
-    // {
-    //   責務: [
-    //     validation_rule: 指定targetの入力検証規則を取得する
-    //   ]
-    //   引数: [
-    //     target: &ValidationTarget
-    //   ]
-    //   戻り値: [
-    //     Option<&ValidationRule>: 値が存在するときの結果
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// validation_rule: 指定targetの入力検証規則を取得する
+    /// ]
+    /// 引数: [
+    /// target: &ValidationTarget
+    /// ]
+    /// 戻り値: [
+    /// Option<&ValidationRule>: 値が存在するときの結果
+    /// ]
+    /// ```
     pub fn validation_rule(&self, target: &ValidationTarget) -> Option<&ValidationRule> {
         self.validation_rules.get(target)
     }
 
-    // {
-    //   責務: [
-    //     validation_rules: 設定済み入力検証規則を列挙する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     impl Iterator<Item = (&ValidationTarget, &ValidationRule)>: 遅延評価される項目列
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// validation_rules: 設定済み入力検証規則を列挙する
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// impl Iterator<Item = (&ValidationTarget, &ValidationRule)>: 遅延評価される項目列
+    /// ]
+    /// ```
     pub fn validation_rules(&self) -> impl Iterator<Item = (&ValidationTarget, &ValidationRule)> {
         self.validation_rules.iter()
     }
 
-    // {
-    //   責務: [
-    //     allowed_values_for_column: 列に有効な規則が持つ許可値を取得する
-    //   ]
-    //   引数: [
-    //     column: usize
-    //   ]
-    //   戻り値: [
-    //     Option<&[String]>: 値が存在するときの結果
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// allowed_values_for_column: 列に有効な規則が持つ許可値を取得する
+    /// ]
+    /// 引数: [
+    /// column: usize
+    /// ]
+    /// 戻り値: [
+    /// Option<&[String]>: 値が存在するときの結果
+    /// ]
+    /// ```
     pub fn allowed_values_for_column(&self, column: usize) -> Option<&[String]> {
         self.validation_rules.iter().find_map(|(target, rule)| {
             (self.resolve_validation_target(target).ok() == Some(column))
@@ -728,30 +734,30 @@ impl CsvDocument {
         })
     }
 
-    // {
-    //   責務: [
-    //     validation_report: 現在のtableに対する入力検証結果を返す
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     ValidationReport: 処理成功時の結果
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// validation_report: 現在のtableに対する入力検証結果を返す
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// ValidationReport: 処理成功時の結果
+    /// ]
+    /// ```
     pub fn validation_report(&self) -> ValidationReport {
         self.validation_report_for(&self.table)
     }
 
     // {
-    //   責務: [
-    //     validation_report_for: 指定tableのデータ行を検証規則に照らして検査する
-    //   ]
-    //   引数: [
-    //     table: &Table
-    //   ]
-    //   戻り値: [
-    //     ValidationReport: 処理成功時の結果
-    //   ]
+    // 責務: [
+    // validation_report_for: 指定tableのデータ行を検証規則に照らして検査する
+    // ]
+    // 引数: [
+    // table: &Table
+    // ]
+    // 戻り値: [
+    // ValidationReport: 処理成功時の結果
+    // ]
     // }
     fn validation_report_for(&self, table: &Table) -> ValidationReport {
         let mut report = ValidationReport::default();
@@ -790,138 +796,138 @@ impl CsvDocument {
         report
     }
 
-    // {
-    //   責務: [
-    //     can_undo: 取り消し可能な編集履歴があるか返す
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     bool: 判定または変更結果
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// can_undo: 取り消し可能な編集履歴があるか返す
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// bool: 判定または変更結果
+    /// ]
+    /// ```
     pub fn can_undo(&self) -> bool {
         self.history.can_undo()
     }
 
-    // {
-    //   責務: [
-    //     can_redo: やり直し可能な編集履歴があるか返す
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     bool: 判定または変更結果
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// can_redo: やり直し可能な編集履歴があるか返す
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// bool: 判定または変更結果
+    /// ]
+    /// ```
     pub fn can_redo(&self) -> bool {
         self.history.can_redo()
     }
 
-    // {
-    //   責務: [
-    //     row_count: 現在のtableの行数を返す
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     usize: 対象または適用件数
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// row_count: 現在のtableの行数を返す
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// usize: 対象または適用件数
+    /// ]
+    /// ```
     pub fn row_count(&self) -> usize {
         self.table.row_count()
     }
 
-    // {
-    //   責務: [
-    //     column_count: 現在のtableの最大列幅を返す
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     usize: 対象または適用件数
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// column_count: 現在のtableの最大列幅を返す
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// usize: 対象または適用件数
+    /// ]
+    /// ```
     pub fn column_count(&self) -> usize {
         self.table.column_count()
     }
 
-    // {
-    //   責務: [
-    //     rows: 現在の行を順序を保って参照列挙する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     impl Iterator<Item = &[String]>: 遅延評価される項目列
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// rows: 現在の行を順序を保って参照列挙する
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// impl Iterator<Item = &[String]>: 遅延評価される項目列
+    /// ]
+    /// ```
     pub fn rows(&self) -> impl Iterator<Item = &[String]> {
         self.table.rows().iter().map(Vec::as_slice)
     }
 
-    // {
-    //   責務: [
-    //     cell: 行列番号で指定されたcell値を取得する
-    //   ]
-    //   引数: [
-    //     row: usize
-    //     column: usize
-    //   ]
-    //   戻り値: [
-    //     Option<&str>: 値が存在するときの結果
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// cell: 行列番号で指定されたcell値を取得する
+    /// ]
+    /// 引数: [
+    /// row: usize
+    /// column: usize
+    /// ]
+    /// 戻り値: [
+    /// Option<&str>: 値が存在するときの結果
+    /// ]
+    /// ```
     pub fn cell(&self, row: usize, column: usize) -> Option<&str> {
         self.table.cell(row, column)
     }
 
-    // {
-    //   責務: [
-    //     cell_ref: cell参照で指定された値を取得する
-    //   ]
-    //   引数: [
-    //     reference: CellRef
-    //   ]
-    //   戻り値: [
-    //     Option<&str>: 値が存在するときの結果
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// cell_ref: cell参照で指定された値を取得する
+    /// ]
+    /// 引数: [
+    /// reference: CellRef
+    /// ]
+    /// 戻り値: [
+    /// Option<&str>: 値が存在するときの結果
+    /// ]
+    /// ```
     pub fn cell_ref(&self, reference: CellRef) -> Option<&str> {
         self.cell(reference.row(), reference.column())
     }
 
-    // {
-    //   責務: [
-    //     cell_a1: A1形式の参照からcell値を取得する
-    //   ]
-    //   引数: [
-    //     reference: &str
-    //   ]
-    //   戻り値: [
-    //     Option<&str>: 値が存在するときの結果
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// cell_a1: A1形式の参照からcell値を取得する
+    /// ]
+    /// 引数: [
+    /// reference: &str
+    /// ]
+    /// 戻り値: [
+    /// Option<&str>: 値が存在するときの結果
+    /// ]
+    /// エラー: [
+    /// DocumentError: A1参照の形式が不正な場合
+    /// ]
+    /// ```
     pub fn cell_a1(&self, reference: &str) -> Result<Option<&str>, DocumentError> {
         Ok(self.cell_ref(reference.parse()?))
     }
 
-    // {
-    //   責務: [
-    //     csv_text: 現在のtableをUTF-8のCSV文字列へ直列化する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     String: 処理成功時の結果
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// csv_text: 現在のtableをUTF-8のCSV文字列へ直列化する
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// String: 処理成功時の結果
+    /// ]
+    /// エラー: [
+    /// DocumentError: CSV文字列へ直列化できない場合
+    /// ]
+    /// ```
     pub fn csv_text(&self) -> Result<String, DocumentError> {
         let mut writer = WriterBuilder::new()
             .terminator(Terminator::Any(b'\n'))
@@ -937,20 +943,20 @@ impl CsvDocument {
         String::from_utf8(bytes).map_err(|error| DocumentError::Csv(error.to_string()))
     }
 
-    // {
-    //   責務: [
-    //     apply_csv_text: CSV文字列を解析し検証後に一括適用する
-    //   ]
-    //   引数: [
-    //     text: &str
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// apply_csv_text: CSV文字列を解析し検証後に一括適用する
+    /// ]
+    /// 引数: [
+    /// text: &str
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: CSV文字列を解析できないか、値が検証規則に反する場合
+    /// ]
+    /// ```
     pub fn apply_csv_text(&mut self, text: &str) -> Result<(), DocumentError> {
         let mut reader = ReaderBuilder::new()
             .has_headers(false)
@@ -964,20 +970,20 @@ impl CsvDocument {
         self.replace_contents(rows)
     }
 
-    // {
-    //   責務: [
-    //     replace_contents: table全体を検証して置き換え変更を履歴へ記録する
-    //   ]
-    //   引数: [
-    //     rows: Vec<Vec<String>>
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// replace_contents: table全体を検証して置き換え変更を履歴へ記録する
+    /// ]
+    /// 引数: [
+    /// rows: Vec<Vec<String>>
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: table化または検証規則の確認に失敗した場合
+    /// ]
+    /// ```
     pub fn replace_contents(&mut self, rows: Vec<Vec<String>>) -> Result<(), DocumentError> {
         let replacement = Table::new(rows);
         let before = self.table.rows().to_vec();
@@ -999,22 +1005,22 @@ impl CsvDocument {
         Ok(())
     }
 
-    // {
-    //   責務: [
-    //     set_cell: 行列番号で指定したcell値を編集する
-    //   ]
-    //   引数: [
-    //     row: usize
-    //     column: usize
-    //     value: impl Into<String>
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// set_cell: 行列番号で指定したcell値を編集する
+    /// ]
+    /// 引数: [
+    /// row: usize
+    /// column: usize
+    /// value: impl Into<String>
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: cellが存在しないか、新しい値が検証規則に反する場合
+    /// ]
+    /// ```
     pub fn set_cell(
         &mut self,
         row: usize,
@@ -1024,21 +1030,21 @@ impl CsvDocument {
         self.set_cell_ref(CellRef::new(row, column), value)
     }
 
-    // {
-    //   責務: [
-    //     set_cell_ref: cell参照で指定した値を編集する
-    //   ]
-    //   引数: [
-    //     reference: CellRef
-    //     value: impl Into<String>
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// set_cell_ref: cell参照で指定した値を編集する
+    /// ]
+    /// 引数: [
+    /// reference: CellRef
+    /// value: impl Into<String>
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: cellが存在しないか、新しい値が検証規則に反する場合
+    /// ]
+    /// ```
     pub fn set_cell_ref(
         &mut self,
         reference: CellRef,
@@ -1047,21 +1053,21 @@ impl CsvDocument {
         self.set_references_value([reference], value.into())
     }
 
-    // {
-    //   責務: [
-    //     set_cell_a1: A1形式の参照で指定した値を編集する
-    //   ]
-    //   引数: [
-    //     reference: &str
-    //     value: impl Into<String>
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// set_cell_a1: A1形式の参照で指定した値を編集する
+    /// ]
+    /// 引数: [
+    /// reference: &str
+    /// value: impl Into<String>
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: 参照が不正、cellが存在しない、または値が検証規則に反する場合
+    /// ]
+    /// ```
     pub fn set_cell_a1(
         &mut self,
         reference: &str,
@@ -1070,21 +1076,21 @@ impl CsvDocument {
         self.set_cell_ref(reference.parse()?, value)
     }
 
-    // {
-    //   責務: [
-    //     set_range_value: cell範囲の値を一括編集する
-    //   ]
-    //   引数: [
-    //     range: CellRange
-    //     value: impl Into<String>
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// set_range_value: cell範囲の値を一括編集する
+    /// ]
+    /// 引数: [
+    /// range: CellRange
+    /// value: impl Into<String>
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: 存在しないcellがあるか、新しい値が検証規則に反する場合
+    /// ]
+    /// ```
     pub fn set_range_value(
         &mut self,
         range: CellRange,
@@ -1093,21 +1099,21 @@ impl CsvDocument {
         self.set_references_value(range.iter(), value.into())
     }
 
-    // {
-    //   責務: [
-    //     set_range_a1: A1形式の範囲の値を一括編集する
-    //   ]
-    //   引数: [
-    //     range: &str
-    //     value: impl Into<String>
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// set_range_a1: A1形式の範囲の値を一括編集する
+    /// ]
+    /// 引数: [
+    /// range: &str
+    /// value: impl Into<String>
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: 範囲参照が不正、cellが存在しない、または値が検証規則に反する場合
+    /// ]
+    /// ```
     pub fn set_range_a1(
         &mut self,
         range: &str,
@@ -1116,21 +1122,21 @@ impl CsvDocument {
         self.set_range_value(range.parse()?, value)
     }
 
-    // {
-    //   責務: [
-    //     insert_rows: 指定位置へ空行を挿入し編集履歴へ記録する
-    //   ]
-    //   引数: [
-    //     index: usize
-    //     count: usize
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// insert_rows: 指定位置へ空行を挿入し編集履歴へ記録する
+    /// ]
+    /// 引数: [
+    /// index: usize
+    /// count: usize
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: 挿入位置がtableの範囲外の場合
+    /// ]
+    /// ```
     pub fn insert_rows(&mut self, index: usize, count: usize) -> Result<(), DocumentError> {
         let width = self.column_count().max(1);
         let inserted = vec![vec![String::new(); width]; count];
@@ -1147,21 +1153,21 @@ impl CsvDocument {
         Ok(())
     }
 
-    // {
-    //   責務: [
-    //     delete_rows: 指定位置の行を削除し編集履歴へ記録する
-    //   ]
-    //   引数: [
-    //     index: usize
-    //     count: usize
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// delete_rows: 指定位置の行を削除し編集履歴へ記録する
+    /// ]
+    /// 引数: [
+    /// index: usize
+    /// count: usize
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: 削除範囲がtableの範囲外の場合
+    /// ]
+    /// ```
     pub fn delete_rows(&mut self, index: usize, count: usize) -> Result<(), DocumentError> {
         let removed = self
             .table
@@ -1176,21 +1182,21 @@ impl CsvDocument {
         Ok(())
     }
 
-    // {
-    //   責務: [
-    //     insert_columns: 指定位置へ列を挿入し検証targetと履歴を更新する
-    //   ]
-    //   引数: [
-    //     index: usize
-    //     count: usize
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// insert_columns: 指定位置へ列を挿入し検証targetと履歴を更新する
+    /// ]
+    /// 引数: [
+    /// index: usize
+    /// count: usize
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: 挿入位置が列範囲外か、検証target indexがoverflowする場合
+    /// ]
+    /// ```
     pub fn insert_columns(&mut self, index: usize, count: usize) -> Result<(), DocumentError> {
         let column_count = self.column_count();
         if index > column_count {
@@ -1227,19 +1233,19 @@ impl CsvDocument {
         Ok(())
     }
 
-    // {
-    //   責務: [
-    //     begin_transaction: 編集transactionを開始する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// begin_transaction: 編集transactionを開始する
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: すでにtransactionが開始されている場合
+    /// ]
+    /// ```
     pub fn begin_transaction(&mut self) -> Result<(), DocumentError> {
         if !self.history.begin_transaction() {
             return Err(DocumentError::Transaction(
@@ -1249,19 +1255,19 @@ impl CsvDocument {
         Ok(())
     }
 
-    // {
-    //   責務: [
-    //     commit_transaction: transactionを一つの履歴操作として確定する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// commit_transaction: transactionを一つの履歴操作として確定する
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: active transactionがない場合
+    /// ]
+    /// ```
     pub fn commit_transaction(&mut self) -> Result<(), DocumentError> {
         if !self.history.commit_transaction() {
             return Err(DocumentError::Transaction(
@@ -1271,19 +1277,19 @@ impl CsvDocument {
         Ok(())
     }
 
-    // {
-    //   責務: [
-    //     rollback_transaction: 編集中のtransactionを逆順に適用して取り消す
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// rollback_transaction: 編集中のtransactionを逆順に適用して取り消す
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: active transactionがないか、履歴操作に失敗した場合
+    /// ]
+    /// ```
     pub fn rollback_transaction(&mut self) -> Result<(), DocumentError> {
         let Some(operations) = self.history.take_transaction() else {
             return Err(DocumentError::Transaction(
@@ -1300,35 +1306,35 @@ impl CsvDocument {
         Ok(())
     }
 
-    // {
-    //   責務: [
-    //     transaction_active: 編集中のtransactionがあるか返す
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     bool: 判定または変更結果
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// transaction_active: 編集中のtransactionがあるか返す
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// bool: 判定または変更結果
+    /// ]
+    /// ```
     pub fn transaction_active(&self) -> bool {
         self.history.transaction_active()
     }
 
-    // {
-    //   責務: [
-    //     delete_columns: 指定範囲の列を削除し検証targetと履歴を更新する
-    //   ]
-    //   引数: [
-    //     index: usize
-    //     count: usize
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// delete_columns: 指定範囲の列を削除し検証targetと履歴を更新する
+    /// ]
+    /// 引数: [
+    /// index: usize
+    /// count: usize
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: 列範囲がtableの範囲外か、範囲計算がoverflowする場合
+    /// ]
+    /// ```
     pub fn delete_columns(&mut self, index: usize, count: usize) -> Result<(), DocumentError> {
         let column_count = self.column_count();
         let end = index
@@ -1373,19 +1379,19 @@ impl CsvDocument {
         Ok(())
     }
 
-    // {
-    //   責務: [
-    //     undo: 直前の編集操作を取り消す
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     bool: 判定または変更結果
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// undo: 直前の編集操作を取り消す
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// bool: 判定または変更結果
+    /// ]
+    /// エラー: [
+    /// DocumentError: transaction中、または履歴が現在tableと一致しない場合
+    /// ]
+    /// ```
     pub fn undo(&mut self) -> Result<bool, DocumentError> {
         self.ensure_no_transaction("undo")?;
         let Some(command) = self.history.take_undo() else {
@@ -1401,19 +1407,19 @@ impl CsvDocument {
         Ok(true)
     }
 
-    // {
-    //   責務: [
-    //     redo: 直前に取り消した編集操作を再適用する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     bool: 判定または変更結果
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// redo: 直前に取り消した編集操作を再適用する
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// bool: 判定または変更結果
+    /// ]
+    /// エラー: [
+    /// DocumentError: transaction中、または履歴が現在tableと一致しない場合
+    /// ]
+    /// ```
     pub fn redo(&mut self) -> Result<bool, DocumentError> {
         self.ensure_no_transaction("redo")?;
         let Some(command) = self.history.take_redo() else {
@@ -1429,22 +1435,22 @@ impl CsvDocument {
         Ok(true)
     }
 
-    // {
-    //   責務: [
-    //     save: 外部変更を確認し現在のCSVをUTF-8で保存する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    //   補足: [
-    //     成功時に文字コード・baseline・編集履歴の保存状態を更新する
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// save: 外部変更を確認し現在のCSVをUTF-8で保存する
+    /// ]
+    /// 引数: [
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: transaction中、外部変更の確認・統合に失敗、またはCSVを書き込めない場合
+    /// ]
+    /// 補足: [
+    /// 成功時に文字コード・baseline・編集履歴の保存状態を更新する
+    /// ]
+    /// ```
     pub fn save(&mut self) -> Result<(), DocumentError> {
         self.ensure_no_transaction("save")?;
         let current =
@@ -1488,23 +1494,23 @@ impl CsvDocument {
         Ok(())
     }
 
-    // {
-    //   責務: [
-    //     save_as: 現在のCSVを指定先へUTF-8で保存する
-    //   ]
-    //   引数: [
-    //     path: impl AsRef<Path>
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    //   補足: [
-    //     成功時に操作対象pathとbaselineを更新する
-    //   ]
-    // }
+    /// ```text
+    /// 責務: [
+    /// save_as: 現在のCSVを指定先へUTF-8で保存する
+    /// ]
+    /// 引数: [
+    /// path: impl AsRef<Path>
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: transaction中、または指定先へCSVを書き込めない場合
+    /// ]
+    /// 補足: [
+    /// 成功時に操作対象pathとbaselineを更新する
+    /// ]
+    /// ```
     pub fn save_as(&mut self, path: impl AsRef<Path>) -> Result<(), DocumentError> {
         self.ensure_no_transaction("save_as")?;
         let path = path.as_ref().to_path_buf();
@@ -1522,20 +1528,20 @@ impl CsvDocument {
     }
 
     // {
-    //   責務: [
-    //     merge_external_disk: 基準・ローカル・ディスクの差分を安全性に応じて統合する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     bool: 判定または変更結果
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    //   補足: [
-    //     基準・ローカル・ディスクの3状態を比較し、競合draftを保持する場合がある
-    //   ]
+    // 責務: [
+    // merge_external_disk: 基準・ローカル・ディスクの差分を安全性に応じて統合する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // bool: 判定または変更結果
+    // ]
+    // エラー: [
+    // DocumentError: ディスクCSVを読み込めないか、差分の統合・編集履歴更新に失敗した場合
+    // ]
+    // 補足: [
+    // 基準・ローカル・ディスクの3状態を比較し、競合draftを保持する場合がある
+    // ]
     // }
     fn merge_external_disk(&mut self) -> Result<bool, DocumentError> {
         let loaded = read_csv(&self.path).map_err(|error| DocumentError::ExternalCheck {
@@ -1662,15 +1668,15 @@ impl CsvDocument {
     }
 
     // {
-    //   責務: [
-    //     install_disk_snapshot: ディスク状態を現在内容と保存基準に設定する
-    //   ]
-    //   引数: [
-    //     loaded: crate::data::LoadedCsv
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // install_disk_snapshot: ディスク状態を現在内容と保存基準に設定する
+    // ]
+    // 引数: [
+    // loaded: crate::data::LoadedCsv
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn install_disk_snapshot(&mut self, loaded: crate::data::LoadedCsv) {
         self.table = loaded.table;
@@ -1682,18 +1688,18 @@ impl CsvDocument {
     }
 
     // {
-    //   責務: [
-    //     resolve_validation_target: 検証targetを現行tableの列番号へ解決する
-    //   ]
-    //   引数: [
-    //     target: &ValidationTarget
-    //   ]
-    //   戻り値: [
-    //     usize: 対象または適用件数
-    //   ]
-    //   エラー: [
-    //     ColumnError: この関数が返す操作固有の失敗理由
-    //   ]
+    // 責務: [
+    // resolve_validation_target: 検証targetを現行tableの列番号へ解決する
+    // ]
+    // 引数: [
+    // target: &ValidationTarget
+    // ]
+    // 戻り値: [
+    // usize: 対象または適用件数
+    // ]
+    // エラー: [
+    // ColumnError: 列indexが範囲外か、headerが存在しないか一意でない場合
+    // ]
     // }
     fn resolve_validation_target(&self, target: &ValidationTarget) -> Result<usize, ColumnError> {
         match target {
@@ -1707,19 +1713,19 @@ impl CsvDocument {
     }
 
     // {
-    //   責務: [
-    //     shift_validation_rules_for_insert: 列挿入に合わせてindex指定の検証targetを移動する
-    //   ]
-    //   引数: [
-    //     index: usize
-    //     count: usize
-    //   ]
-    //   戻り値: [
-    //     BTreeMap<ValidationTarget, ValidationRule>: 処理成功時の結果
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
+    // 責務: [
+    // shift_validation_rules_for_insert: 列挿入に合わせてindex指定の検証targetを移動する
+    // ]
+    // 引数: [
+    // index: usize
+    // count: usize
+    // ]
+    // 戻り値: [
+    // BTreeMap<ValidationTarget, ValidationRule>: 処理成功時の結果
+    // ]
+    // エラー: [
+    // DocumentError: 移動先の列indexがoverflowする場合
+    // ]
     // }
     fn shift_validation_rules_for_insert(
         &self,
@@ -1743,17 +1749,17 @@ impl CsvDocument {
     }
 
     // {
-    //   責務: [
-    //     shift_validation_rules_for_delete: 列削除に合わせて検証targetを削除または移動する
-    //   ]
-    //   引数: [
-    //     index: usize
-    //     end: usize
-    //     count: usize
-    //   ]
-    //   戻り値: [
-    //     BTreeMap<ValidationTarget, ValidationRule>: 処理成功時の結果
-    //   ]
+    // 責務: [
+    // shift_validation_rules_for_delete: 列削除に合わせて検証targetを削除または移動する
+    // ]
+    // 引数: [
+    // index: usize
+    // end: usize
+    // count: usize
+    // ]
+    // 戻り値: [
+    // BTreeMap<ValidationTarget, ValidationRule>: 処理成功時の結果
+    // ]
     // }
     fn shift_validation_rules_for_delete(
         &self,
@@ -1779,16 +1785,16 @@ impl CsvDocument {
     }
 
     // {
-    //   責務: [
-    //     record_column_edit: 列編集と検証規則の変更を履歴へまとめて記録する
-    //   ]
-    //   引数: [
-    //     columns: Vec<ColumnChange>
-    //     before_validation: BTreeMap<ValidationTarget, ValidationRule>
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // record_column_edit: 列編集と検証規則の変更を履歴へまとめて記録する
+    // ]
+    // 引数: [
+    // columns: Vec<ColumnChange>
+    // before_validation: BTreeMap<ValidationTarget, ValidationRule>
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn record_column_edit(
         &mut self,
@@ -1811,22 +1817,19 @@ impl CsvDocument {
     }
 
     // {
-    //   責務: [
-    //     set_references_value: 複数cellを事前検証して一括更新し履歴へ記録する
-    //   ]
-    //   引数: [
-    //     references: impl IntoIterator<Item = CellRef>
-    //     value: String
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
-    //   補足: [
-    //     全対象と検証規則を先に確認してから一括変更する
-    //   ]
+    // 責務: [
+    // set_references_value: 複数cellを事前検証して一括更新し履歴へ記録する
+    // ]
+    // 引数: [
+    // references: impl IntoIterator<Item = CellRef>
+    // value: String
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
+    // 補足: [
+    // 全対象と検証規則を先に確認してから一括変更する
+    // ]
     // }
     fn set_references_value(
         &mut self,
@@ -1885,19 +1888,19 @@ impl CsvDocument {
     }
 
     // {
-    //   責務: [
-    //     apply_command: 編集commandを指定方向へ適用する
-    //   ]
-    //   引数: [
-    //     command: &EditCommand
-    //     direction: CommandDirection
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
+    // 責務: [
+    // apply_command: 編集commandを指定方向へ適用する
+    // ]
+    // 引数: [
+    // command: &EditCommand
+    // direction: CommandDirection
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
+    // エラー: [
+    // DocumentError: 編集履歴が現在状態と一致しない場合
+    // ]
     // }
     fn apply_command(
         &mut self,
@@ -1908,19 +1911,19 @@ impl CsvDocument {
     }
 
     // {
-    //   責務: [
-    //     apply_operation: 編集操作を種類に応じて指定方向へ適用する
-    //   ]
-    //   引数: [
-    //     operation: &EditOperation
-    //     direction: CommandDirection
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
+    // 責務: [
+    // apply_operation: 編集操作を種類に応じて指定方向へ適用する
+    // ]
+    // 引数: [
+    // operation: &EditOperation
+    // direction: CommandDirection
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
+    // エラー: [
+    // DocumentError: 編集履歴が現在tableまたは検証規則と一致しない場合
+    // ]
     // }
     fn apply_operation(
         &mut self,
@@ -1965,18 +1968,18 @@ impl CsvDocument {
     }
 
     // {
-    //   責務: [
-    //     ensure_no_transaction: transaction中に禁止される操作を拒否する
-    //   ]
-    //   引数: [
-    //     operation: &str
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
+    // 責務: [
+    // ensure_no_transaction: transaction中に禁止される操作を拒否する
+    // ]
+    // 引数: [
+    // operation: &str
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
+    // エラー: [
+    // DocumentError: 指定操作の実行中にtransactionがactiveな場合
+    // ]
     // }
     fn ensure_no_transaction(&self, operation: &str) -> Result<(), DocumentError> {
         if self.history.transaction_active() {
@@ -1988,19 +1991,19 @@ impl CsvDocument {
     }
 
     // {
-    //   責務: [
-    //     apply_cell_changes: cell編集履歴を指定方向へ適用する
-    //   ]
-    //   引数: [
-    //     changes: &[CellChange]
-    //     direction: CommandDirection
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
+    // 責務: [
+    // apply_cell_changes: cell編集履歴を指定方向へ適用する
+    // ]
+    // 引数: [
+    // changes: &[CellChange]
+    // direction: CommandDirection
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
+    // エラー: [
+    // DocumentError: 履歴内のcellが現在tableに存在しない場合
+    // ]
     // }
     fn apply_cell_changes(
         &mut self,
@@ -2030,19 +2033,19 @@ impl CsvDocument {
     }
 
     // {
-    //   責務: [
-    //     apply_row_edit: 行編集履歴の整合性を確認して指定方向へ適用する
-    //   ]
-    //   引数: [
-    //     edit: &RowEdit
-    //     direction: CommandDirection
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
+    // 責務: [
+    // apply_row_edit: 行編集履歴の整合性を確認して指定方向へ適用する
+    // ]
+    // 引数: [
+    // edit: &RowEdit
+    // direction: CommandDirection
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
+    // エラー: [
+    // DocumentError: 履歴内の行範囲または行内容が現在tableと一致しない場合
+    // ]
     // }
     fn apply_row_edit(
         &mut self,
@@ -2075,20 +2078,20 @@ impl CsvDocument {
     }
 
     // {
-    //   責務: [
-    //     apply_contents_change: table全体の編集履歴を整合性確認後に適用する
-    //   ]
-    //   引数: [
-    //     before: &[Vec<String>]
-    //     after: &[Vec<String>]
-    //     direction: CommandDirection
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
+    // 責務: [
+    // apply_contents_change: table全体の編集履歴を整合性確認後に適用する
+    // ]
+    // 引数: [
+    // before: &[Vec<String>]
+    // after: &[Vec<String>]
+    // direction: CommandDirection
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
+    // エラー: [
+    // DocumentError: 履歴内のtable内容が現在tableと一致しない場合
+    // ]
     // }
     fn apply_contents_change(
         &mut self,
@@ -2110,19 +2113,19 @@ impl CsvDocument {
     }
 
     // {
-    //   責務: [
-    //     apply_column_changes: 列編集履歴の整合性を確認して指定方向へ適用する
-    //   ]
-    //   引数: [
-    //     changes: &[ColumnChange]
-    //     direction: CommandDirection
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
-    //   エラー: [
-    //     DocumentError: この関数が返す操作固有の失敗理由
-    //   ]
+    // 責務: [
+    // apply_column_changes: 列編集履歴の整合性を確認して指定方向へ適用する
+    // ]
+    // 引数: [
+    // changes: &[ColumnChange]
+    // direction: CommandDirection
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
+    // エラー: [
+    // DocumentError: 履歴内の列範囲または値が現在tableと一致しない場合
+    // ]
     // }
     fn apply_column_changes(
         &mut self,
@@ -2168,9 +2171,9 @@ impl CsvDocument {
 
 #[derive(Debug, Clone, Copy)]
 // {
-//   責務: [
-//     CommandDirection: 編集操作を履歴へ適用する方向を表す
-//   ]
+// 責務: [
+// CommandDirection: 編集操作を履歴へ適用する方向を表す
+// ]
 // }
 enum CommandDirection {
     Undo,
@@ -2178,17 +2181,17 @@ enum CommandDirection {
 }
 
 // {
-//   責務: [
-//     structural_conflict: 3つのtable間で自動マージできない構造変更を判定する
-//   ]
-//   引数: [
-//     baseline: &[Vec<String>]
-//     local: &[Vec<String>]
-//     disk: &[Vec<String>]
-//   ]
-//   戻り値: [
-//     Option<ExternalStructureConflict>: 値が存在するときの結果
-//   ]
+// 責務: [
+// structural_conflict: 3つのtable間で自動マージできない構造変更を判定する
+// ]
+// 引数: [
+// baseline: &[Vec<String>]
+// local: &[Vec<String>]
+// disk: &[Vec<String>]
+// ]
+// 戻り値: [
+// Option<ExternalStructureConflict>: 値が存在するときの結果
+// ]
 // }
 fn structural_conflict(
     baseline: &[Vec<String>],
@@ -2221,14 +2224,14 @@ fn structural_conflict(
 
 #[derive(Default)]
 // {
-//   責務: [
-//     RowDelta: 基準tableからの行削除・挿入・cell変更を集約する
-//   ]
-//   フィールド: [
-//     removed: 削除された基準行のindex
-//     inserted: 挿入行と挿入位置
-//     cell_changes: 変更cellと新しい値
-//   ]
+// 責務: [
+// RowDelta: 基準tableからの行削除・挿入・cell変更を集約する
+// ]
+// フィールド: [
+// removed: 削除された基準行のindex
+// inserted: 挿入行と挿入位置
+// cell_changes: 変更cellと新しい値
+// ]
 // }
 struct RowDelta {
     removed: HashSet<usize>,
@@ -2237,20 +2240,20 @@ struct RowDelta {
 }
 
 // {
-//   責務: [
-//     merge_row_only_changes: 行挿入・削除とcell変更を基準tableへ統合する
-//   ]
-//   引数: [
-//     baseline: &[Vec<String>]
-//     local: &[Vec<String>]
-//     disk: &[Vec<String>]
-//   ]
-//   戻り値: [
-//     Vec<Vec<String>>: 処理成功時の結果
-//   ]
-//   エラー: [
-//     ExternalStructureConflict: この関数が返す操作固有の失敗理由
-//   ]
+// 責務: [
+// merge_row_only_changes: 行挿入・削除とcell変更を基準tableへ統合する
+// ]
+// 引数: [
+// baseline: &[Vec<String>]
+// local: &[Vec<String>]
+// disk: &[Vec<String>]
+// ]
+// 戻り値: [
+// Vec<Vec<String>>: 処理成功時の結果
+// ]
+// エラー: [
+// ExternalStructureConflict: header・行形状・順序などが安全な統合条件を満たさない場合
+// ]
 // }
 fn merge_row_only_changes(
     baseline: &[Vec<String>],
@@ -2321,19 +2324,19 @@ fn merge_row_only_changes(
 }
 
 // {
-//   責務: [
-//     analyze_row_delta: 基準tableから変更tableへの行単位差分を抽出する
-//   ]
-//   引数: [
-//     baseline: &[Vec<String>]
-//     changed: &[Vec<String>]
-//   ]
-//   戻り値: [
-//     RowDelta: 処理成功時の結果
-//   ]
-//   エラー: [
-//     ExternalStructureConflict: この関数が返す操作固有の失敗理由
-//   ]
+// 責務: [
+// analyze_row_delta: 基準tableから変更tableへの行単位差分を抽出する
+// ]
+// 引数: [
+// baseline: &[Vec<String>]
+// changed: &[Vec<String>]
+// ]
+// 戻り値: [
+// RowDelta: 処理成功時の結果
+// ]
+// エラー: [
+// ExternalStructureConflict: 行順序・重複行・行形状から差分を一意に求められない場合
+// ]
 // }
 fn analyze_row_delta(
     baseline: &[Vec<String>],
@@ -2405,16 +2408,16 @@ fn analyze_row_delta(
 }
 
 // {
-//   責務: [
-//     row_order_changed: 一意な既存行の順序が変更されたか判定する
-//   ]
-//   引数: [
-//     baseline: &[Vec<String>]
-//     changed: &[Vec<String>]
-//   ]
-//   戻り値: [
-//     bool: 判定または変更結果
-//   ]
+// 責務: [
+// row_order_changed: 一意な既存行の順序が変更されたか判定する
+// ]
+// 引数: [
+// baseline: &[Vec<String>]
+// changed: &[Vec<String>]
+// ]
+// 戻り値: [
+// bool: 判定または変更結果
+// ]
 // }
 fn row_order_changed(baseline: &[Vec<String>], changed: &[Vec<String>]) -> bool {
     let baseline_counts = row_counts(baseline);
@@ -2431,16 +2434,16 @@ fn row_order_changed(baseline: &[Vec<String>], changed: &[Vec<String>]) -> bool 
 }
 
 // {
-//   責務: [
-//     duplicate_rows_changed: 重複する基準行が曖昧な位置へ変更されたか判定する
-//   ]
-//   引数: [
-//     baseline: &[Vec<String>]
-//     changed: &[Vec<String>]
-//   ]
-//   戻り値: [
-//     bool: 判定または変更結果
-//   ]
+// 責務: [
+// duplicate_rows_changed: 重複する基準行が曖昧な位置へ変更されたか判定する
+// ]
+// 引数: [
+// baseline: &[Vec<String>]
+// changed: &[Vec<String>]
+// ]
+// 戻り値: [
+// bool: 判定または変更結果
+// ]
 // }
 fn duplicate_rows_changed(baseline: &[Vec<String>], changed: &[Vec<String>]) -> bool {
     let baseline_counts = row_counts(baseline);
@@ -2453,15 +2456,15 @@ fn duplicate_rows_changed(baseline: &[Vec<String>], changed: &[Vec<String>]) -> 
 }
 
 // {
-//   責務: [
-//     row_counts: table内の各行内容の出現数を数える
-//   ]
-//   引数: [
-//     rows: &[Vec<String>]
-//   ]
-//   戻り値: [
-//     HashMap<&[String], usize>: 処理成功時の結果
-//   ]
+// 責務: [
+// row_counts: table内の各行内容の出現数を数える
+// ]
+// 引数: [
+// rows: &[Vec<String>]
+// ]
+// 戻り値: [
+// HashMap<&[String], usize>: 処理成功時の結果
+// ]
 // }
 fn row_counts(rows: &[Vec<String>]) -> HashMap<&[String], usize> {
     let mut counts = HashMap::new();
@@ -2472,11 +2475,11 @@ fn row_counts(rows: &[Vec<String>]) -> HashMap<&[String], usize> {
 }
 
 #[derive(Debug, Error)]
-// {
-//   責務: [
-//     DocumentError: document操作で発生する入出力・編集・検証・競合エラーを表す
-//   ]
-// }
+/// ```text
+/// 責務: [
+/// DocumentError: document操作で発生する入出力・編集・検証・競合エラーを表す
+/// ]
+/// ```
 pub enum DocumentError {
     #[error("failed to open CSV `{path}`: {message}")]
     Open { path: String, message: String },
@@ -2528,14 +2531,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     create_writes_utf8_csv_and_starts_clean: 新規CSVのUTF-8保存と初期clean状態を確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // create_writes_utf8_csv_and_starts_clean: 新規CSVのUTF-8保存と初期clean状態を確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn create_writes_utf8_csv_and_starts_clean() {
         let directory = tempdir().unwrap();
@@ -2562,14 +2565,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     column_type_metadata_round_trips_without_changing_csv: 型メタデータの再読込とCSV非変更を確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // column_type_metadata_round_trips_without_changing_csv: 型メタデータの再読込とCSV非変更を確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn column_type_metadata_round_trips_without_changing_csv() {
         let directory = tempdir().unwrap();
@@ -2597,14 +2600,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     column_type_metadata_follows_header_after_column_reorder: 列移動後もheader名に紐づく型宣言を確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // column_type_metadata_follows_header_after_column_reorder: 列移動後もheader名に紐づく型宣言を確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn column_type_metadata_follows_header_after_column_reorder() {
         let directory = tempdir().unwrap();
@@ -2627,14 +2630,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     duplicate_header_cannot_receive_type_declaration: 重複headerへの型宣言が拒否されることを確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // duplicate_header_cannot_receive_type_declaration: 重複headerへの型宣言が拒否されることを確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn duplicate_header_cannot_receive_type_declaration() {
         let directory = tempdir().unwrap();
@@ -2650,14 +2653,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     invalid_sidecar_does_not_prevent_csv_open: 不正sidecarがCSV読込を妨げないことを確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // invalid_sidecar_does_not_prevent_csv_open: 不正sidecarがCSV読込を妨げないことを確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn invalid_sidecar_does_not_prevent_csv_open() {
         let directory = tempdir().unwrap();
@@ -2681,14 +2684,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     edit_marks_document_dirty_until_save: 編集後のdirty状態と保存による解消を確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // edit_marks_document_dirty_until_save: 編集後のdirty状態と保存による解消を確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn edit_marks_document_dirty_until_save() {
         let directory = tempdir().unwrap();
@@ -2709,14 +2712,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     a1_range_edit_is_one_undoable_command: A1範囲編集が一つのundo/redo操作になることを確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // a1_range_edit_is_one_undoable_command: A1範囲編集が一つのundo/redo操作になることを確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn a1_range_edit_is_one_undoable_command() {
         let directory = tempdir().unwrap();
@@ -2746,14 +2749,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     range_edit_validates_every_cell_before_writing: 範囲編集で全cell検証に失敗した場合のatomic性を確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // range_edit_validates_every_cell_before_writing: 範囲編集で全cell検証に失敗した場合のatomic性を確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn range_edit_validates_every_cell_before_writing() {
         let directory = tempdir().unwrap();
@@ -2773,14 +2776,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     row_insert_delete_and_history_restore_exact_rows: 行挿入・削除と履歴復元が行内容を保つことを確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // row_insert_delete_and_history_restore_exact_rows: 行挿入・削除と履歴復元が行内容を保つことを確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn row_insert_delete_and_history_restore_exact_rows() {
         let directory = tempdir().unwrap();
@@ -2811,14 +2814,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     column_insert_preserves_ragged_missing_cells_and_undo_restores_shape: 不定幅tableの列挿入とundoが欠損cellを保つことを確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // column_insert_preserves_ragged_missing_cells_and_undo_restores_shape: 不定幅tableの列挿入とundoが欠損cellを保つことを確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn column_insert_preserves_ragged_missing_cells_and_undo_restores_shape() {
         let directory = tempdir().unwrap();
@@ -2847,14 +2850,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     column_delete_and_undo_restore_removed_values_per_row: 列削除とundoが各行の削除値を復元することを確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // column_delete_and_undo_restore_removed_values_per_row: 列削除とundoが各行の削除値を復元することを確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn column_delete_and_undo_restore_removed_values_per_row() {
         let directory = tempdir().unwrap();
@@ -2884,14 +2887,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     invalid_structural_edit_is_atomic_and_not_recorded: 不正な構造編集が状態と履歴を変更しないことを確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // invalid_structural_edit_is_atomic_and_not_recorded: 不正な構造編集が状態と履歴を変更しないことを確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn invalid_structural_edit_is_atomic_and_not_recorded() {
         let directory = tempdir().unwrap();
@@ -2911,14 +2914,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     dirty_state_tracks_saved_state_through_undo_and_redo: undo/redoと保存をまたぐdirty状態を確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // dirty_state_tracks_saved_state_through_undo_and_redo: undo/redoと保存をまたぐdirty状態を確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn dirty_state_tracks_saved_state_through_undo_and_redo() {
         let directory = tempdir().unwrap();
@@ -2945,14 +2948,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     structural_edit_uses_same_dirty_history_state: 構造編集がdirty履歴へ反映されることを確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // structural_edit_uses_same_dirty_history_state: 構造編集がdirty履歴へ反映されることを確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn structural_edit_uses_same_dirty_history_state() {
         let directory = tempdir().unwrap();
@@ -2971,14 +2974,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     new_edit_after_undo_discards_redo_branch: undo後の新規編集がredo分岐を破棄することを確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // new_edit_after_undo_discards_redo_branch: undo後の新規編集がredo分岐を破棄することを確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn new_edit_after_undo_discards_redo_branch() {
         let directory = tempdir().unwrap();
@@ -2997,14 +3000,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     committed_transaction_is_one_undoable_command: 確定した複数編集transactionが一つの履歴操作になることを確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // committed_transaction_is_one_undoable_command: 確定した複数編集transactionが一つの履歴操作になることを確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn committed_transaction_is_one_undoable_command() {
         let directory = tempdir().unwrap();
@@ -3037,14 +3040,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     rollback_transaction_restores_all_changes_without_history: rollbackが状態を戻して履歴に残さないことを確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // rollback_transaction_restores_all_changes_without_history: rollbackが状態を戻して履歴に残さないことを確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn rollback_transaction_restores_all_changes_without_history() {
         let directory = tempdir().unwrap();
@@ -3069,14 +3072,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     transaction_rejects_nested_begin_and_history_or_save_operations: transaction中の入れ子開始・履歴操作・保存を拒否することを確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // transaction_rejects_nested_begin_and_history_or_save_operations: transaction中の入れ子開始・履歴操作・保存を拒否することを確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn transaction_rejects_nested_begin_and_history_or_save_operations() {
         let directory = tempdir().unwrap();
@@ -3111,14 +3114,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     transaction_commit_and_rollback_require_active_transaction: commitとrollbackにactive transactionが必要なことを確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // transaction_commit_and_rollback_require_active_transaction: commitとrollbackにactive transactionが必要なことを確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn transaction_commit_and_rollback_require_active_transaction() {
         let directory = tempdir().unwrap();
@@ -3138,14 +3141,14 @@ mod tests {
 
     #[test]
     // {
-    //   責務: [
-    //     saving_shift_jis_input_converts_file_to_utf8: Shift JISのCSVが保存時にUTF-8へ変換されることを確認する
-    //   ]
-    //   引数: [
-    //   ]
-    //   戻り値: [
-    //     (): 成功時に値を返さない
-    //   ]
+    // 責務: [
+    // saving_shift_jis_input_converts_file_to_utf8: Shift JISのCSVが保存時にUTF-8へ変換されることを確認する
+    // ]
+    // 引数: [
+    // ]
+    // 戻り値: [
+    // (): 成功時に値を返さない
+    // ]
     // }
     fn saving_shift_jis_input_converts_file_to_utf8() {
         let directory = tempdir().unwrap();

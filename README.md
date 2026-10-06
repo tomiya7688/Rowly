@@ -15,8 +15,8 @@ View  = 評価した答えを見る
 Code  = CSV正本の生テキストを見る / 直接編集する
 ```
 
-数式はセル値へ埋め込まず、Calculation Binding / Auto MacroとしてCSV外に保持します。  
-連続する同じ値のセルはView上で結合表示できますが、そのためにCSV値を削除・空文字化しません。
+計算規則はCalculation BindingとしてCSV外に保持し、計算結果をCSVへ反映するときは明示操作にします。詳細は[CSV・計算・表示の設計原則](docs/DATA_MODEL_PRINCIPLES.md)を参照してください。
+連続する同じ値のセルはView上でまとめて表示する設計とし、そのためにCSV値を削除・空文字化しません。
 
 ## 基本原則
 
@@ -74,6 +74,7 @@ CLI 1.0では対話shell・JSON出力・Rowly DSL one-shot実行も整備しま�
 | 内容 | 文書 |
 | --- | --- |
 | アーキテクチャ | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| CSV・計算・表示の設計原則 | [docs/DATA_MODEL_PRINCIPLES.md](docs/DATA_MODEL_PRINCIPLES.md) |
 | Rowly DSL 文法 | [docs/DSL_REFERENCE.md](docs/DSL_REFERENCE.md) |
 | Rowly DSL チュートリアル | [docs/DSL_TUTORIAL.md](docs/DSL_TUTORIAL.md) |
 | DSL 標準ライブラリ | [docs/DSL_STANDARD_LIBRARY.md](docs/DSL_STANDARD_LIBRARY.md) |

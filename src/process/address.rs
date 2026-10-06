@@ -82,7 +82,7 @@ impl FromStr for CellRef {
     // from_str: A1形式のcell参照をzero-based位置へ変換する
     // ]
     // 処理: [
-    // 1: 空白を除き、列文字と行番号の形式を検証する
+    // 1: 前後の空白を除き、列文字と行番号の形式を検証する
     // 2: 列文字をbase-26、行番号をusizeとして解析する
     // 3: 1-based座標をzero-based座標へ変換する
     // ]
@@ -215,9 +215,6 @@ impl CellRange {
     /// 処理: [
     /// 1: 保持している開始位置を返す
     /// ]
-    /// 処理: [
-    /// 1: 保持している開始位置を返す
-    /// ]
     /// 引数: [
     /// self: 対象範囲
     /// ]
@@ -232,9 +229,6 @@ impl CellRange {
     /// ```text
     /// 責務: [
     /// end: 範囲の終了cellを返す
-    /// ]
-    /// 処理: [
-    /// 1: 保持している終了位置を返す
     /// ]
     /// 処理: [
     /// 1: 保持している終了位置を返す
@@ -279,7 +273,7 @@ impl FromStr for CellRange {
     // from_str: A1またはA1:B2形式の範囲を解析する
     // ]
     // 処理: [
-    // 1: 空白を除き、区切りが0個または1個であることを確認する
+    // 1: 前後の空白を除き、区切りが0個または1個であることを確認する
     // 2: 両端をCellRefとして解析する
     // 3: 単一cellを許可し、複数cell範囲は端点を正規化する
     // ]
@@ -327,6 +321,9 @@ impl fmt::Display for CellRange {
     // 戻り値: [
     // fmt::Result: 書き込み結果
     // ]
+    // 補足: [
+    // 端点のrowまたはcolumnがusize::MAXの場合、委譲するCellRef表示でoverflowしpanicまたは不正な表記になりうる
+    // ]
     // ```
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.start == self.end {
@@ -344,7 +341,7 @@ impl fmt::Display for CellRange {
 /// ]
 /// 補足: [
 /// InvalidCell: A1形式のcell参照が不正
-/// InvalidRange: 区切りが複数ある、または末尾側の範囲端点が空
+/// InvalidRange: 区切りが複数ある、または先頭端点が有効で末尾端点が空
 /// Overflow: 列・行の数値がusizeで表現できない
 /// ]
 /// ```

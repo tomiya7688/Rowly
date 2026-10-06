@@ -6,8 +6,8 @@ use super::*;
 
 // {
 //   責務: [open: bindingテスト向けCSVを一時作成し、documentとfile lifetime保持用TempDirを返す。]
-//   処理: [TempDirを作成しsourceをCSV fileへ書き込み、CsvDocumentとして開く。]
-//   引数: [source: テストで開くCSVの初期内容。]
+//   処理: [TempDirを作成し固定のbinding用CSV fixtureを書き込み、CsvDocumentとして開く。]
+//   引数: []
 //   戻り値: [(TempDir, CsvDocument): 一時ディレクトリと開いたdocument。]
 //   副作用: [一時ディレクトリにCSV fileを作成する。]
 // }

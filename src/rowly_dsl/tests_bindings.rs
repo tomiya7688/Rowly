@@ -292,7 +292,7 @@ fn nested_loop_declarations_are_fresh_each_iteration_and_return_unwinds_scopes()
 
 #[test]
 // {
-//   責務: [constructors_and_inherited_methods_keep_local_binding_rules: constructor・継承methodでもlocal binding規則を保つことを確認する。]
+//   責務: [constructors_and_inherited_methods_keep_local_binding_rules: 継承methodのlocal bindingがglobal bindingを上書きしないことを確認する。]
 // }
 fn constructors_and_inherited_methods_keep_local_binding_rules() {
     let (_directory, mut document) = open();
@@ -338,7 +338,7 @@ fn constructors_and_inherited_methods_keep_local_binding_rules() {
 
 #[test]
 // {
-//   責務: [const_protects_the_binding_not_the_aliased_object_fields: CONSTは参照再代入を防ぎ、alias経由のobject field更新は許すことを確認する。]
+//   責務: [const_protects_the_binding_not_the_aliased_object_fields: CONST bindingへの再代入を拒否し、参照先objectのfield更新は許すことを確認する。]
 // }
 fn const_protects_the_binding_not_the_aliased_object_fields() {
     let (_directory, mut document) = open();

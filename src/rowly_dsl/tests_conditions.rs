@@ -60,7 +60,7 @@ fn logical_precedence_is_not_then_and_then_or() {
 
 #[test]
 // {
-//   責務: [and_and_or_short_circuit_rhs: And/Orが右辺の不要な評価とその副作用を省くことを確認する。]
+//   責務: [and_and_or_short_circuit_rhs: And/Orの短絡で未定義名を含む右辺の評価を省くことを確認する。]
 // }
 fn and_and_or_short_circuit_rhs() {
     let (_directory, mut document) = open("値\n1\n");

@@ -63,7 +63,7 @@ fn parses_basic_style_if_column_checks_and_range_set() {
 
 #[test]
 // {
-//   責務: [executes_column_type_and_japanese_checks: 列型・日本語検査のevent順、検査件数、cell参照を確認する。]
+//   責務: [executes_column_type_and_japanese_checks: 列型・日本語検査eventの順序と件数、検査結果および不一致cell参照を確認する。]
 // }
 fn executes_column_type_and_japanese_checks() {
     let (_directory, mut document) = open("名前,年齢\n田中太郎,20\nAlice,21\n");
@@ -133,7 +133,7 @@ fn false_if_condition_skips_body() {
 
 #[test]
 // {
-//   責務: [header_selector_and_range_set_use_process_boundary: header列選択と範囲編集がprocess経由で動き、複数cellをundoできることを確認する。]
+//   責務: [header_selector_and_range_set_use_process_boundary: 列型指定と複数cellの範囲編集を実行し、編集をundoできることを確認する。]
 // }
 fn header_selector_and_range_set_use_process_boundary() {
     let (_directory, mut document) = open("名前,年齢\n田中,20\n山田,21\n");
@@ -189,7 +189,7 @@ fn transaction_commit_groups_multiple_dsl_edits_into_one_undo() {
 
 #[test]
 // {
-//   責務: [transaction_rollback_restores_dsl_edits_without_history: rollbackが編集を復元し、transaction・history・dirty状態を残さないことを確認する。]
+//   責務: [transaction_rollback_restores_dsl_edits_without_history: rollback後に編集内容とdirty状態が戻り、transactionが終了してundo不可になることを確認する。]
 // }
 fn transaction_rollback_restores_dsl_edits_without_history() {
     let (_directory, mut document) = open("Name,Score\nAlice,10\nBob,20\n");
@@ -213,7 +213,7 @@ fn transaction_rollback_restores_dsl_edits_without_history() {
 
 #[test]
 // {
-//   責務: [transaction_control_requires_zero_arguments_and_process_state_rules: transaction builtinの引数数と未開始transactionへのcommit失敗を確認する。]
+//   責務: [transaction_control_requires_zero_arguments_and_process_state_rules: BeginTransactionの引数数と、未開始transactionへのCommit失敗を確認する。]
 // }
 fn transaction_control_requires_zero_arguments_and_process_state_rules() {
     let (_directory, mut document) = open("Name,Score\nAlice,10\n");

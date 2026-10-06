@@ -18,7 +18,7 @@ fn open(source: &str) -> (tempfile::TempDir, CsvDocument) {
 
 #[test]
 // {
-//   責務: [arithmetic_precedence_and_parentheses_work: 乗除算の優先順位と括弧による変更を変数の評価結果で確認する。]
+//   責務: [arithmetic_precedence_and_parentheses_work: 乗算の優先順位と括弧による変更を変数の評価結果で確認する。]
 // }
 fn arithmetic_precedence_and_parentheses_work() {
     let (_directory, mut document) = open("値\n1\n");
@@ -177,7 +177,7 @@ fn arithmetic_rejects_non_numeric_values() {
 
 #[test]
 // {
-//   責務: [unary_minus_rejects_non_numeric_values: 数値以外への単項マイナスを拒否することを確認する。]
+//   責務: [unary_minus_rejects_non_numeric_values: String値への単項マイナスを拒否することを確認する。]
 // }
 fn unary_minus_rejects_non_numeric_values() {
     let (_directory, mut document) = open("値\n1\n");

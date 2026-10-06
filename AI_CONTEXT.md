@@ -48,6 +48,12 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - コメント追加だけの変更では、原則として機能変更や無関係なrefactorを混ぜない。
 - 全コードへの初回適用はP1 Issue #143で管理する。
 
+## Review and Coding Standards
+- `レビュー基準.md` はこの checkout だけで使うローカルレビュー基準であり、`.gitignore` 対象。別の clone や PR 上には含まれない。この checkout で Rowly のコードレビューを行うときは全項目を確認する。
+- `コーディング規約.md` は共有するコーディング規約。実装時とレビュー時に従う。
+- JSON-like Comment Outs の細則は外部repositoryの日本語canonical仕様に従う。この2文書は同仕様を補うRowly固有の基準であり、外部仕様のDraft / MUST / SHOULD / MAYの意味を書き換えない。
+- レビューで必須項目への違反、CI / E2Eの失敗、または安全性・正しさの未解決懸念を確認した場合は承認しない。対象外の項目は対象外とし、未確認の項目を合格扱いにしない。
+
 ## Important Constraints
 - CSV is the source of truth; Rowly-only metadata must never be required to recover table data.
 - Never mutate CSV structure merely for presentation.

@@ -1,3 +1,6 @@
 /target
 .DS_Store
 *.rs.bk
+
+# Local review policy. Keep the shared coding convention in version control.
+/レビュー基準.md

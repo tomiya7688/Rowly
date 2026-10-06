@@ -3,6 +3,13 @@ use std::fs;
 use rowly::{process::CsvDocument, rowly_dsl};
 
 #[test]
+// {
+//   責務: [japanese_reference_examples_parse_and_execute_independently: DSL reference内の各rowly code blockが独立したCSV document上で実行できることを確認する。]
+//   処理: [Markdown fenceからCSV fixtureとDSL例を抽出し、transaction cleanupと必要な例数を検証する。]
+//   戻り値: [(): assertion成功時は値を返さない。]
+//   副作用: [各exampleごとに一時directoryとCSV fixtureを作成する。]
+//   エラー: [fence形式・DSL実行・open transaction・example数が契約を満たさない場合はtestを失敗させる。]
+// }
 fn japanese_reference_examples_parse_and_execute_independently() {
     let reference = include_str!("../docs/DSL_REFERENCE.md").replace("\r\n", "\n");
     let fixture = reference

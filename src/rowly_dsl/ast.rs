@@ -361,7 +361,7 @@ impl ValidationRuleDefinition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// ```text
 /// 責務: [ExecutionReport: 記録対象のDSL eventと最終global scalar stateのread-only snapshot]
-/// フィールド: [events: 実行順の記録event, variables: 最終global scalar variable値, object_fields: 最終global objectのscalar field値, validation_rules: source順rule宣言]
+/// フィールド: [events: 実行順の記録event, variables: 最終global scalar variable値, object_fields: 最終global objectのscalar field値, validation_rules: 実行時に適用されたrule宣言]
 /// ```
 pub struct ExecutionReport {
     /// statement実行中に生成されたeventをsource実行順で保持する。
@@ -370,7 +370,7 @@ pub struct ExecutionReport {
     pub(super) variables: HashMap<String, String>,
     /// global bindingされたobjectごとの実行完了時scalar field値。
     pub(super) object_fields: HashMap<String, HashMap<String, String>>,
-    /// validation rule宣言をsource実行順で保持する。
+    /// validation ruleをstatement実行順で保持する。
     pub(super) validation_rules: Vec<ValidationRuleDefinition>,
 }
 
@@ -380,7 +380,7 @@ impl ExecutionReport {
         &self.events
     }
 
-    /// validation declarationをsource実行順で返す。
+    /// 実行されたvalidation ruleをstatement実行順で返す。
     pub fn validation_rules(&self) -> &[ValidationRuleDefinition] {
         &self.validation_rules
     }

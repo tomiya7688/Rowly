@@ -35,7 +35,7 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
 /// 責務: [execute: Program ASTをCsvDocument上で実行する]
 /// 処理: [runtimeへASTとdocumentを渡してstatementを評価する]
 /// 引数: [program: 実行するAST, document: DSL commandの対象document]
-/// 戻り値: [ExecutionReport: 実行eventと最終runtime valueのsnapshot]
+/// 戻り値: [ExecutionReport: 記録eventとglobal scalar stateの部分snapshot]
 /// 副作用: [documentへのDSL編集を適用する]
 /// エラー: [ExecutionError: runtimeまたはprocess commandが失敗した]
 /// ```

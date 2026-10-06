@@ -19,10 +19,10 @@ const DEFAULT_MAX_DURATION: Duration = Duration::from_secs(5);
 const DEFAULT_MAX_INTERRUPTS: u64 = 1_000_000;
 const DEFAULT_MAX_MEMORY_BYTES: usize = 64 * 1024 * 1024;
 
-// {
-//   責務: [LuauLimits: 1回のLuau実行に適用する時間・中断回数・memory上限をまとめる。]
-//   フィールド: [max_duration: 実行時間上限。 max_interrupts: VM interrupt上限。 max_memory_bytes: Lua VM memory上限。]
-// }
+/// {
+///   責務: [LuauLimits: 1回のLuau実行に適用する時間・中断回数・memory上限をまとめる。]
+///   フィールド: [max_duration: 実行時間上限。 max_interrupts: VM interrupt上限。 max_memory_bytes: Lua VM memory上限。]
+/// }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LuauLimits {
     pub max_duration: Duration,
@@ -68,24 +68,24 @@ enum LuauLimitError {
 #[error("Luau スクリプトの実行がキャンセルされました")]
 struct LuauCancelled;
 
-// {
-//   責務: [execute: Luau scriptを既定の実行制限で実行し、Rowly process APIだけを通してdocumentへ作用させる。]
-//   処理: [execute_with_limitsへ既定LuauLimitsを渡す。]
-//   引数: [document: 編集対象CsvDocument。 script: 実行するLuau source。]
-//   戻り値: [(): 正常終了。 LuauError: VM・script・resource limit失敗。]
-//   副作用: [Rowly API経由のdocument編集。]
-// }
+/// {
+///   責務: [execute: Luau scriptを既定の実行制限で実行し、Rowly process APIだけを通してdocumentへ作用させる。]
+///   処理: [execute_with_limitsへ既定LuauLimitsを渡す。]
+///   引数: [document: 編集対象CsvDocument。 script: 実行するLuau source。]
+///   戻り値: [(): 正常終了。 LuauError: VM・script・resource limit失敗。]
+///   副作用: [Rowly API経由のdocument編集。]
+/// }
 pub fn execute(document: &mut CsvDocument, script: &str) -> Result<(), LuauError> {
     execute_with_limits(document, script, LuauLimits::default())
 }
 
-// {
-//   責務: [execute_with_limits: 呼び出し側が指定したLuau resource limitsでscriptを実行する。]
-//   処理: [新しいcancellation tokenを作り、execute_with_limits_and_cancellationへ委譲する。]
-//   引数: [document: 編集対象CsvDocument。 script: 実行するLuau source。 limits: VMへ適用する時間・interrupt・memory上限。]
-//   戻り値: [(): 正常終了。 LuauError: VM・script・resource limit失敗。]
-//   副作用: [Rowly API経由のdocument編集。]
-// }
+/// {
+///   責務: [execute_with_limits: 呼び出し側が指定したLuau resource limitsでscriptを実行する。]
+///   処理: [新しいcancellation tokenを作り、execute_with_limits_and_cancellationへ委譲する。]
+///   引数: [document: 編集対象CsvDocument。 script: 実行するLuau source。 limits: VMへ適用する時間・interrupt・memory上限。]
+///   戻り値: [(): 正常終了。 LuauError: VM・script・resource limit失敗。]
+///   副作用: [Rowly API経由のdocument編集。]
+/// }
 pub fn execute_with_limits(
     document: &mut CsvDocument,
     script: &str,
@@ -94,13 +94,13 @@ pub fn execute_with_limits(
     execute_with_limits_and_cancellation(document, script, limits, &LuauCancellationToken::new())
 }
 
-// {
-//   責務: [execute_with_cancellation: 既定のresource limitsと共有cancellation tokenでscriptを実行する。]
-//   処理: [既定LuauLimitsと受け取ったtokenを共通実行入口へ渡す。]
-//   引数: [document: 編集対象CsvDocument。 script: 実行するLuau source。 cancellation: 停止要求を共有するtoken。]
-//   戻り値: [(): 正常終了。 LuauError: cancellation・VM・script失敗。]
-//   副作用: [Rowly API経由のdocument編集。]
-// }
+/// {
+///   責務: [execute_with_cancellation: 既定のresource limitsと共有cancellation tokenでscriptを実行する。]
+///   処理: [既定LuauLimitsと受け取ったtokenを共通実行入口へ渡す。]
+///   引数: [document: 編集対象CsvDocument。 script: 実行するLuau source。 cancellation: 停止要求を共有するtoken。]
+///   戻り値: [(): 正常終了。 LuauError: cancellation・VM・script失敗。]
+///   副作用: [Rowly API経由のdocument編集。]
+/// }
 pub fn execute_with_cancellation(
     document: &mut CsvDocument,
     script: &str,
@@ -109,13 +109,13 @@ pub fn execute_with_cancellation(
     execute_with_limits_and_cancellation(document, script, LuauLimits::default(), cancellation)
 }
 
-// {
-//   責務: [execute_with_limits_and_cancellation: resource limitsとcancellation tokenを適用してscriptを実行し、開始後に残った未確定transactionをcleanupする。]
-//   処理: [実行前とVM safepointおよび各Rowly API入口で停止を確認し、sandbox VM内でscriptを実行する。失敗時は開始前にtransactionがなかった場合に限りactive transactionをrollbackする。]
-//   引数: [document: 編集対象CsvDocument。 script: 実行するLuau source。 limits: VM resource上限。 cancellation: 実行停止token。]
-//   戻り値: [(): 正常終了。 LuauError: cancellation・limit・script・cleanup失敗。]
-//   副作用: [Rowly API経由のdocument編集とtransaction cleanup。]
-// }
+/// {
+///   責務: [execute_with_limits_and_cancellation: resource limitsとcancellation tokenを適用してscriptを実行し、開始後に残った未確定transactionをcleanupする。]
+///   処理: [実行前とVM safepointおよび各Rowly API入口で停止を確認し、sandbox VM内でscriptを実行する。失敗時は開始前にtransactionがなかった場合に限りactive transactionをrollbackする。]
+///   引数: [document: 編集対象CsvDocument。 script: 実行するLuau source。 limits: VM resource上限。 cancellation: 実行停止token。]
+///   戻り値: [(): 正常終了。 LuauError: cancellation・limit・script・cleanup失敗。]
+///   副作用: [Rowly API経由のdocument編集とtransaction cleanup。]
+/// }
 pub fn execute_with_limits_and_cancellation(
     document: &mut CsvDocument,
     script: &str,
@@ -301,10 +301,10 @@ fn runtime_error(error: impl ToString) -> LuaError {
     LuaError::RuntimeError(error.to_string())
 }
 
-// {
-//   責務: [LuauError: cancellation・resource limit・memory・cleanup・runtime失敗を公開API用errorへ分類する。]
-//   選択肢: [Cancelled: 停止要求。 Limit: 時間またはinterrupt制限。 Memory: VM memory制限。 Cleanup: rollback失敗。 Runtime: その他のmlua error。]
-// }
+/// {
+///   責務: [LuauError: cancellation・resource limit・memory・cleanup・runtime失敗を公開API用errorへ分類する。]
+///   選択肢: [Cancelled: 停止要求。 Limit: 時間またはinterrupt制限。 Memory: VM memory制限。 Cleanup: rollback失敗。 Runtime: その他のmlua error。]
+/// }
 #[derive(Debug, Error)]
 pub enum LuauError {
     #[error("Luau スクリプトの実行がキャンセルされました")]

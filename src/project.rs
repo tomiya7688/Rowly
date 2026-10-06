@@ -14,46 +14,145 @@ use thiserror::Error;
 
 use crate::data::replace_file;
 
+/// ```text
+/// 責務: [PROJECT_FORMAT: Rowly project manifestを識別するformat名]
+/// 補足: [保存形式と読込検証で共通して使う固定値]
+/// ```
 pub const PROJECT_FORMAT: &str = "rowly-project";
+/// ```text
+/// 責務: [PROJECT_VERSION: 現在サポートするproject manifestのversion]
+/// 補足: [保存形式と読込検証で共通して使う固定値]
+/// ```
 pub const PROJECT_VERSION: u64 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// ```text
+/// 責務: [
+/// RowlyProject: source参照、script path、history directoryから成るproject manifestのmodel
+/// ]
+/// フィールド: [
+/// name: projectの表示名
+/// sources: projectが宣言するsource群
+/// scripts: init、generated、user scriptとmacro directoryの参照
+/// history: project history directoryへのpath参照
+/// ]
+/// ```
 pub struct RowlyProject {
+    /// ```text
+    /// 責務: [name: projectの空でない表示名]
+    /// ```
     pub name: String,
+    /// ```text
+    /// 責務: [sources: stable idを持つproject source定義]
+    /// ```
     pub sources: Vec<ProjectSource>,
+    /// ```text
+    /// 責務: [scripts: projectで参照する用途別script path群]
+    /// ```
     pub scripts: ProjectScripts,
+    /// ```text
+    /// 責務: [history: project history directoryへのpath参照]
+    /// ```
     pub history: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// ```text
+/// 責務: [
+/// ProjectSource: source id、種別、path、探索境界、schema識別情報をまとめる
+/// ]
+/// フィールド: [
+/// id: project内でsourceを識別するstable id
+/// kind: fileまたはdirectoryのsource種別
+/// path: manifestから解決するsource path
+/// recursive: directory sourceで子directoryも列挙するか
+/// search_root: 欠落file sourceの再link探索境界
+/// schema: 再link候補を識別するordered header signature
+/// ]
+/// ```
 pub struct ProjectSource {
+    /// ```text
+    /// 責務: [id: manifest内のsourceを一意に識別するstable id]
+    /// ```
     pub id: String,
+    /// ```text
+    /// 責務: [kind: source pathをfileまたはdirectoryとして扱う種別]
+    /// ```
     pub kind: SourceKind,
+    /// ```text
+    /// 責務: [path: manifest位置を基準に解決するsource参照]
+    /// ```
     pub path: PathBuf,
+    /// ```text
+    /// 責務: [recursive: directory sourceの子directoryも対象にするか]
+    /// ```
     pub recursive: bool,
-    /// Optional boundary for a bounded relink search.
+    /// ```text
+    /// 責務: [search_root: file再linkの探索を制限する任意のdirectory参照]
+    /// ```
     pub search_root: Option<PathBuf>,
-    /// Optional ordered CSV header signature used to identify a moved source.
+    /// ```text
+    /// 責務: [schema: 移動したCSVを識別する任意のordered header signature]
+    /// ```
     pub schema: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// ```text
+/// 責務: [
+/// SourceKind: project source pathをfileまたはdirectoryとして扱う種別
+/// ]
+/// 補足: [
+/// File: 単一CSV fileをsourceとして扱う
+/// Directory: CSVを含むdirectoryをsourceとして扱う
+/// ]
+/// ```
 pub enum SourceKind {
+    /// 単一file source。
     File,
+    /// CSVを列挙するdirectory source。
     Directory,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// ```text
+/// 責務: [
+/// ProjectScripts: projectで参照する用途別script pathを保持する
+/// ]
+/// フィールド: [
+/// init: project configを初期化するscript
+/// generated: アプリが生成・管理するscript
+/// user: user script
+/// macros: project macro directoryへのpath参照
+/// ]
+/// ```
 pub struct ProjectScripts {
+    /// ```text
+    /// 責務: [init: config初期化用scriptへのpath参照]
+    /// ```
     pub init: PathBuf,
+    /// ```text
+    /// 責務: [generated: アプリ管理scriptへのpath参照]
+    /// ```
     pub generated: PathBuf,
+    /// ```text
+    /// 責務: [user: project user scriptへのpath参照]
+    /// ```
     pub user: PathBuf,
+    /// ```text
+    /// 責務: [macros: project macro directoryへのpath参照]
+    /// ```
     pub macros: PathBuf,
 }
 
 impl RowlyProject {
-    /// Load and validate a project manifest. Relative references are retained as
-    /// written and are resolved against `project_path` when requested.
+    /// ```text
+    /// 責務: [load: manifest JSONを読み込み、RowlyProjectとしてparse・validateする]
+    /// 処理: [fileをreadし、JSON valueからproject modelを構築する]
+    /// 引数: [project_path: 読み込むmanifest path]
+    /// 戻り値: [Self: 検証済みproject model。relative pathはmanifest内の表記を保持する]
+    /// エラー: [ProjectError: file read、JSON parse、またはmanifest schemaの失敗]
+    /// ```
     pub fn load(project_path: impl AsRef<Path>) -> Result<Self, ProjectError> {
         let project_path = project_path.as_ref();
         let bytes = fs::read(project_path).map_err(|error| ProjectError::Read {
@@ -67,7 +166,15 @@ impl RowlyProject {
         Self::from_value(value)
     }
 
-    /// Save this manifest as pretty JSON. No source data is copied or embedded.
+    /// ```text
+    /// 責務: [save: project modelをpretty JSON manifestとして保存する]
+    /// 処理: [modelをvalidateし、manifest JSONをatomic file replacementで書き込む]
+    /// 引数: [project_path: 保存先manifest path]
+    /// 戻り値: [(): manifest保存成功時に値を返さない]
+    /// 副作用: [manifest fileを置換する。source dataはcopyもembedもしない]
+    /// エラー: [ProjectError: model不正またはmanifest file writeの失敗]
+    /// 補足: [PathBuf fieldにUTF-8化できないpathがある場合、JSON value構築時にpanicする]
+    /// ```
     pub fn save(&self, project_path: impl AsRef<Path>) -> Result<(), ProjectError> {
         self.validate()?;
         let value = json!({
@@ -99,8 +206,13 @@ impl RowlyProject {
         write_project_file_atomic(path, &bytes)
     }
 
-    /// Resolve only declared source paths. This does not enumerate directories
-    /// or verify that referenced files exist.
+    /// ```text
+    /// 責務: [resolve_sources: manifest pathを基準に宣言済みsource参照を解決する]
+    /// 処理: [各source pathとsearch_rootにreference解決を適用する]
+    /// 引数: [project_path: relative referenceの基準となるmanifest path]
+    /// 戻り値: [Vec<ResolvedSource>: source設定を保った解決済み参照一覧]
+    /// 補足: [directory列挙やpathの存在確認は行わない]
+    /// ```
     pub fn resolve_sources(&self, project_path: impl AsRef<Path>) -> Vec<ResolvedSource> {
         self.sources
             .iter()
@@ -118,9 +230,18 @@ impl RowlyProject {
             .collect()
     }
 
-    /// Resolve missing file sources only inside each source's declared search
-    /// root. A relink is applied only when filename and saved header schema
-    /// identify exactly one candidate; the stable source id is never changed.
+    /// ```text
+    /// 責務: [resolve_source_locations: 欠落file sourceをsearch_root内で限定的に再linkする]
+    /// 処理: [
+    /// 1: 現在のpathを確認し、存在すればAvailableとして返す
+    /// 2: file sourceに限りfilenameとsaved header schemaが一致する候補を探す
+    /// 3: 候補が一つならpathを更新し、0件または複数ならMissing / Ambiguousを返す
+    /// ]
+    /// 引数: [project_path: relative referenceの基準となるmanifest path]
+    /// 戻り値: [Vec<SourceResolution>: sourceごとの状態と解決path]
+    /// 副作用: [一意に再linkされたsourceのpathを更新する。stable source idは維持する]
+    /// エラー: [ProjectError: search_root directoryの走査に失敗した]
+    /// ```
     pub fn resolve_source_locations(
         &mut self,
         project_path: impl AsRef<Path>,
@@ -188,8 +309,14 @@ impl RowlyProject {
         Ok(results)
     }
 
-    /// Snapshot CSV headers for file sources so later relink searches can
-    /// distinguish same-named files inside the declared search root.
+    /// ```text
+    /// 責務: [capture_source_schemas: file sourceのCSV headerを再link用signatureとして記録する]
+    /// 処理: [existing file sourceを開き、先頭recordをschemaへ保存する。欠落fileはskipする]
+    /// 引数: [project_path: relative source pathの基準となるmanifest path]
+    /// 戻り値: [(): schema取得後は値を返さない]
+    /// 副作用: [対象file sourceのschemaを更新する]
+    /// エラー: [ProjectError: CSVを開く、または読み込めない]
+    /// ```
     pub fn capture_source_schemas(
         &mut self,
         project_path: impl AsRef<Path>,
@@ -213,6 +340,19 @@ impl RowlyProject {
         Ok(())
     }
 
+    // {
+    //   責務: [
+    //     from_value: JSON valueをmanifest schemaに従ってRowlyProjectへ変換する
+    //   ]
+    //   処理: [
+    //     1: formatとversionを検証する
+    //     2: source、scripts、historyを読み取る。recursiveはboolean値だけ採用し、それ以外はfalseにする
+    //     3: project全体をvalidateして返す
+    //   ]
+    //   引数: [value: parse済みmanifest JSON]
+    //   戻り値: [RowlyProject: schema検証済みproject model]
+    //   エラー: [ProjectError: 必須field、型、version、source定義、またはmodel制約の違反]
+    // }
     fn from_value(value: Value) -> Result<Self, ProjectError> {
         let object = value
             .as_object()
@@ -313,6 +453,13 @@ impl RowlyProject {
         Ok(project)
     }
 
+    // {
+    //   責務: [validate: project name、source id / path、script / history pathを検証する]
+    //   処理: [空name、空または重複id、空path、file sourceのrecursive設定を拒否する]
+    //   引数: []
+    //   戻り値: [(): 全fieldが有効なとき値を返さない]
+    //   エラー: [ProjectError: schema制約に違反するfieldがある]
+    // }
     fn validate(&self) -> Result<(), ProjectError> {
         if self.name.trim().is_empty() {
             return Err(ProjectError::Schema("name must not be empty".into()));
@@ -352,6 +499,20 @@ impl RowlyProject {
     }
 }
 
+// {
+//   責務: [
+//     write_project_file_atomic: bytesをtemporary fileへ書き、成功後に指定されたproject fileを置換する
+//   ]
+//   処理: [
+//     1: 同名temporary fileの衝突を避けて作成し、bytesを書いてsyncする
+//     2: temporary fileでdestinationを置換する
+//     3: 失敗時はtemporary fileの削除を試みる
+//   ]
+//   引数: [path: 置換するproject file path, bytes: 保存するproject file bytes]
+//   戻り値: [(): replacement成功時に値を返さない]
+//   副作用: [temporary fileを作成し、成功時はdestinationを置換する]
+//   エラー: [ProjectError: path、temporary file、write、sync、またはreplacementの失敗]
+// }
 pub(crate) fn write_project_file_atomic(path: &Path, bytes: &[u8]) -> Result<(), ProjectError> {
     let parent = path
         .parent()
@@ -411,35 +572,113 @@ pub(crate) fn write_project_file_atomic(path: &Path, bytes: &[u8]) -> Result<(),
     Ok(())
 }
 
+// {
+//   責務: [validate_project_value: 任意のJSON valueがRowlyProject schemaとして有効か検証する]
+//   処理: [RowlyProject::from_valueによるparseとmodel validationを実行する]
+//   引数: [value: 検証するmanifest JSON]
+//   戻り値: [(): schema検証成功時に値を返さない]
+//   エラー: [ProjectError: manifest schemaまたはproject model制約の違反]
+// }
 pub(crate) fn validate_project_value(value: Value) -> Result<(), ProjectError> {
     RowlyProject::from_value(value).map(|_| ())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// ```text
+/// 責務: [
+/// ResolvedSource: manifestのsource設定とmanifest位置から解決したpathをまとめる
+/// ]
+/// フィールド: [
+/// id: stable source id
+/// kind: source種別
+/// path: 解決済みsource path
+/// recursive: directory列挙設定
+/// search_root: 解決済み再link探索境界
+/// schema: 再link識別用header signature
+/// ]
+/// ```
 pub struct ResolvedSource {
+    /// ```text
+    /// 責務: [id: manifest内のstable source id]
+    /// ```
     pub id: String,
+    /// ```text
+    /// 責務: [kind: file / directory sourceの種別]
+    /// ```
     pub kind: SourceKind,
+    /// ```text
+    /// 責務: [path: manifest基準で解決されたsource path]
+    /// ```
     pub path: PathBuf,
+    /// ```text
+    /// 責務: [recursive: directory sourceを再帰列挙する設定]
+    /// ```
     pub recursive: bool,
+    /// ```text
+    /// 責務: [search_root: manifest基準で解決された任意の再link探索境界]
+    /// ```
     pub search_root: Option<PathBuf>,
+    /// ```text
+    /// 責務: [schema: 再link候補比較に使う任意のordered header]
+    /// ```
     pub schema: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// ```text
+/// 責務: [
+/// SourceStatus: source pathの確認または再link探索の結果を表す
+/// ]
+/// 補足: [
+/// Available: 宣言済みpathが該当種別のfile / directoryとして存在する
+/// Missing: source pathまたは再link候補が見つからない
+/// Relinked: 探索範囲から一意な候補へpathを再linkした
+/// Ambiguous: 複数候補が一致し一意に決められない
+/// ]
+/// ```
 pub enum SourceStatus {
+    /// 宣言済みpathにsourceがある。
     Available,
+    /// sourceまたは再link候補がない。
     Missing,
+    /// 探索で見つけた一意候補へ再linkした。
     Relinked,
+    /// 一致する候補が複数ある。
     Ambiguous,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// ```text
+/// 責務: [
+/// SourceResolution: sourceごとの確認状態と、利用可能な場合のresolved pathを返す
+/// ]
+/// フィールド: [
+/// id: source id
+/// status: path解決結果
+/// path: Available / Relinked時のsource path。その他はNone
+/// ]
+/// ```
 pub struct SourceResolution {
+    /// ```text
+    /// 責務: [id: 解決結果が対応するstable source id]
+    /// ```
     pub id: String,
+    /// ```text
+    /// 責務: [status: path確認または再link探索の結果]
+    /// ```
     pub status: SourceStatus,
+    /// ```text
+    /// 責務: [path: sourceが利用可能な場合のresolved path]
+    /// ```
     pub path: Option<PathBuf>,
 }
 
+// {
+//   責務: [source_path_exists: source種別に対応するfile / directoryがpathにあるか判定する]
+//   処理: [SourceKind::Fileにはis_file、Directoryにはis_dirを使う]
+//   引数: [kind: 期待するsource種別, path: 確認するpath]
+//   戻り値: [bool: 種別に一致するentryがあればtrue]
+// }
 fn source_path_exists(kind: SourceKind, path: &Path) -> bool {
     match kind {
         SourceKind::File => path.is_file(),
@@ -447,6 +686,14 @@ fn source_path_exists(kind: SourceKind, path: &Path) -> bool {
     }
 }
 
+// {
+//   責務: [find_matching_sources: 探索tree内からfilenameとheader schemaが一致するfileを集める]
+//   処理: [subdirectoryを再帰探索し、symlinkを飛ばして一致CSVをmatchesへ追加する]
+//   引数: [root: 探索directory, filename: 必要なfile名, schema: 必要なordered header, matches: 候補pathの出力先]
+//   戻り値: [(): 候補追加後は値を返さない]
+//   副作用: [一致したpathをmatchesへ追加する]
+//   エラー: [ProjectError: directory entryを読み込めない]
+// }
 fn find_matching_sources(
     root: &Path,
     filename: Option<&std::ffi::OsStr>,
@@ -481,6 +728,12 @@ fn find_matching_sources(
     Ok(())
 }
 
+// {
+//   責務: [csv_header_matches: CSVの先頭recordが期待するordered schemaと一致するか判定する]
+//   処理: [CSVを開きheaderを比較し、openまたはheader取得失敗は不一致として扱う]
+//   引数: [path: 確認するCSV path, schema: 期待するheader]
+//   戻り値: [bool: headerが完全一致した場合true]
+// }
 fn csv_header_matches(path: &Path, schema: &[String]) -> bool {
     crate::process::CsvDocument::open(path)
         .ok()
@@ -493,8 +746,12 @@ fn csv_header_matches(path: &Path, schema: &[String]) -> bool {
         .unwrap_or(false)
 }
 
-/// Resolve any project-relative script, history, or source reference using the
-/// manifest's parent directory. Absolute references remain unchanged.
+/// ```text
+/// 責務: [resolve_project_reference: relative referenceをmanifestのparent directory基準でpathへ解決する]
+/// 処理: [absolute pathは維持し、relative pathはmanifest parentへjoinする]
+/// 引数: [project_path: 基準となるmanifest path, reference: 解決するscript / history / source reference]
+/// 戻り値: [PathBuf: absoluteまたはmanifest基準で解決したpath]
+/// ```
 pub fn resolve_project_reference(
     project_path: impl AsRef<Path>,
     reference: impl AsRef<Path>,
@@ -511,6 +768,13 @@ pub fn resolve_project_reference(
     }
 }
 
+// {
+//   責務: [string_field: JSON objectから空でない必須string fieldを読む]
+//   処理: [fieldをstringとして取得し、前後空白を除くと空の値を拒否する]
+//   引数: [object: 読み取るJSON object, name: field名]
+//   戻り値: [&str: object内のfield valueへの参照]
+//   エラー: [ProjectError: fieldがない、stringでない、または空]
+// }
 fn string_field<'a>(
     object: &'a serde_json::Map<String, Value>,
     name: &str,
@@ -522,6 +786,13 @@ fn string_field<'a>(
         .ok_or_else(|| ProjectError::Schema(format!("missing or empty string `{name}`")))
 }
 
+// {
+//   責務: [optional_path_field: JSON objectから任意の非空string path fieldを読む]
+//   処理: [未指定ならNone、非空stringならPathBuf、その他の値はschema errorにする]
+//   引数: [object: 読み取るJSON object, name: field名]
+//   戻り値: [Option<PathBuf>: field未指定またはpath value]
+//   エラー: [ProjectError: 指定valueが空stringまたはstring以外]
+// }
 fn optional_path_field(
     object: &serde_json::Map<String, Value>,
     name: &str,
@@ -536,6 +807,17 @@ fn optional_path_field(
 }
 
 #[derive(Debug, Error)]
+/// ```text
+/// 責務: [
+/// ProjectError: project manifestのread、parse、schema検証、writeの失敗を表す
+/// ]
+/// 補足: [
+/// Read: manifest、source CSV、またはsource discovery用directoryを読み込めない
+/// Parse: manifest JSONをparseできない
+/// Schema: manifestの形式またはfield制約に違反する
+/// Write: manifestまたはgenerated project fileのatomic writeに失敗する
+/// ]
+/// ```
 pub enum ProjectError {
     #[error("failed to read Rowly project `{path}`: {message}")]
     Read { path: String, message: String },

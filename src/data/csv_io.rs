@@ -192,7 +192,13 @@ pub(crate) fn write_csv_utf8_if_unchanged(
         }
     };
     if let Some(expected) = expected {
-        let current = fingerprint_file(path).map_err(|_| CsvIoError::ExternalModification)?;
+        let current = match fingerprint_file(path) {
+            Ok(current) => current,
+            Err(_) => {
+                let _ = fs::remove_file(&temporary);
+                return Err(CsvIoError::ExternalModification);
+            }
+        };
         if current != expected {
             let _ = fs::remove_file(&temporary);
             return Err(CsvIoError::ExternalModification);
@@ -388,6 +394,36 @@ mod tests {
         assert_eq!(loaded.table.cell(1, 2), Some(""));
         assert_eq!(loaded.table.cell(2, 1), Some(""));
         assert_eq!(loaded.table.cell(2, 2), Some("確認中"));
+    }
+
+    // {
+    //   責務: [
+    //     removes_temporary_file_when_source_fingerprint_fails: 保存元のfingerprint取得失敗時に一時CSVを残さない
+    //   ]
+    //   処理: [
+    //     1: 保存元のfingerprintを取得してから保存元fileを削除する
+    //     2: fingerprint付き保存がExternalModificationとなることを確認する
+    //     3: directoryに一時CSVも保存先fileも残らないことを確認する
+    //   ]
+    //   引数: []
+    //   戻り値: [
+    //     (): assertion成功時に値を返さない
+    //   ]
+    // }
+    #[test]
+    fn removes_temporary_file_when_source_fingerprint_fails() {
+        let directory = tempdir().unwrap();
+        let source_path = directory.path().join("source.csv");
+        fs::write(&source_path, "name\nsource\n").unwrap();
+        let expected_fingerprint = fingerprint_file(&source_path).unwrap();
+        fs::remove_file(&source_path).unwrap();
+        let table = Table::new(vec![vec!["replacement".to_owned()]]);
+
+        let error = write_csv_utf8_if_unchanged(&source_path, &table, Some(expected_fingerprint))
+            .unwrap_err();
+
+        assert!(matches!(error, CsvIoError::ExternalModification));
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 0);
     }
 
     // {

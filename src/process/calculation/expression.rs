@@ -136,7 +136,13 @@ fn arithmetic(
                     .map(CalculationValue::Integer)
                     .ok_or(CalculationFailure::ArithmeticOverflow);
             }
-            return finite_decimal(left as f64 / right as f64);
+            let quotient = left
+                .checked_div(right)
+                .ok_or(CalculationFailure::ArithmeticOverflow)?;
+            let quotient = exact_integer_as_f64(quotient)?;
+            let remainder = exact_integer_as_f64(remainder)?;
+            let divisor = exact_integer_as_f64(right)?;
+            return finite_decimal(quotient + remainder / divisor);
         }
         let (left, right) = (left.as_f64(), right.as_f64());
         if right == 0.0 {
@@ -263,6 +269,20 @@ fn finite_decimal(value: f64) -> Result<CalculationValue, CalculationFailure> {
     } else {
         Err(CalculationFailure::ArithmeticOverflow)
     }
+}
+
+// ```text
+// 責務: [exact_integer_as_f64: i64からf64への変換で値が変わる場合はprecision errorを返す]
+// 引数: [integer: f64へ変換するinteger]
+// 戻り値: [Result<f64, CalculationFailure>: exact conversionまたはprecision loss]
+// ```
+fn exact_integer_as_f64(integer: i64) -> Result<f64, CalculationFailure> {
+    let decimal = integer as f64;
+    let maximum_exclusive = -(i64::MIN as f64);
+    if decimal < i64::MIN as f64 || decimal >= maximum_exclusive || decimal as i64 != integer {
+        return Err(CalculationFailure::PrecisionLoss);
+    }
+    Ok(decimal)
 }
 
 // {

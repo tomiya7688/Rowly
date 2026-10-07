@@ -41,6 +41,10 @@ fn binding_graph_changes_invalidate_downstream_results() {
     engine
         .recalculate_all(&document)
         .expect("initial results should evaluate");
+    let initial_revision = engine
+        .result(&binding_id("second"))
+        .expect("initial downstream result should exist")
+        .derived_revision;
 
     register(&mut engine, 5);
 
@@ -49,6 +53,7 @@ fn binding_graph_changes_invalidate_downstream_results() {
         .expect("downstream result should exist");
     assert_eq!(dependent.status, CalculationStatus::Stale);
     assert_eq!(dependent.value.as_deref(), Some("20"));
+    assert!(dependent.derived_revision > initial_revision);
     engine
         .recalculate_all(&document)
         .expect("replacement should recalculate");
@@ -59,12 +64,27 @@ fn binding_graph_changes_invalidate_downstream_results() {
         Some("28")
     );
 
-    assert!(engine.remove_binding(&binding_id("first")));
+    let evaluated_revision = engine
+        .result(&binding_id("second"))
+        .expect("recalculated downstream result should exist")
+        .derived_revision;
+    assert!(
+        engine
+            .remove_binding(&binding_id("first"))
+            .expect("binding removal should succeed")
+    );
     assert_eq!(
         engine
             .result(&binding_id("second"))
             .map(|result| &result.status),
         Some(&CalculationStatus::Stale)
+    );
+    assert!(
+        engine
+            .result(&binding_id("second"))
+            .expect("stale downstream result should exist")
+            .derived_revision
+            > evaluated_revision
     );
     let report = engine
         .recalculate_all(&document)
@@ -192,5 +212,55 @@ fn large_integer_comparison_and_exact_division_keep_precision() {
             .result(&binding_id("quotient"))
             .and_then(|result| result.value.as_deref()),
         Some("9007199254740993")
+    );
+}
+
+// {
+//   責務: [fractional_integer_division_uses_quotient_and_remainder: 大きな整数の小数除算で入力値を丸めない]
+//   処理: [商と余りから小数結果を作り、表現可能なケースを正確に出力する]
+//   戻り値: [(): 整数を先にf64へ丸めず結果を計算できれば成功する]
+// }
+#[test]
+fn fractional_integer_division_uses_quotient_and_remainder() {
+    let (_directory, document) =
+        create_document(&[&["exact-fraction", "unrepresentable"], &["", ""]]);
+    let numerator = 9_007_199_254_740_993_i64;
+    let mut engine = CalculationEngine::default();
+    for (id, target, numerator, divisor) in [
+        ("exact-fraction", "A2", numerator, 6_i64),
+        ("unrepresentable", "B2", i64::MAX, 3_i64),
+    ] {
+        engine
+            .set_binding(
+                &document,
+                binding_id(id),
+                CalculationTarget::Cell(cell(target)),
+                binary(
+                    CalculationExpression::Literal(CalculationValue::Integer(numerator)),
+                    CalculationOperator::Divide,
+                    CalculationExpression::Literal(CalculationValue::Integer(divisor)),
+                ),
+                CalculationTrigger::DependencyChange,
+            )
+            .expect("integer division should be registered");
+    }
+
+    let report = engine
+        .recalculate_all(&document)
+        .expect("division outcomes should be reported");
+
+    assert_eq!(report.evaluated, vec![binding_id("exact-fraction")]);
+    assert_eq!(report.failed, vec![binding_id("unrepresentable")]);
+    assert_eq!(
+        engine
+            .result(&binding_id("exact-fraction"))
+            .and_then(|result| result.value.as_deref()),
+        Some("1501199875790165.5")
+    );
+    assert_eq!(
+        engine
+            .result(&binding_id("unrepresentable"))
+            .map(|result| &result.status),
+        Some(&CalculationStatus::Error(CalculationFailure::PrecisionLoss))
     );
 }

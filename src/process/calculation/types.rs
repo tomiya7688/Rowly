@@ -290,6 +290,8 @@ pub enum CalculationFailure {
     DivisionByZero,
     /// checked arithmeticまたはfinite値検証でoverflowした。
     ArithmeticOverflow,
+    /// integer除算を現在のDecimal表現で正確に表せない。
+    PrecisionLoss,
     /// 標準関数の引数個数が規定と異なる。
     InvalidFunctionArguments {
         /// function名。
@@ -379,6 +381,7 @@ impl std::fmt::Display for CalculationFailure {
             Self::ExpectedNumber(value) => write!(formatter, "value `{value}` is not numeric"),
             Self::DivisionByZero => formatter.write_str("division by zero"),
             Self::ArithmeticOverflow => formatter.write_str("calculation overflowed"),
+            Self::PrecisionLoss => formatter.write_str("calculation would lose integer precision"),
             Self::InvalidFunctionArguments {
                 function,
                 expected,

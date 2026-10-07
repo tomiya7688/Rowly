@@ -73,11 +73,26 @@ impl CalculationEngine {
         if expression_depth(&expression) > MAX_EXPRESSION_DEPTH {
             return Err(CalculationError::ExpressionTooDeep);
         }
-
         let previous_target = self
             .bindings
             .get(&id)
             .and_then(|binding| binding.target.single_cell());
+        let mut changed_targets = BTreeSet::from([target_cell]);
+        if let Some(previous_target) = previous_target {
+            changed_targets.insert(previous_target);
+        }
+        let invalidated_dependents = self.dependent_closure(&changed_targets, &id);
+        let invalidated_any_results = invalidated_dependents
+            .iter()
+            .any(|dependent_id| self.results.contains_key(dependent_id));
+        let invalidation_revision = if invalidated_any_results {
+            derived_revision
+                .checked_add(1)
+                .ok_or(CalculationError::RevisionOverflow)?
+        } else {
+            derived_revision
+        };
+
         let previous_dependencies = self
             .bindings
             .get(&id)
@@ -120,31 +135,48 @@ impl CalculationEngine {
         self.binding_revision = binding_revision;
         self.derived_revision = derived_revision;
 
-        // 変更前後の出力cellを起点に、古い結果を参照する下流ruleを無効化する。
-        let changed_targets = previous_target.into_iter().chain([target_cell]);
-        self.mark_dependents_stale(changed_targets);
+        // 変更前後の出力cellから到達する古いresultをrevision付きで無効化する。
+        self.mark_dependents_stale(invalidated_dependents, invalidation_revision);
         Ok(binding_revision)
     }
 
     /// ```text
     /// 責務: [remove_binding: bindingとそのderived resultをengineから削除する]
     /// 引数: [id: 削除対象stable ID]
-    /// 戻り値: [bool: bindingが存在して削除された場合true]
+    /// 戻り値: [Result<bool, CalculationError>: 削除結果またはrevision overflow]
     /// ```
-    pub fn remove_binding(&mut self, id: &CalculationBindingId) -> bool {
+    pub fn remove_binding(&mut self, id: &CalculationBindingId) -> Result<bool, CalculationError> {
+        let Some(binding) = self.bindings.get(id) else {
+            return Ok(false);
+        };
+        let target_cell = binding.target.single_cell();
+        let invalidated_dependents = target_cell
+            .map(|target_cell| self.dependent_closure(&BTreeSet::from([target_cell]), id))
+            .unwrap_or_default();
+        let invalidated_any_results = invalidated_dependents
+            .iter()
+            .any(|dependent_id| self.results.contains_key(dependent_id));
+        let invalidation_revision = if invalidated_any_results {
+            self.derived_revision
+                .checked_add(1)
+                .ok_or(CalculationError::RevisionOverflow)?
+        } else {
+            self.derived_revision
+        };
+
         let Some(binding) = self.bindings.remove(id) else {
-            return false;
+            return Ok(false);
         };
         self.results.remove(id);
 
-        if let Some(target_cell) = binding.target.single_cell() {
+        if let Some(target_cell) = target_cell {
             self.target_bindings.remove(&target_cell);
-            self.mark_dependents_stale([target_cell]);
         }
         for dependency in binding.dependencies {
             self.remove_dependency_index(dependency, id);
         }
-        true
+        self.mark_dependents_stale(invalidated_dependents, invalidation_revision);
+        Ok(true)
     }
 
     /// ```text

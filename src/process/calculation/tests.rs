@@ -450,3 +450,6 @@ fn decimal_division_and_zero_division_report_correct_results() {
         ))
     );
 }
+
+#[path = "tests_edges.rs"]
+mod tests_edges;

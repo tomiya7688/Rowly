@@ -5,6 +5,8 @@
 //! ```
 mod engine;
 mod expression;
+mod graph;
+mod indexes;
 mod types;
 
 pub use engine::CalculationEngine;

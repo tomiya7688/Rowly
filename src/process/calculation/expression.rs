@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use super::types::{
     CalculationExpression, CalculationFailure, CalculationOperator, CalculationValue,
     PureCalculationFunction,
@@ -120,7 +122,22 @@ fn arithmetic(
     let left = numeric_value(left)?;
     let right = numeric_value(right)?;
 
-    if matches!(operator, CalculationOperator::Divide) {
+    if operator == CalculationOperator::Divide {
+        if let (NumericValue::Integer(left), NumericValue::Integer(right)) = (left, right) {
+            if right == 0 {
+                return Err(CalculationFailure::DivisionByZero);
+            }
+            let remainder = left
+                .checked_rem(right)
+                .ok_or(CalculationFailure::ArithmeticOverflow)?;
+            if remainder == 0 {
+                return left
+                    .checked_div(right)
+                    .map(CalculationValue::Integer)
+                    .ok_or(CalculationFailure::ArithmeticOverflow);
+            }
+            return finite_decimal(left as f64 / right as f64);
+        }
         let (left, right) = (left.as_f64(), right.as_f64());
         if right == 0.0 {
             return Err(CalculationFailure::DivisionByZero);
@@ -209,11 +226,10 @@ fn call_pure_function(
                     expected: 2,
                     actual: 1,
                 })?;
-            let first_number = numeric_value(first.clone())?.as_f64();
-            let second_number = numeric_value(second.clone())?.as_f64();
+            let comparison = numeric_value(first.clone())?.compare(numeric_value(second.clone())?);
             let take_first = match function {
-                PureCalculationFunction::Min => first_number <= second_number,
-                PureCalculationFunction::Max => first_number >= second_number,
+                PureCalculationFunction::Min => comparison != Ordering::Greater,
+                PureCalculationFunction::Max => comparison != Ordering::Less,
                 PureCalculationFunction::Abs => true,
             };
             Ok(if take_first { first } else { second })
@@ -282,6 +298,46 @@ impl NumericValue {
             Self::Integer(value) => value as f64,
             Self::Decimal(value) => value,
         }
+    }
+
+    // ```text
+    // 責務: [compare: integer同士を正確に比較し、integerとdecimalは境界検証後に比較する]
+    // 引数: [self: 左numeric値, other: 右numeric値]
+    // 戻り値: [Ordering: numericな大小関係]
+    // ```
+    fn compare(self, other: Self) -> Ordering {
+        match (self, other) {
+            (Self::Integer(left), Self::Integer(right)) => left.cmp(&right),
+            (Self::Decimal(left), Self::Decimal(right)) => left.total_cmp(&right),
+            (Self::Integer(integer), Self::Decimal(decimal)) => {
+                compare_integer_to_decimal(integer, decimal)
+            }
+            (Self::Decimal(decimal), Self::Integer(integer)) => {
+                compare_integer_to_decimal(integer, decimal).reverse()
+            }
+        }
+    }
+}
+
+// ```text
+// 責務: [compare_integer_to_decimal: 有限decimalとi64の比較でf64丸めによるinteger精度損失を避ける]
+// 引数: [integer: 比較するi64, decimal: 有限と検証済みのf64]
+// 戻り値: [Ordering: integerとdecimalの大小関係]
+// ```
+fn compare_integer_to_decimal(integer: i64, decimal: f64) -> Ordering {
+    let minimum = i64::MIN as f64;
+    let exclusive_maximum = -(i64::MIN as f64);
+    if decimal < minimum {
+        return Ordering::Greater;
+    }
+    if decimal >= exclusive_maximum {
+        return Ordering::Less;
+    }
+
+    match integer.cmp(&(decimal.trunc() as i64)) {
+        Ordering::Equal if decimal.fract() > 0.0 => Ordering::Less,
+        Ordering::Equal if decimal.fract() < 0.0 => Ordering::Greater,
+        ordering => ordering,
     }
 }
 

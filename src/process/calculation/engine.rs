@@ -15,10 +15,12 @@ use crate::process::{CellRef, CsvDocument};
 /// ```
 #[derive(Debug, Default)]
 pub struct CalculationEngine {
-    bindings: BTreeMap<CalculationBindingId, CalculationBinding>,
-    results: BTreeMap<CalculationBindingId, CalculationResult>,
-    binding_revision: u64,
-    derived_revision: u64,
+    pub(super) bindings: BTreeMap<CalculationBindingId, CalculationBinding>,
+    pub(super) results: BTreeMap<CalculationBindingId, CalculationResult>,
+    pub(super) target_bindings: HashMap<CellRef, CalculationBindingId>,
+    pub(super) dependents_by_cell: HashMap<CellRef, BTreeSet<CalculationBindingId>>,
+    pub(super) binding_revision: u64,
+    pub(super) derived_revision: u64,
 }
 
 impl CalculationEngine {
@@ -43,9 +45,10 @@ impl CalculationEngine {
             return Err(CalculationError::MissingTarget(target_cell));
         }
 
-        let target_is_owned = self.bindings.iter().any(|(existing_id, binding)| {
-            existing_id != &id && binding.target.single_cell() == Some(target_cell)
-        });
+        let target_is_owned = self
+            .target_bindings
+            .get(&target_cell)
+            .is_some_and(|owner_id| owner_id != &id);
         if target_is_owned {
             return Err(CalculationError::DuplicateTarget(target_cell));
         }
@@ -71,6 +74,24 @@ impl CalculationEngine {
             return Err(CalculationError::ExpressionTooDeep);
         }
 
+        let previous_target = self
+            .bindings
+            .get(&id)
+            .and_then(|binding| binding.target.single_cell());
+        let previous_dependencies = self
+            .bindings
+            .get(&id)
+            .map(|binding| binding.dependencies.iter().copied().collect::<Vec<_>>())
+            .unwrap_or_default();
+        for dependency in previous_dependencies {
+            self.remove_dependency_index(dependency, &id);
+        }
+        if let Some(previous_target) = previous_target
+            && previous_target != target_cell
+        {
+            self.target_bindings.remove(&previous_target);
+        }
+
         let binding = CalculationBinding {
             id: id.clone(),
             target,
@@ -87,10 +108,21 @@ impl CalculationEngine {
             dependencies: Vec::new(),
         };
 
+        for dependency in &binding.dependencies {
+            self.dependents_by_cell
+                .entry(*dependency)
+                .or_default()
+                .insert(id.clone());
+        }
+        self.target_bindings.insert(target_cell, id.clone());
         self.bindings.insert(id.clone(), binding);
-        self.results.insert(id, pending_result);
+        self.results.insert(id.clone(), pending_result);
         self.binding_revision = binding_revision;
         self.derived_revision = derived_revision;
+
+        // 変更前後の出力cellを起点に、古い結果を参照する下流ruleを無効化する。
+        let changed_targets = previous_target.into_iter().chain([target_cell]);
+        self.mark_dependents_stale(changed_targets);
         Ok(binding_revision)
     }
 
@@ -100,8 +132,19 @@ impl CalculationEngine {
     /// 戻り値: [bool: bindingが存在して削除された場合true]
     /// ```
     pub fn remove_binding(&mut self, id: &CalculationBindingId) -> bool {
+        let Some(binding) = self.bindings.remove(id) else {
+            return false;
+        };
         self.results.remove(id);
-        self.bindings.remove(id).is_some()
+
+        if let Some(target_cell) = binding.target.single_cell() {
+            self.target_bindings.remove(&target_cell);
+            self.mark_dependents_stale([target_cell]);
+        }
+        for dependency in binding.dependencies {
+            self.remove_dependency_index(dependency, id);
+        }
+        true
     }
 
     /// ```text
@@ -162,21 +205,10 @@ impl CalculationEngine {
             return Ok(CalculationRecalculationReport::default());
         }
 
-        // 依存先ごとの逆引きを一度作り、変更cellから到達できるruleだけをqueueでたどる。
-        let mut dependents_by_cell = HashMap::<CellRef, Vec<CalculationBindingId>>::new();
-        for (id, binding) in &self.bindings {
-            for dependency in &binding.dependencies {
-                dependents_by_cell
-                    .entry(*dependency)
-                    .or_default()
-                    .push(id.clone());
-            }
-        }
-
         let mut selected = BTreeSet::new();
         let mut pending_cells = VecDeque::from_iter(changed_cells);
         while let Some(changed_cell) = pending_cells.pop_front() {
-            if let Some(dependent_ids) = dependents_by_cell.get(&changed_cell) {
+            if let Some(dependent_ids) = self.dependents_by_cell.get(&changed_cell) {
                 for dependent_id in dependent_ids {
                     if !selected.insert(dependent_id.clone()) {
                         continue;
@@ -191,23 +223,6 @@ impl CalculationEngine {
         }
 
         self.recalculate_selected(document, selected, false)
-    }
-
-    // ```text
-    // 責務: [target_bindings: 単一cell targetからbinding IDを引けるindexを作る]
-    // 引数: [self: 対象engine]
-    // 戻り値: [HashMap<CellRef, CalculationBindingId>: target owner index]
-    // ```
-    fn target_bindings(&self) -> HashMap<CellRef, CalculationBindingId> {
-        self.bindings
-            .iter()
-            .filter_map(|(id, binding)| {
-                binding
-                    .target
-                    .single_cell()
-                    .map(|target| (target, id.clone()))
-            })
-            .collect()
     }
 
     // ```text
@@ -228,11 +243,9 @@ impl CalculationEngine {
             return Ok(report);
         }
 
-        let target_bindings = self.target_bindings();
-        let (evaluation_order, blocked_by_cycle) =
-            self.evaluation_order(&selected, &target_bindings);
+        let (evaluation_order, blocked_by_cycle) = self.evaluation_order(&selected);
         for id in blocked_by_cycle {
-            let snapshots = self.dependency_snapshots(document, &target_bindings, &id);
+            let snapshots = self.dependency_snapshots(document, &id);
             self.store_result(
                 id.clone(),
                 None,
@@ -246,21 +259,36 @@ impl CalculationEngine {
             let Some(binding) = self.bindings.get(&id).cloned() else {
                 continue;
             };
+            if let Some(target_cell) = binding.target.single_cell()
+                && document.cell_ref(target_cell).is_none()
+            {
+                let snapshots =
+                    self.dependency_snapshots_for_cells(document, &binding.dependencies);
+                self.store_result(
+                    id.clone(),
+                    None,
+                    CalculationStatus::Error(CalculationFailure::MissingCell(target_cell)),
+                    snapshots,
+                )?;
+                report.failed.push(id);
+                continue;
+            }
             if !force_all && binding.trigger == CalculationTrigger::Manual {
-                let snapshots = self.dependency_snapshots(document, &target_bindings, &id);
+                let snapshots = self.dependency_snapshots(document, &id);
                 self.store_stale_result(id.clone(), snapshots)?;
                 report.stale.push(id);
                 continue;
             }
 
-            let mut read_cell =
-                |reference| self.read_calculation_cell(document, &target_bindings, reference);
-            let evaluated = evaluate_expression(&binding.expression, 0, &mut read_cell);
-            let snapshots = self.dependency_snapshots_for_cells(
-                document,
-                &target_bindings,
-                &binding.dependencies,
-            );
+            let target_bindings = &self.target_bindings;
+            let results = &self.results;
+            let evaluated = {
+                let mut read_cell = |reference| {
+                    Self::read_calculation_cell(document, target_bindings, results, reference)
+                };
+                evaluate_expression(&binding.expression, 0, &mut read_cell)
+            };
+            let snapshots = self.dependency_snapshots_for_cells(document, &binding.dependencies);
             match evaluated {
                 Ok(value) => {
                     self.store_result(
@@ -287,81 +315,18 @@ impl CalculationEngine {
     }
 
     // ```text
-    // 責務: [evaluation_order: selected dependency graphをKahn algorithmで順序付けし残りをcycle blockedにする]
-    // 引数: [selected: 対象binding IDs, target_bindings: output cell owner index]
-    // 戻り値: [(Vec<ID>, Vec<ID>): dependency順の評価IDとcycleまたはcycle依存で評価不可のID]
-    // ```
-    fn evaluation_order(
-        &self,
-        selected: &BTreeSet<CalculationBindingId>,
-        target_bindings: &HashMap<CellRef, CalculationBindingId>,
-    ) -> (Vec<CalculationBindingId>, Vec<CalculationBindingId>) {
-        let mut indegree = selected
-            .iter()
-            .cloned()
-            .map(|id| (id, 0usize))
-            .collect::<BTreeMap<_, _>>();
-        let mut dependents =
-            BTreeMap::<CalculationBindingId, BTreeSet<CalculationBindingId>>::new();
-
-        for (id, binding) in &self.bindings {
-            if !selected.contains(id) {
-                continue;
-            }
-            for dependency in &binding.dependencies {
-                let Some(dependency_id) = target_bindings.get(dependency) else {
-                    continue;
-                };
-                if selected.contains(dependency_id)
-                    && dependents
-                        .entry(dependency_id.clone())
-                        .or_default()
-                        .insert(id.clone())
-                {
-                    *indegree.entry(id.clone()).or_default() += 1;
-                }
-            }
-        }
-
-        let mut ready = indegree
-            .iter()
-            .filter_map(|(id, count)| (*count == 0).then_some(id.clone()))
-            .collect::<BTreeSet<_>>();
-        let mut order = Vec::with_capacity(selected.len());
-
-        while let Some(id) = ready.pop_first() {
-            order.push(id.clone());
-            if let Some(next_ids) = dependents.get(&id) {
-                for next_id in next_ids {
-                    let Some(count) = indegree.get_mut(next_id) else {
-                        continue;
-                    };
-                    *count -= 1;
-                    if *count == 0 {
-                        ready.insert(next_id.clone());
-                    }
-                }
-            }
-        }
-
-        let processed = order.iter().cloned().collect::<BTreeSet<_>>();
-        let blocked = selected.difference(&processed).cloned().collect::<Vec<_>>();
-        (order, blocked)
-    }
-
-    // ```text
     // 責務: [read_calculation_cell: bound targetのfresh derived resultまたはraw CSV cellを読む]
     // 引数: [document: canonical CSV, target_bindings: output owner index, reference: 参照cell]
     // 戻り値: [Result<CalculationValue, CalculationFailure>: Text scalarまたは依存状態error]
     // ```
     fn read_calculation_cell(
-        &self,
         document: &CsvDocument,
         target_bindings: &HashMap<CellRef, CalculationBindingId>,
+        results: &BTreeMap<CalculationBindingId, CalculationResult>,
         reference: CellRef,
     ) -> Result<CalculationValue, CalculationFailure> {
         if let Some(binding_id) = target_bindings.get(&reference) {
-            if let Some(result) = self.results.get(binding_id) {
+            if let Some(result) = results.get(binding_id) {
                 if result.status == CalculationStatus::Evaluated {
                     if let Some(value) = &result.value {
                         return Ok(CalculationValue::Text(value.clone()));
@@ -387,7 +352,6 @@ impl CalculationEngine {
     fn dependency_snapshots(
         &self,
         document: &CsvDocument,
-        target_bindings: &HashMap<CellRef, CalculationBindingId>,
         id: &CalculationBindingId,
     ) -> Vec<CalculationDependencySnapshot> {
         let dependencies = self
@@ -395,7 +359,7 @@ impl CalculationEngine {
             .get(id)
             .map(|binding| binding.dependencies.clone())
             .unwrap_or_default();
-        self.dependency_snapshots_for_cells(document, target_bindings, &dependencies)
+        self.dependency_snapshots_for_cells(document, &dependencies)
     }
 
     // ```text
@@ -406,13 +370,12 @@ impl CalculationEngine {
     fn dependency_snapshots_for_cells(
         &self,
         document: &CsvDocument,
-        target_bindings: &HashMap<CellRef, CalculationBindingId>,
         dependencies: &BTreeSet<CellRef>,
     ) -> Vec<CalculationDependencySnapshot> {
         dependencies
             .iter()
             .map(|reference| {
-                let binding_id = target_bindings.get(reference);
+                let binding_id = self.target_bindings.get(reference);
                 let binding = binding_id.and_then(|id| self.bindings.get(id));
                 let derived_result = binding_id.and_then(|id| self.results.get(id));
                 CalculationDependencySnapshot {

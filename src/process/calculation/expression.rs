@@ -139,12 +139,14 @@ fn arithmetic(
             let quotient = left
                 .checked_div(right)
                 .ok_or(CalculationFailure::ArithmeticOverflow)?;
-            let quotient = exact_integer_as_f64(quotient)?;
-            let remainder = exact_integer_as_f64(remainder)?;
-            let divisor = exact_integer_as_f64(right)?;
-            return finite_decimal(quotient + remainder / divisor);
+            let quotient = exact_integer_as_f64(i128::from(quotient))?;
+            let (reduced_remainder, reduced_divisor) =
+                reduce_fraction(i128::from(remainder), i128::from(right));
+            let reduced_remainder = exact_integer_as_f64(reduced_remainder)?;
+            let reduced_divisor = exact_integer_as_f64(reduced_divisor)?;
+            return finite_decimal(quotient + reduced_remainder / reduced_divisor);
         }
-        let (left, right) = (left.as_f64(), right.as_f64());
+        let (left, right) = (left.checked_f64()?, right.checked_f64()?);
         if right == 0.0 {
             return Err(CalculationFailure::DivisionByZero);
         }
@@ -164,8 +166,8 @@ fn arithmetic(
                 .ok_or(CalculationFailure::ArithmeticOverflow)
         }
         (left, right) => {
-            let left = left.as_f64();
-            let right = right.as_f64();
+            let left = left.checked_f64()?;
+            let right = right.checked_f64()?;
             let result = match operator {
                 CalculationOperator::Add => left + right,
                 CalculationOperator::Subtract => left - right,
@@ -276,13 +278,30 @@ fn finite_decimal(value: f64) -> Result<CalculationValue, CalculationFailure> {
 // 引数: [integer: f64へ変換するinteger]
 // 戻り値: [Result<f64, CalculationFailure>: exact conversionまたはprecision loss]
 // ```
-fn exact_integer_as_f64(integer: i64) -> Result<f64, CalculationFailure> {
+fn exact_integer_as_f64(integer: i128) -> Result<f64, CalculationFailure> {
     let decimal = integer as f64;
-    let maximum_exclusive = -(i64::MIN as f64);
-    if decimal < i64::MIN as f64 || decimal >= maximum_exclusive || decimal as i64 != integer {
+    if decimal as i128 != integer {
         return Err(CalculationFailure::PrecisionLoss);
     }
     Ok(decimal)
+}
+
+// ```text
+// 責務: [reduce_fraction: 割り算の余りと除数を最大公約数で約分する]
+// 引数: [numerator: signed remainder, denominator: signed divisor]
+// 戻り値: [(i128, i128): 約分後の分子と分母]
+// ```
+fn reduce_fraction(numerator: i128, denominator: i128) -> (i128, i128) {
+    let mut left = numerator.unsigned_abs();
+    let mut right = denominator.unsigned_abs();
+    while right != 0 {
+        (left, right) = (right, left % right);
+    }
+    let greatest_common_divisor = left as i128;
+    (
+        numerator / greatest_common_divisor,
+        denominator / greatest_common_divisor,
+    )
 }
 
 // {
@@ -309,14 +328,15 @@ enum NumericValue {
 
 impl NumericValue {
     // {
-    //   責務: [as_f64: 数値型をf64へ変換する]
+    //   責務: [checked_f64: integerの値を保てる場合だけf64へ変換する]
     //   引数: [self: 変換対象]
-    //   戻り値: [f64: numeric value]
+    //   戻り値: [Result<f64, CalculationFailure>: 正確な数値またはprecision error]
     // }
-    fn as_f64(self) -> f64 {
+    fn checked_f64(self) -> Result<f64, CalculationFailure> {
         match self {
-            Self::Integer(value) => value as f64,
-            Self::Decimal(value) => value,
+            Self::Integer(value) => exact_integer_as_f64(i128::from(value)),
+            Self::Decimal(value) if value.is_finite() => Ok(value),
+            Self::Decimal(_) => Err(CalculationFailure::ArithmeticOverflow),
         }
     }
 

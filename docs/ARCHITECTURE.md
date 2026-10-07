@@ -42,7 +42,7 @@ UI / Rowly DSL / Luau / Python adapters
 
 ### Calculation Binding core
 
-`process::calculation` はCSV外のBindingとderived resultを保持します。target cellの一意性と存在を登録時に検証し、依存graphをtopological orderで評価します。依存変更時は逆引きindexから影響するruleだけを選び、Manual triggerはstaleにして旧resultを保持します。cycle、数値変換、演算errorはresult statusとして返し、CSVのcell・history・dirty stateを変更しません。式は一般DSL runtimeと分離したpure ASTで、cell read、数値演算、Abs / Min / Maxに限られます。
+`process::calculation` はCSV外のBindingとderived resultを保持します。target cellの一意性と存在を登録時に検証し、依存graphをtopological orderで評価します。依存変更時は逆引きindexから影響するruleだけを選び、Manual triggerはstaleにして旧resultを保持します。cycle、数値変換、integer精度不足、演算errorはresult statusとして返し、CSVのcell・history・dirty stateを変更しません。式は一般DSL runtimeと分離したpure ASTで、cell read、数値演算、Abs / Min / Maxに限られます。
 
 `CalculationTarget` はsingle cell、矩形range、column-relative ruleを表現できます。現在のengineが受け付けるのはsingle cellだけです。BindingのProject/DSL永続化、GUIからの割当、Viewへのderived result表示、range / column-relative評価は後続機能です。呼び出し側は `CalculationEngine::set_binding` で登録し、CSV編集後は変更cellを `recalculate_for_changes` に渡してください。外部同期後に全件更新する場合は `recalculate_all` を呼び、表示には `result` を参照してください。
 

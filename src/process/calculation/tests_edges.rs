@@ -222,13 +222,25 @@ fn large_integer_comparison_and_exact_division_keep_precision() {
 // }
 #[test]
 fn fractional_integer_division_uses_quotient_and_remainder() {
-    let (_directory, document) =
-        create_document(&[&["exact-fraction", "unrepresentable"], &["", ""]]);
+    let (_directory, document) = create_document(&[
+        &[
+            "exact-fraction",
+            "unrepresentable",
+            "exact-reduced-fraction",
+        ],
+        &["", "", ""],
+    ]);
     let numerator = 9_007_199_254_740_993_i64;
     let mut engine = CalculationEngine::default();
     for (id, target, numerator, divisor) in [
         ("exact-fraction", "A2", numerator, 6_i64),
         ("unrepresentable", "B2", i64::MAX, 3_i64),
+        (
+            "exact-reduced-fraction",
+            "C2",
+            numerator,
+            18_014_398_509_481_986_i64,
+        ),
     ] {
         engine
             .set_binding(
@@ -249,7 +261,13 @@ fn fractional_integer_division_uses_quotient_and_remainder() {
         .recalculate_all(&document)
         .expect("division outcomes should be reported");
 
-    assert_eq!(report.evaluated, vec![binding_id("exact-fraction")]);
+    assert_eq!(
+        report.evaluated,
+        vec![
+            binding_id("exact-fraction"),
+            binding_id("exact-reduced-fraction")
+        ]
+    );
     assert_eq!(report.failed, vec![binding_id("unrepresentable")]);
     assert_eq!(
         engine
@@ -259,7 +277,49 @@ fn fractional_integer_division_uses_quotient_and_remainder() {
     );
     assert_eq!(
         engine
+            .result(&binding_id("exact-reduced-fraction"))
+            .and_then(|result| result.value.as_deref()),
+        Some("0.5")
+    );
+    assert_eq!(
+        engine
             .result(&binding_id("unrepresentable"))
+            .map(|result| &result.status),
+        Some(&CalculationStatus::Error(CalculationFailure::PrecisionLoss))
+    );
+}
+
+// {
+//   責務: [mixed_integer_decimal_arithmetic_rejects_precision_loss: integerからDecimalへのlossy conversionを明示的に拒否する]
+//   処理: [2^53を超えるintegerと相殺するdecimalの加算を行い、PrecisionLossを確認する]
+//   戻り値: [(): 混合演算の入力精度を黙って落とさなければ成功する]
+// }
+#[test]
+fn mixed_integer_decimal_arithmetic_rejects_precision_loss() {
+    let (_directory, document) = create_document(&[&["output"], &[""]]);
+    let mut engine = CalculationEngine::default();
+    engine
+        .set_binding(
+            &document,
+            binding_id("output"),
+            CalculationTarget::Cell(cell("A2")),
+            binary(
+                CalculationExpression::Literal(CalculationValue::Integer(9_007_199_254_740_993)),
+                CalculationOperator::Add,
+                CalculationExpression::Literal(CalculationValue::Decimal(-9_007_199_254_740_992.0)),
+            ),
+            CalculationTrigger::DependencyChange,
+        )
+        .expect("mixed numeric binding should be registered");
+
+    let report = engine
+        .recalculate_all(&document)
+        .expect("precision error should be returned in the result status");
+
+    assert_eq!(report.failed, vec![binding_id("output")]);
+    assert_eq!(
+        engine
+            .result(&binding_id("output"))
             .map(|result| &result.status),
         Some(&CalculationStatus::Error(CalculationFailure::PrecisionLoss))
     );

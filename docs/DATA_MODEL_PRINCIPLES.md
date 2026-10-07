@@ -28,7 +28,7 @@ View
 
 Excel形式の `=A1*B1` のような式を、CSVセルの特別な値として扱いません。CSV内の `=A1*B1` は、利用者が別途変換を指示しない限り通常の文字列です。
 
-Rowlyで計算を行う場合は、セル・範囲・列などの対象へCalculation Bindingを割り当てます。Bindingは式、依存関係、triggerをCSV外のProject設定またはDSLに保持します。自動計算ではFile I/O、Project I/O、Import / Export、network、process実行を許可しません。
+RowlyのCalculation Binding coreは、セルをtargetにしたpure expression、依存cell、triggerを保持し、依存順にderived resultを評価します。式ASTはcell read、scalar literal、算術演算、Abs / Min / Maxだけを表現できます。一般DSL runtimeを使わないため、自動計算からFile I/O、Project I/O、Import / Export、network、process実行は呼び出せません。target modelには矩形範囲と列相対ruleも表現できますが、このcoreでは未対応targetとして登録を拒否します。
 
 計算結果はderived resultとしてViewへ渡します。依存値の変更、外部CSV同期後の変更、利用者の明示的なRecalculateを計算triggerにできます。計算が失敗した場合は元のCSV値を保ち、結果をerrorまたはstaleとして示します。
 
@@ -63,7 +63,7 @@ rowly excel import input.xlsx output.csv [sheet-name]
 rowly excel export input.csv output.xlsx [sheet-name]
 ```
 
-Calculation Binding、Materialize、View groupingは未実装です。既存GUIでは表の閲覧・編集ができますが、これらの機能は利用できません。実装後は、利用者がEditまたはDSLで計算規則を明示し、Viewで結果を確認し、必要な場合だけMaterializeを実行できるようにします。Codeは常にcanonical CSVのraw textを表示・編集します。
+Calculation BindingのRust coreは実装済みですが、利用者向けGUI操作、DSLによる規則の永続化、Viewへの結果表示はまだ接続されていません。現時点で利用者がGUIやCLIからBindingを割り当てる手順はありません。process APIの呼び出し元は `CalculationEngine::set_binding` で規則を登録し、`recalculate_for_changes` または `recalculate_all` で結果を更新できます。結果は `CalculationEngine::result` から取得し、CSVのraw valueとdirty stateは変わりません。範囲・列相対target、Materialize、View groupingも未実装です。利用者向けの操作を追加するときは、規則を明示して結果をViewで確認し、必要な場合だけMaterializeを実行する流れを提供します。Codeは常にcanonical CSVのraw textを表示・編集します。
 
 ## 採用判断
 

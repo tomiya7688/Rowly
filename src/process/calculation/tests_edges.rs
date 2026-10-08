@@ -86,10 +86,95 @@ fn binding_graph_changes_invalidate_downstream_results() {
             .derived_revision
             > evaluated_revision
     );
+    assert!(
+        engine
+            .result(&binding_id("second"))
+            .expect("stale downstream result should exist")
+            .dependencies
+            .is_empty()
+    );
     let report = engine
         .recalculate_all(&document)
         .expect("missing raw numeric value should be reported");
     assert_eq!(report.failed, vec![binding_id("second")]);
+}
+
+// {
+//   責務: [removed_bound_targets_invalidate_incremental_dependents: 削除されたtarget ownerを依存変更の再計算対象に含める]
+//   処理: [上流targetのあるrowを削除し、依存cellを変更通知してownerと下流ruleのerrorを確認する]
+//   戻り値: [(): 古いderived resultがEvaluatedとして残らなければ成功する]
+// }
+#[test]
+fn removed_bound_targets_invalidate_incremental_dependents() {
+    let (_directory, mut document) = create_document(&[
+        &["input", "first", "second"],
+        &["1", "", ""],
+        &["2", "", ""],
+    ]);
+    let mut engine = CalculationEngine::default();
+    engine
+        .set_binding(
+            &document,
+            binding_id("first"),
+            CalculationTarget::Cell(cell("B3")),
+            binary(
+                CalculationExpression::Cell(cell("A3")),
+                CalculationOperator::Add,
+                CalculationExpression::Literal(CalculationValue::Integer(1)),
+            ),
+            CalculationTrigger::DependencyChange,
+        )
+        .expect("first binding should be registered");
+    engine
+        .set_binding(
+            &document,
+            binding_id("second"),
+            CalculationTarget::Cell(cell("C2")),
+            binary(
+                CalculationExpression::Cell(cell("B3")),
+                CalculationOperator::Multiply,
+                CalculationExpression::Literal(CalculationValue::Integer(2)),
+            ),
+            CalculationTrigger::DependencyChange,
+        )
+        .expect("downstream binding should be registered");
+    engine
+        .recalculate_all(&document)
+        .expect("both bindings should initially evaluate");
+    assert_eq!(
+        engine
+            .result(&binding_id("second"))
+            .and_then(|result| result.value.as_deref()),
+        Some("6")
+    );
+
+    document
+        .apply_csv_text("input,first,second\n1,,\n")
+        .expect("row containing the upstream target should be removed");
+    let report = engine
+        .recalculate_for_changes(&document, [cell("B3")])
+        .expect("removed target and its downstream dependency should be reported");
+
+    assert_eq!(
+        report.failed,
+        vec![binding_id("first"), binding_id("second")]
+    );
+    assert_eq!(
+        engine
+            .result(&binding_id("first"))
+            .map(|result| &result.status),
+        Some(&CalculationStatus::Error(CalculationFailure::MissingCell(
+            cell("B3")
+        )))
+    );
+    assert_eq!(
+        engine
+            .result(&binding_id("second"))
+            .map(|result| &result.status),
+        Some(&CalculationStatus::Error(
+            CalculationFailure::DependencyUnavailable(binding_id("first"))
+        ))
+    );
 }
 
 // {
@@ -357,5 +442,94 @@ fn mixed_integer_decimal_arithmetic_rejects_precision_loss() {
             .result(&binding_id("output"))
             .map(|result| &result.status),
         Some(&CalculationStatus::Error(CalculationFailure::PrecisionLoss))
+    );
+}
+
+// {
+//   責務: [zero_decimal_divisor_precedes_integer_precision_check: Decimalのzero除算をnumerator精度より先に検出する]
+//   処理: [exact f64化できないintegerをDecimal zeroで割り、DivisionByZeroを確認する]
+//   戻り値: [(): precision errorではなくzero divisor errorを返せば成功する]
+// }
+#[test]
+fn zero_decimal_divisor_precedes_integer_precision_check() {
+    let (_directory, document) = create_document(&[&["output"], &[""]]);
+    let mut engine = CalculationEngine::default();
+    engine
+        .set_binding(
+            &document,
+            binding_id("zero-divisor"),
+            CalculationTarget::Cell(cell("A2")),
+            binary(
+                CalculationExpression::Literal(CalculationValue::Integer(9_007_199_254_740_993)),
+                CalculationOperator::Divide,
+                CalculationExpression::Literal(CalculationValue::Decimal(0.0)),
+            ),
+            CalculationTrigger::DependencyChange,
+        )
+        .expect("zero-divisor binding should be registered");
+
+    let report = engine
+        .recalculate_all(&document)
+        .expect("division failure should be returned as a calculation result");
+
+    assert_eq!(report.failed, vec![binding_id("zero-divisor")]);
+    assert_eq!(
+        engine
+            .result(&binding_id("zero-divisor"))
+            .map(|result| &result.status),
+        Some(&CalculationStatus::Error(
+            CalculationFailure::DivisionByZero
+        ))
+    );
+}
+
+// {
+//   責務: [signed_zero_expression_updates_advance_binding_revision: +0.0から-0.0への式変更を同値扱いしない]
+//   処理: [Decimal zeroの符号を反転したliteralへbindingを更新し、revisionと出力文字列を確認する]
+//   戻り値: [(): 新しいexpressionとderived valueが反映されれば成功する]
+// }
+#[test]
+fn signed_zero_expression_updates_advance_binding_revision() {
+    let (_directory, document) = create_document(&[&["output"], &[""]]);
+    let mut engine = CalculationEngine::default();
+    let binding = binding_id("signed-zero");
+    let target = CalculationTarget::Cell(cell("A2"));
+    let positive_zero = CalculationExpression::Literal(CalculationValue::Decimal(0.0));
+    let first_revision = engine
+        .set_binding(
+            &document,
+            binding.clone(),
+            target,
+            positive_zero,
+            CalculationTrigger::DependencyChange,
+        )
+        .expect("positive-zero binding should be registered");
+    engine
+        .recalculate_all(&document)
+        .expect("positive zero should evaluate");
+
+    let updated_revision = engine
+        .set_binding(
+            &document,
+            binding.clone(),
+            target,
+            CalculationExpression::Literal(CalculationValue::Decimal(-0.0)),
+            CalculationTrigger::DependencyChange,
+        )
+        .expect("signed-zero expression update should succeed");
+
+    assert!(updated_revision > first_revision);
+    assert_eq!(
+        engine.result(&binding).map(|result| &result.status),
+        Some(&CalculationStatus::Pending)
+    );
+    engine
+        .recalculate_all(&document)
+        .expect("negative zero should evaluate");
+    assert_eq!(
+        engine
+            .result(&binding)
+            .and_then(|result| result.value.as_deref()),
+        Some("-0")
     );
 }

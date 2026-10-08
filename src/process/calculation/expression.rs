@@ -147,6 +147,9 @@ fn arithmetic(
             let _ = exact_integer_as_f64(reduced_divisor)?;
             return finite_decimal(round_integer_ratio_as_f64(left, right)?);
         }
+        if matches!(right, NumericValue::Decimal(value) if value == 0.0) {
+            return Err(CalculationFailure::DivisionByZero);
+        }
         let (left, right) = (left.checked_f64()?, right.checked_f64()?);
         if right == 0.0 {
             return Err(CalculationFailure::DivisionByZero);

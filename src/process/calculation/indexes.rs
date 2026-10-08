@@ -74,6 +74,7 @@ impl CalculationEngine {
                     CalculationStatus::Pending
                 };
                 result.derived_revision = revision;
+                result.dependencies.clear();
             }
         }
         self.derived_revision = revision;

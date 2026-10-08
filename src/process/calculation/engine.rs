@@ -55,7 +55,7 @@ impl CalculationEngine {
 
         if let Some(existing) = self.bindings.get(&id)
             && existing.target == target
-            && existing.expression == expression
+            && expressions_are_equivalent(&existing.expression, &expression)
             && existing.trigger == trigger
         {
             return Ok(existing.revision);
@@ -240,6 +240,9 @@ impl CalculationEngine {
         let mut selected = BTreeSet::new();
         let mut pending_cells = VecDeque::from_iter(changed_cells);
         while let Some(changed_cell) = pending_cells.pop_front() {
+            if let Some(owner_id) = self.target_bindings.get(&changed_cell) {
+                selected.insert(owner_id.clone());
+            }
             if let Some(dependent_ids) = self.dependents_by_cell.get(&changed_cell) {
                 for dependent_id in dependent_ids {
                     if !selected.insert(dependent_id.clone()) {
@@ -469,5 +472,72 @@ impl CalculationEngine {
             .get(&id)
             .and_then(|result| result.value.clone());
         self.store_result(id, previous_value, CalculationStatus::Stale, dependencies)
+    }
+}
+
+// {
+//   責務: [expressions_are_equivalent: decimalの符号付きzeroを区別して式ASTが同じか判定する]
+//   引数: [left: 比較する左式, right: 比較する右式]
+//   戻り値: [bool: 更新不要なほど式が同じならtrue]
+// }
+fn expressions_are_equivalent(left: &CalculationExpression, right: &CalculationExpression) -> bool {
+    match (left, right) {
+        (CalculationExpression::Literal(left), CalculationExpression::Literal(right)) => {
+            calculation_values_are_equivalent(left, right)
+        }
+        (CalculationExpression::Cell(left), CalculationExpression::Cell(right)) => left == right,
+        (CalculationExpression::Negate(left), CalculationExpression::Negate(right)) => {
+            expressions_are_equivalent(left, right)
+        }
+        (
+            CalculationExpression::Arithmetic {
+                left: left_left,
+                operator: left_operator,
+                right: left_right,
+            },
+            CalculationExpression::Arithmetic {
+                left: right_left,
+                operator: right_operator,
+                right: right_right,
+            },
+        ) => {
+            left_operator == right_operator
+                && expressions_are_equivalent(left_left, right_left)
+                && expressions_are_equivalent(left_right, right_right)
+        }
+        (
+            CalculationExpression::Call {
+                function: left_function,
+                arguments: left_arguments,
+            },
+            CalculationExpression::Call {
+                function: right_function,
+                arguments: right_arguments,
+            },
+        ) => {
+            left_function == right_function
+                && left_arguments.len() == right_arguments.len()
+                && left_arguments
+                    .iter()
+                    .zip(right_arguments)
+                    .all(|(left, right)| expressions_are_equivalent(left, right))
+        }
+        _ => false,
+    }
+}
+
+// {
+//   責務: [calculation_values_are_equivalent: Decimal bit patternを含めてscalar literalの同一性を判定する]
+//   引数: [left: 比較する左value, right: 比較する右value]
+//   戻り値: [bool: 評価・表示上の差がなければtrue]
+// }
+fn calculation_values_are_equivalent(left: &CalculationValue, right: &CalculationValue) -> bool {
+    match (left, right) {
+        (CalculationValue::Text(left), CalculationValue::Text(right)) => left == right,
+        (CalculationValue::Integer(left), CalculationValue::Integer(right)) => left == right,
+        (CalculationValue::Decimal(left), CalculationValue::Decimal(right)) => {
+            left.to_bits() == right.to_bits()
+        }
+        _ => false,
     }
 }

@@ -290,6 +290,41 @@ fn fractional_integer_division_uses_quotient_and_remainder() {
 }
 
 // {
+//   責務: [fractional_integer_division_uses_single_rounding: 5/3を二重丸めせず最近接値へ変換する]
+//   処理: [整数除算をCalculationEngineで評価し、IEEE 754最近接結果を確認する]
+//   戻り値: [(): 5/3が正しく丸められた小数文字列なら成功する]
+// }
+#[test]
+fn fractional_integer_division_uses_single_rounding() {
+    let (_directory, document) = create_document(&[&["output"], &[""]]);
+    let mut engine = CalculationEngine::default();
+    engine
+        .set_binding(
+            &document,
+            binding_id("five-thirds"),
+            CalculationTarget::Cell(cell("A2")),
+            binary(
+                CalculationExpression::Literal(CalculationValue::Integer(5)),
+                CalculationOperator::Divide,
+                CalculationExpression::Literal(CalculationValue::Integer(3)),
+            ),
+            CalculationTrigger::DependencyChange,
+        )
+        .expect("five-thirds binding should be registered");
+
+    engine
+        .recalculate_all(&document)
+        .expect("five-thirds expression should evaluate");
+
+    assert_eq!(
+        engine
+            .result(&binding_id("five-thirds"))
+            .and_then(|result| result.value.as_deref()),
+        Some("1.6666666666666667")
+    );
+}
+
+// {
 //   責務: [mixed_integer_decimal_arithmetic_rejects_precision_loss: integerからDecimalへのlossy conversionを明示的に拒否する]
 //   処理: [2^53を超えるintegerと相殺するdecimalの加算を行い、PrecisionLossを確認する]
 //   戻り値: [(): 混合演算の入力精度を黙って落とさなければ成功する]
@@ -324,3 +359,4 @@ fn mixed_integer_decimal_arithmetic_rejects_precision_loss() {
         Some(&CalculationStatus::Error(CalculationFailure::PrecisionLoss))
     );
 }
+

@@ -139,12 +139,13 @@ fn arithmetic(
             let quotient = left
                 .checked_div(right)
                 .ok_or(CalculationFailure::ArithmeticOverflow)?;
-            let quotient = exact_integer_as_f64(i128::from(quotient))?;
+            // Reject integer components that cannot survive the existing precision contract.
+            let _ = exact_integer_as_f64(i128::from(quotient))?;
             let (reduced_remainder, reduced_divisor) =
                 reduce_fraction(i128::from(remainder), i128::from(right));
-            let reduced_remainder = exact_integer_as_f64(reduced_remainder)?;
-            let reduced_divisor = exact_integer_as_f64(reduced_divisor)?;
-            return finite_decimal(quotient + reduced_remainder / reduced_divisor);
+            let _ = exact_integer_as_f64(reduced_remainder)?;
+            let _ = exact_integer_as_f64(reduced_divisor)?;
+            return finite_decimal(round_integer_ratio_as_f64(left, right)?);
         }
         let (left, right) = (left.checked_f64()?, right.checked_f64()?);
         if right == 0.0 {
@@ -305,6 +306,82 @@ fn reduce_fraction(numerator: i128, denominator: i128) -> (i128, i128) {
 }
 
 // {
+//   責務: [round_integer_ratio_as_f64: i64の比を中間丸めなしで最近接f64へ変換する]
+//   処理: [符号と二進指数を求め、53桁の仮数とguard/sticky bitでties-to-even丸めを行う]
+//   引数: [numerator: 分子, denominator: 0以外の分母]
+//   戻り値: [Result<f64, CalculationFailure>: 最近接のfinite値または0除算error]
+// }
+fn round_integer_ratio_as_f64(numerator: i64, denominator: i64) -> Result<f64, CalculationFailure> {
+    if denominator == 0 {
+        return Err(CalculationFailure::DivisionByZero);
+    }
+    if numerator == 0 {
+        return Ok(0.0);
+    }
+
+    let numerator_magnitude = u128::from(numerator.unsigned_abs());
+    let denominator_magnitude = u128::from(denominator.unsigned_abs());
+    let mut exponent = (127 - numerator_magnitude.leading_zeros() as i32)
+        - (127 - denominator_magnitude.leading_zeros() as i32);
+
+    // Bit lengths give an exponent that is at most one too large.
+    let ratio_is_below_exponent = if exponent >= 0 {
+        numerator_magnitude < (denominator_magnitude << exponent as u32)
+    } else {
+        (numerator_magnitude << (-exponent) as u32) < denominator_magnitude
+    };
+    if ratio_is_below_exponent {
+        exponent -= 1;
+    }
+
+    // Scale the exact ratio into [1, 2) before generating its binary significand.
+    let (scaled_numerator, scaled_denominator) = if exponent >= 0 {
+        (
+            numerator_magnitude,
+            denominator_magnitude << exponent as u32,
+        )
+    } else {
+        (
+            numerator_magnitude << (-exponent) as u32,
+            denominator_magnitude,
+        )
+    };
+    let mut remainder = scaled_numerator - scaled_denominator;
+    let mut significand = 1_u64 << 52;
+
+    // Generate the 52 stored fraction bits from the exact integer remainder.
+    for bit in (0..52).rev() {
+        remainder <<= 1;
+        if remainder >= scaled_denominator {
+            remainder -= scaled_denominator;
+            significand |= 1_u64 << bit;
+        }
+    }
+
+    // The next bit and remaining fraction decide round-to-nearest, ties-to-even.
+    remainder <<= 1;
+    let guard_bit = remainder >= scaled_denominator;
+    if guard_bit {
+        remainder -= scaled_denominator;
+    }
+    let sticky_bit = remainder != 0;
+    if guard_bit && (sticky_bit || significand & 1 == 1) {
+        significand += 1;
+    }
+    if significand == 1_u64 << 53 {
+        significand >>= 1;
+        exponent += 1;
+    }
+
+    let magnitude = (significand as f64) * 2.0_f64.powi(exponent - 52);
+    Ok(if numerator.is_negative() ^ denominator.is_negative() {
+        -magnitude
+    } else {
+        magnitude
+    })
+}
+
+// {
 //   責務: [function_name: pure function enumを安定したerror名へ変換する]
 //   引数: [function: 対象function]
 //   戻り値: [&'static str: function名]
@@ -395,3 +472,4 @@ impl CalculationValue {
         }
     }
 }
+

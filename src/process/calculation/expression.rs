@@ -472,4 +472,3 @@ impl CalculationValue {
         }
     }
 }
-

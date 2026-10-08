@@ -11,6 +11,7 @@
 //! ]
 //! ```
 mod address;
+pub mod calculation;
 mod column;
 mod document;
 mod history;

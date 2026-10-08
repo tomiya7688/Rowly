@@ -1,0 +1,535 @@
+use super::*;
+
+// {
+//   責務: [binding_graph_changes_invalidate_downstream_results: Bindingの置換・削除で下流resultをstale化する]
+//   処理: [中間Bindingの式を変更して再評価し、そのBindingを削除して依存errorを確認する]
+//   戻り値: [(): graph変更前のderived値がcurrent扱いされなければ成功する]
+// }
+#[test]
+fn binding_graph_changes_invalidate_downstream_results() {
+    let (_directory, document) = create_document(&[&["input", "first", "second"], &["2", "", ""]]);
+    let mut engine = CalculationEngine::default();
+    let register = |engine: &mut CalculationEngine, increment| {
+        engine
+            .set_binding(
+                &document,
+                binding_id("first"),
+                CalculationTarget::Cell(cell("B2")),
+                binary(
+                    CalculationExpression::Cell(cell("A2")),
+                    CalculationOperator::Add,
+                    CalculationExpression::Literal(CalculationValue::Integer(increment)),
+                ),
+                CalculationTrigger::DependencyChange,
+            )
+            .expect("first binding should be registered");
+    };
+    register(&mut engine, 3);
+    engine
+        .set_binding(
+            &document,
+            binding_id("second"),
+            CalculationTarget::Cell(cell("C2")),
+            binary(
+                CalculationExpression::Cell(cell("B2")),
+                CalculationOperator::Multiply,
+                CalculationExpression::Literal(CalculationValue::Integer(4)),
+            ),
+            CalculationTrigger::DependencyChange,
+        )
+        .expect("second binding should be registered");
+    engine
+        .recalculate_all(&document)
+        .expect("initial results should evaluate");
+    let initial_revision = engine
+        .result(&binding_id("second"))
+        .expect("initial downstream result should exist")
+        .derived_revision;
+
+    register(&mut engine, 5);
+
+    let dependent = engine
+        .result(&binding_id("second"))
+        .expect("downstream result should exist");
+    assert_eq!(dependent.status, CalculationStatus::Stale);
+    assert_eq!(dependent.value.as_deref(), Some("20"));
+    assert!(dependent.derived_revision > initial_revision);
+    engine
+        .recalculate_all(&document)
+        .expect("replacement should recalculate");
+    assert_eq!(
+        engine
+            .result(&binding_id("second"))
+            .and_then(|result| result.value.as_deref()),
+        Some("28")
+    );
+
+    let evaluated_revision = engine
+        .result(&binding_id("second"))
+        .expect("recalculated downstream result should exist")
+        .derived_revision;
+    assert!(
+        engine
+            .remove_binding(&binding_id("first"))
+            .expect("binding removal should succeed")
+    );
+    assert_eq!(
+        engine
+            .result(&binding_id("second"))
+            .map(|result| &result.status),
+        Some(&CalculationStatus::Stale)
+    );
+    assert!(
+        engine
+            .result(&binding_id("second"))
+            .expect("stale downstream result should exist")
+            .derived_revision
+            > evaluated_revision
+    );
+    assert!(
+        engine
+            .result(&binding_id("second"))
+            .expect("stale downstream result should exist")
+            .dependencies
+            .is_empty()
+    );
+    let report = engine
+        .recalculate_all(&document)
+        .expect("missing raw numeric value should be reported");
+    assert_eq!(report.failed, vec![binding_id("second")]);
+}
+
+// {
+//   責務: [removed_bound_targets_invalidate_incremental_dependents: 削除されたtarget ownerを依存変更の再計算対象に含める]
+//   処理: [上流targetのあるrowを削除し、依存cellを変更通知してownerと下流ruleのerrorを確認する]
+//   戻り値: [(): 古いderived resultがEvaluatedとして残らなければ成功する]
+// }
+#[test]
+fn removed_bound_targets_invalidate_incremental_dependents() {
+    let (_directory, mut document) = create_document(&[
+        &["input", "first", "second"],
+        &["1", "", ""],
+        &["2", "", ""],
+    ]);
+    let mut engine = CalculationEngine::default();
+    engine
+        .set_binding(
+            &document,
+            binding_id("first"),
+            CalculationTarget::Cell(cell("B3")),
+            binary(
+                CalculationExpression::Cell(cell("A3")),
+                CalculationOperator::Add,
+                CalculationExpression::Literal(CalculationValue::Integer(1)),
+            ),
+            CalculationTrigger::DependencyChange,
+        )
+        .expect("first binding should be registered");
+    engine
+        .set_binding(
+            &document,
+            binding_id("second"),
+            CalculationTarget::Cell(cell("C2")),
+            binary(
+                CalculationExpression::Cell(cell("B3")),
+                CalculationOperator::Multiply,
+                CalculationExpression::Literal(CalculationValue::Integer(2)),
+            ),
+            CalculationTrigger::DependencyChange,
+        )
+        .expect("downstream binding should be registered");
+    engine
+        .recalculate_all(&document)
+        .expect("both bindings should initially evaluate");
+    assert_eq!(
+        engine
+            .result(&binding_id("second"))
+            .and_then(|result| result.value.as_deref()),
+        Some("6")
+    );
+
+    document
+        .apply_csv_text("input,first,second\n1,,\n")
+        .expect("row containing the upstream target should be removed");
+    let report = engine
+        .recalculate_for_changes(&document, [cell("B3")])
+        .expect("removed target and its downstream dependency should be reported");
+
+    assert_eq!(
+        report.failed,
+        vec![binding_id("first"), binding_id("second")]
+    );
+    assert_eq!(
+        engine
+            .result(&binding_id("first"))
+            .map(|result| &result.status),
+        Some(&CalculationStatus::Error(CalculationFailure::MissingCell(
+            cell("B3")
+        )))
+    );
+    assert_eq!(
+        engine
+            .result(&binding_id("second"))
+            .map(|result| &result.status),
+        Some(&CalculationStatus::Error(
+            CalculationFailure::DependencyUnavailable(binding_id("first"))
+        ))
+    );
+}
+
+// {
+//   責務: [removed_targets_fail_before_evaluating_bindings: CSV構造変更後に消えたtargetをmissing errorへする]
+//   処理: [登録後にtarget rowを除き、再計算時のstatusと元CSVの状態を確認する]
+//   戻り値: [(): 存在しないtargetへEvaluatedを返さなければ成功する]
+// }
+#[test]
+fn removed_targets_fail_before_evaluating_bindings() {
+    let (_directory, mut document) = create_document(&[&["input", "output"], &["2", "keep-me"]]);
+    let mut engine = CalculationEngine::default();
+    engine
+        .set_binding(
+            &document,
+            binding_id("output"),
+            CalculationTarget::Cell(cell("B2")),
+            binary(
+                CalculationExpression::Cell(cell("A2")),
+                CalculationOperator::Add,
+                CalculationExpression::Literal(CalculationValue::Integer(1)),
+            ),
+            CalculationTrigger::Manual,
+        )
+        .expect("binding should be registered");
+    document
+        .apply_csv_text("input,output\n")
+        .expect("CSV row should be removed");
+
+    let report = engine
+        .recalculate_all(&document)
+        .expect("missing target should be reported as a result");
+
+    assert_eq!(report.failed, vec![binding_id("output")]);
+    assert_eq!(
+        engine
+            .result(&binding_id("output"))
+            .map(|result| &result.status),
+        Some(&CalculationStatus::Error(CalculationFailure::MissingCell(
+            cell("B2")
+        )))
+    );
+    assert_eq!(document.cell_ref(cell("A1")), Some("input"));
+}
+
+// {
+//   責務: [large_integer_comparison_and_exact_division_keep_precision: i64範囲のMin/Maxと整数除算の精度を検証する]
+//   処理: [2^53を超える隣接整数を比較し、1で割った整数を正確に保持する]
+//   戻り値: [(): scalar結果が整数精度を保てば成功する]
+// }
+#[test]
+fn large_integer_comparison_and_exact_division_keep_precision() {
+    let (_directory, document) =
+        create_document(&[&["minimum", "maximum", "quotient"], &["", "", ""]]);
+    let smaller = 9_007_199_254_740_992_i64;
+    let larger = 9_007_199_254_740_993_i64;
+    let mut engine = CalculationEngine::default();
+    let formulas = [
+        (
+            "minimum",
+            "A2",
+            CalculationExpression::Call {
+                function: PureCalculationFunction::Min,
+                arguments: vec![
+                    CalculationExpression::Literal(CalculationValue::Integer(larger)),
+                    CalculationExpression::Literal(CalculationValue::Integer(smaller)),
+                ],
+            },
+        ),
+        (
+            "maximum",
+            "B2",
+            CalculationExpression::Call {
+                function: PureCalculationFunction::Max,
+                arguments: vec![
+                    CalculationExpression::Literal(CalculationValue::Integer(larger)),
+                    CalculationExpression::Literal(CalculationValue::Integer(smaller)),
+                ],
+            },
+        ),
+        (
+            "quotient",
+            "C2",
+            binary(
+                CalculationExpression::Literal(CalculationValue::Integer(larger)),
+                CalculationOperator::Divide,
+                CalculationExpression::Literal(CalculationValue::Integer(1)),
+            ),
+        ),
+    ];
+    for (id, target, expression) in formulas {
+        engine
+            .set_binding(
+                &document,
+                binding_id(id),
+                CalculationTarget::Cell(cell(target)),
+                expression,
+                CalculationTrigger::DependencyChange,
+            )
+            .expect("integer calculation should be registered");
+    }
+
+    engine
+        .recalculate_all(&document)
+        .expect("integer expressions should evaluate");
+
+    assert_eq!(
+        engine
+            .result(&binding_id("minimum"))
+            .and_then(|result| result.value.as_deref()),
+        Some("9007199254740992")
+    );
+    assert_eq!(
+        engine
+            .result(&binding_id("maximum"))
+            .and_then(|result| result.value.as_deref()),
+        Some("9007199254740993")
+    );
+    assert_eq!(
+        engine
+            .result(&binding_id("quotient"))
+            .and_then(|result| result.value.as_deref()),
+        Some("9007199254740993")
+    );
+}
+
+// {
+//   責務: [fractional_integer_division_uses_quotient_and_remainder: 大きな整数の小数除算で入力値を丸めない]
+//   処理: [商と余りから小数結果を作り、表現可能なケースを正確に出力する]
+//   戻り値: [(): 整数を先にf64へ丸めず結果を計算できれば成功する]
+// }
+#[test]
+fn fractional_integer_division_uses_quotient_and_remainder() {
+    let (_directory, document) = create_document(&[
+        &[
+            "exact-fraction",
+            "unrepresentable",
+            "exact-reduced-fraction",
+        ],
+        &["", "", ""],
+    ]);
+    let numerator = 9_007_199_254_740_993_i64;
+    let mut engine = CalculationEngine::default();
+    for (id, target, numerator, divisor) in [
+        ("exact-fraction", "A2", numerator, 6_i64),
+        ("unrepresentable", "B2", i64::MAX, 3_i64),
+        (
+            "exact-reduced-fraction",
+            "C2",
+            numerator,
+            18_014_398_509_481_986_i64,
+        ),
+    ] {
+        engine
+            .set_binding(
+                &document,
+                binding_id(id),
+                CalculationTarget::Cell(cell(target)),
+                binary(
+                    CalculationExpression::Literal(CalculationValue::Integer(numerator)),
+                    CalculationOperator::Divide,
+                    CalculationExpression::Literal(CalculationValue::Integer(divisor)),
+                ),
+                CalculationTrigger::DependencyChange,
+            )
+            .expect("integer division should be registered");
+    }
+
+    let report = engine
+        .recalculate_all(&document)
+        .expect("division outcomes should be reported");
+
+    assert_eq!(
+        report.evaluated,
+        vec![
+            binding_id("exact-fraction"),
+            binding_id("exact-reduced-fraction")
+        ]
+    );
+    assert_eq!(report.failed, vec![binding_id("unrepresentable")]);
+    assert_eq!(
+        engine
+            .result(&binding_id("exact-fraction"))
+            .and_then(|result| result.value.as_deref()),
+        Some("1501199875790165.5")
+    );
+    assert_eq!(
+        engine
+            .result(&binding_id("exact-reduced-fraction"))
+            .and_then(|result| result.value.as_deref()),
+        Some("0.5")
+    );
+    assert_eq!(
+        engine
+            .result(&binding_id("unrepresentable"))
+            .map(|result| &result.status),
+        Some(&CalculationStatus::Error(CalculationFailure::PrecisionLoss))
+    );
+}
+
+// {
+//   責務: [fractional_integer_division_uses_single_rounding: 5/3を二重丸めせず最近接値へ変換する]
+//   処理: [整数除算をCalculationEngineで評価し、IEEE 754最近接結果を確認する]
+//   戻り値: [(): 5/3が正しく丸められた小数文字列なら成功する]
+// }
+#[test]
+fn fractional_integer_division_uses_single_rounding() {
+    let (_directory, document) = create_document(&[&["output"], &[""]]);
+    let mut engine = CalculationEngine::default();
+    engine
+        .set_binding(
+            &document,
+            binding_id("five-thirds"),
+            CalculationTarget::Cell(cell("A2")),
+            binary(
+                CalculationExpression::Literal(CalculationValue::Integer(5)),
+                CalculationOperator::Divide,
+                CalculationExpression::Literal(CalculationValue::Integer(3)),
+            ),
+            CalculationTrigger::DependencyChange,
+        )
+        .expect("five-thirds binding should be registered");
+
+    engine
+        .recalculate_all(&document)
+        .expect("five-thirds expression should evaluate");
+
+    assert_eq!(
+        engine
+            .result(&binding_id("five-thirds"))
+            .and_then(|result| result.value.as_deref()),
+        Some("1.6666666666666667")
+    );
+}
+
+// {
+//   責務: [mixed_integer_decimal_arithmetic_rejects_precision_loss: integerからDecimalへのlossy conversionを明示的に拒否する]
+//   処理: [2^53を超えるintegerと相殺するdecimalの加算を行い、PrecisionLossを確認する]
+//   戻り値: [(): 混合演算の入力精度を黙って落とさなければ成功する]
+// }
+#[test]
+fn mixed_integer_decimal_arithmetic_rejects_precision_loss() {
+    let (_directory, document) = create_document(&[&["output"], &[""]]);
+    let mut engine = CalculationEngine::default();
+    engine
+        .set_binding(
+            &document,
+            binding_id("output"),
+            CalculationTarget::Cell(cell("A2")),
+            binary(
+                CalculationExpression::Literal(CalculationValue::Integer(9_007_199_254_740_993)),
+                CalculationOperator::Add,
+                CalculationExpression::Literal(CalculationValue::Decimal(-9_007_199_254_740_992.0)),
+            ),
+            CalculationTrigger::DependencyChange,
+        )
+        .expect("mixed numeric binding should be registered");
+
+    let report = engine
+        .recalculate_all(&document)
+        .expect("precision error should be returned in the result status");
+
+    assert_eq!(report.failed, vec![binding_id("output")]);
+    assert_eq!(
+        engine
+            .result(&binding_id("output"))
+            .map(|result| &result.status),
+        Some(&CalculationStatus::Error(CalculationFailure::PrecisionLoss))
+    );
+}
+
+// {
+//   責務: [zero_decimal_divisor_precedes_integer_precision_check: Decimalのzero除算をnumerator精度より先に検出する]
+//   処理: [exact f64化できないintegerをDecimal zeroで割り、DivisionByZeroを確認する]
+//   戻り値: [(): precision errorではなくzero divisor errorを返せば成功する]
+// }
+#[test]
+fn zero_decimal_divisor_precedes_integer_precision_check() {
+    let (_directory, document) = create_document(&[&["output"], &[""]]);
+    let mut engine = CalculationEngine::default();
+    engine
+        .set_binding(
+            &document,
+            binding_id("zero-divisor"),
+            CalculationTarget::Cell(cell("A2")),
+            binary(
+                CalculationExpression::Literal(CalculationValue::Integer(9_007_199_254_740_993)),
+                CalculationOperator::Divide,
+                CalculationExpression::Literal(CalculationValue::Decimal(0.0)),
+            ),
+            CalculationTrigger::DependencyChange,
+        )
+        .expect("zero-divisor binding should be registered");
+
+    let report = engine
+        .recalculate_all(&document)
+        .expect("division failure should be returned as a calculation result");
+
+    assert_eq!(report.failed, vec![binding_id("zero-divisor")]);
+    assert_eq!(
+        engine
+            .result(&binding_id("zero-divisor"))
+            .map(|result| &result.status),
+        Some(&CalculationStatus::Error(
+            CalculationFailure::DivisionByZero
+        ))
+    );
+}
+
+// {
+//   責務: [signed_zero_expression_updates_advance_binding_revision: +0.0から-0.0への式変更を同値扱いしない]
+//   処理: [Decimal zeroの符号を反転したliteralへbindingを更新し、revisionと出力文字列を確認する]
+//   戻り値: [(): 新しいexpressionとderived valueが反映されれば成功する]
+// }
+#[test]
+fn signed_zero_expression_updates_advance_binding_revision() {
+    let (_directory, document) = create_document(&[&["output"], &[""]]);
+    let mut engine = CalculationEngine::default();
+    let binding = binding_id("signed-zero");
+    let target = CalculationTarget::Cell(cell("A2"));
+    let positive_zero = CalculationExpression::Literal(CalculationValue::Decimal(0.0));
+    let first_revision = engine
+        .set_binding(
+            &document,
+            binding.clone(),
+            target,
+            positive_zero,
+            CalculationTrigger::DependencyChange,
+        )
+        .expect("positive-zero binding should be registered");
+    engine
+        .recalculate_all(&document)
+        .expect("positive zero should evaluate");
+
+    let updated_revision = engine
+        .set_binding(
+            &document,
+            binding.clone(),
+            target,
+            CalculationExpression::Literal(CalculationValue::Decimal(-0.0)),
+            CalculationTrigger::DependencyChange,
+        )
+        .expect("signed-zero expression update should succeed");
+
+    assert!(updated_revision > first_revision);
+    assert_eq!(
+        engine.result(&binding).map(|result| &result.status),
+        Some(&CalculationStatus::Pending)
+    );
+    engine
+        .recalculate_all(&document)
+        .expect("negative zero should evaluate");
+    assert_eq!(
+        engine
+            .result(&binding)
+            .and_then(|result| result.value.as_deref()),
+        Some("-0")
+    );
+}

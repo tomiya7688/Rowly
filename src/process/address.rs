@@ -2,7 +2,7 @@ use std::{fmt, str::FromStr};
 
 use thiserror::Error;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// ```text
 /// 責務: [
 /// CellRef: CSV上のcell位置をzero-based row/columnで保持する
@@ -170,7 +170,7 @@ impl fmt::Display for CellRef {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// ```text
 /// 責務: [
 /// CellRange: CSV上の矩形cell範囲を正規化した両端で保持する

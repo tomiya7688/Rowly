@@ -359,4 +359,3 @@ fn mixed_integer_decimal_arithmetic_rejects_precision_loss() {
         Some(&CalculationStatus::Error(CalculationFailure::PrecisionLoss))
     );
 }
-

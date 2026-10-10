@@ -95,6 +95,18 @@ UI / Rowly DSL / Luau / Python adapters
 
 transaction 中は履歴位置や保存基準を壊さないため `undo` / `redo` / `save` / `save_as` を禁止します。未commitの実変更がある間は dirty とみなします。これはDB transactionではなく、CSV-first編集セッション上の原子的な操作単位です。
 
+## Calculation Binding / Materialize
+
+`process::calculation` はCSV外のpure expressionとderived resultを管理します。通常のRecalculateは `CsvDocument` を変更しません。
+
+single-cell targetについては、freshな `CalculationStatus::Evaluated` resultだけを `CalculationEngine::materialize` でcanonical CSVへ明示反映できます。書き込みは `CsvDocument::set_cell_ref` を通すため、validation、Undo / Redo、dirty state、保存時の外部変更処理と同じ境界を使います。
+
+Materialize時は保存済みdependency snapshotを現在のraw value / 上流binding revision / derived revisionと照合し、上流bindingも再帰的にfreshnessを確認します。呼び出し側が `recalculate_for_changes` を忘れていても古いderived resultをCSVへ反映しません。
+
+通常の `materialize` はbindingを保持します。`materialize_and_unbind` はengine clone上でunbindを事前検証し、CSV editが成功した後だけengine状態を置き換えるため、validation失敗やunbind準備失敗でbindingだけ消えるpartial stateを残しません。
+
+range / column-relative target、Command Registry / GUI接続、project永続化はこのcoreの外側で段階的に追加します。
+
 ## Rowly DSL アダプタ
 
 `rowly_dsl` は `process` 上に載るユーザー向けマクロ言語です。AST、parser、runtime を分離し、言語拡張が data 層へ漏れないようにします。

@@ -62,8 +62,7 @@ fn add(left: CalculationExpression, right: CalculationExpression) -> Calculation
 // 戻り値: [(): 全assertion成立時に成功]
 // }
 fn materialize_writes_only_on_explicit_command_and_is_undoable() {
-    let (_directory, mut document) =
-        document(&[&["input", "output"], &["2", "raw-before"]]);
+    let (_directory, mut document) = document(&[&["input", "output"], &["2", "raw-before"]]);
     let mut engine = CalculationEngine::default();
     let output = id("output");
     engine
@@ -105,8 +104,7 @@ fn materialize_writes_only_on_explicit_command_and_is_undoable() {
 // 戻り値: [(): 各状態が拒否されraw値が維持されると成功]
 // }
 fn pending_stale_and_error_results_are_not_materialized() {
-    let (_directory, mut pending_document) =
-        document(&[&["input", "output"], &["2", "keep"]]);
+    let (_directory, mut pending_document) = document(&[&["input", "output"], &["2", "keep"]]);
     let mut pending_engine = CalculationEngine::default();
     let pending = id("pending");
     pending_engine
@@ -174,8 +172,7 @@ fn pending_stale_and_error_results_are_not_materialized() {
 // 戻り値: [(): stale snapshot検出時にtargetが不変なら成功]
 // }
 fn materialize_detects_raw_dependency_drift_without_recalculate_notification() {
-    let (_directory, mut document) =
-        document(&[&["input", "output"], &["2", "keep"]]);
+    let (_directory, mut document) = document(&[&["input", "output"], &["2", "keep"]]);
     let mut engine = CalculationEngine::default();
     let output = id("output");
     engine
@@ -206,8 +203,7 @@ fn materialize_detects_raw_dependency_drift_without_recalculate_notification() {
 // 戻り値: [(): downstream targetが変更されなければ成功]
 // }
 fn materialize_detects_transitive_stale_dependency() {
-    let (_directory, mut document) =
-        document(&[&["input", "first", "second"], &["2", "", "keep"]]);
+    let (_directory, mut document) = document(&[&["input", "first", "second"], &["2", "", "keep"]]);
     let mut engine = CalculationEngine::default();
     let first = id("first");
     let second = id("second");
@@ -252,8 +248,7 @@ fn materialize_detects_transitive_stale_dependency() {
 // 戻り値: [(): CSVとbindingが両方維持されれば成功]
 // }
 fn validation_rejection_is_atomic_and_keeps_binding() {
-    let (_directory, mut document) =
-        document(&[&["input", "output"], &["2", "keep"]]);
+    let (_directory, mut document) = document(&[&["input", "output"], &["2", "keep"]]);
     document
         .set_validation_rule(
             ValidationTarget::Index(1),
@@ -292,8 +287,7 @@ fn validation_rejection_is_atomic_and_keeps_binding() {
 // 戻り値: [(): explicit操作だけbindingを削除すれば成功]
 // }
 fn materialize_and_unbind_requires_explicit_operation() {
-    let (_directory, mut document) =
-        document(&[&["input", "output"], &["2", "keep"]]);
+    let (_directory, mut document) = document(&[&["input", "output"], &["2", "keep"]]);
     let mut engine = CalculationEngine::default();
     let output = id("output");
     engine
@@ -325,8 +319,10 @@ fn materialize_and_unbind_requires_explicit_operation() {
 // 戻り値: [(): revision failure後もCSVとbindingが元状態なら成功]
 // }
 fn unbind_preflight_failure_does_not_write_csv() {
-    let (_directory, mut document) =
-        document(&[&["input", "first", "second"], &["2", "raw-first", "raw-second"]]);
+    let (_directory, mut document) = document(&[
+        &["input", "first", "second"],
+        &["2", "raw-first", "raw-second"],
+    ]);
     let mut engine = CalculationEngine::default();
     let first = id("first");
     let second = id("second");

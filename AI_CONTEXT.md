@@ -63,6 +63,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - UI, DSL, Luau, and Python adapters must enter through the process/application boundary rather than reaching into CSV I/O internals.
 - Excel import/export is an exchange adapter only. Python/openpyxl may read/write .xlsx, but canonical CSV creation/export data must pass through `CsvDocument`; Excel must not become a second source of truth.
 - Excel export must preserve canonical CSV cells as strings instead of applying implicit numeric/type inference.
+- Calculation recalculation updates derived state only. Single-cell Materialize is explicit and may write only a fresh Evaluated result through CsvDocument so validation/history/dirty/external-save rules remain in force; ordinary Materialize keeps the binding, while explicit Materialize+Unbind removes it.
 - Official Rowly distributions must bundle the Excel Python runtime/openpyxl backend. Release Excel I/O must not depend on system Python; ROWLY_PYTHON is a development/debug override.
 - A1/range addressing is process-layer behavior; the canonical data layer remains zero-based textual rows/cells.
 - Multi-cell edits must validate before mutation so a failed edit cannot partially modify the CSV table.
@@ -135,6 +136,8 @@ Implemented:
 - explicit Rowly DSL transaction control through `BeginTransaction()`, `CommitTransaction()`, and `RollbackTransaction()`
 - Luau execution limits for wall-clock duration, VM interrupt count, and VM memory
 - Luau process transaction controls with cleanup of script-owned uncommitted transactions on failure
+- restricted pure Calculation Binding core with dependency-ordered derived results
+- explicit single-cell Calculation Materialize / Materialize+Unbind process APIs with freshness checks
 - Python/openpyxl single-sheet Excel import/export through the process boundary
 - headless CLI Excel import/export commands plus the existing CSV smoke entry point
 

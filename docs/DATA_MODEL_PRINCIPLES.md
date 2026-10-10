@@ -63,7 +63,11 @@ rowly excel import input.xlsx output.csv [sheet-name]
 rowly excel export input.csv output.xlsx [sheet-name]
 ```
 
-Calculation BindingのRust coreは実装済みですが、利用者向けGUI操作、DSLによる規則の永続化、Viewへの結果表示はまだ接続されていません。現時点で利用者がGUIやCLIからBindingを割り当てる手順はありません。process APIの呼び出し元は `CalculationEngine::set_binding` で規則を登録し、`recalculate_for_changes` または `recalculate_all` で結果を更新できます。結果は `CalculationEngine::result` から取得し、CSVのraw valueとdirty stateは変わりません。範囲・列相対target、Materialize、View groupingも未実装です。利用者向けの操作を追加するときは、規則を明示して結果をViewで確認し、必要な場合だけMaterializeを実行する流れを提供します。Codeは常にcanonical CSVのraw textを表示・編集します。
+Calculation BindingのRust coreとsingle-cell Materialize process APIは実装済みですが、利用者向けGUI操作、DSLによる規則の永続化、Viewへの結果表示はまだ接続されていません。現時点で利用者がGUIやCLIからBindingを割り当てる手順はありません。process APIの呼び出し元は `CalculationEngine::set_binding` で規則を登録し、`recalculate_for_changes` または `recalculate_all` で結果を更新できます。結果は `CalculationEngine::result` から取得し、通常の再計算だけではCSVのraw valueとdirty stateは変わりません。
+
+freshな `Evaluated` resultだけは `CalculationEngine::materialize` で通常の `CsvDocument` 編集として明示反映できます。この経路は既存validation、Undo / Redo、dirty state、保存時の外部変更処理を迂回しません。dependency snapshotが現在値と一致しない古いresult、stale/error/pending resultは反映しません。`materialize` はbindingを残し、`materialize_and_unbind` だけが明示的にbindingを削除します。
+
+範囲・列相対targetの評価/Materialize、Command Registry、GUIからのMaterialize、View groupingは未実装です。利用者向けの操作を追加するときは、規則を明示して結果をViewで確認し、必要な場合だけMaterializeを実行する流れを提供します。Codeは常にcanonical CSVのraw textを表示・編集します。
 
 ## 採用判断
 

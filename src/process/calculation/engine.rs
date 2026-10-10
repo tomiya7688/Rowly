@@ -13,7 +13,7 @@ use crate::process::{CellRef, CsvDocument};
 /// フィールド: [bindings: stable ID順のrule一覧, results: binding別derived state, revisions: ruleとresultのrevision counter]
 /// 補足: [engineはCsvDocumentを書き換えず、依存変更後または明示Recalculate時に呼び出す]
 /// ```
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct CalculationEngine {
     pub(super) bindings: BTreeMap<CalculationBindingId, CalculationBinding>,
     pub(super) results: BTreeMap<CalculationBindingId, CalculationResult>,

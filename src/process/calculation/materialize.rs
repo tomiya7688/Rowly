@@ -2,9 +2,7 @@ use std::collections::BTreeSet;
 
 use thiserror::Error;
 
-use super::{
-    CalculationBindingId, CalculationEngine, CalculationError, CalculationStatus,
-};
+use super::{CalculationBindingId, CalculationEngine, CalculationError, CalculationStatus};
 use crate::process::{CellRef, CsvDocument, DocumentError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -179,10 +177,9 @@ impl CalculationEngine {
 
             for dependency in &result.dependencies {
                 if let Some(dependency_id) = self.target_bindings.get(&dependency.cell) {
-                    let dependency_binding =
-                        self.bindings.get(dependency_id).ok_or_else(|| {
-                            CalculationMaterializationError::StaleResult(id.as_str().to_owned())
-                        })?;
+                    let dependency_binding = self.bindings.get(dependency_id).ok_or_else(|| {
+                        CalculationMaterializationError::StaleResult(id.as_str().to_owned())
+                    })?;
                     let dependency_result = self.results.get(dependency_id).ok_or_else(|| {
                         CalculationMaterializationError::StaleResult(id.as_str().to_owned())
                     })?;

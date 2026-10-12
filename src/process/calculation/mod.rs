@@ -7,9 +7,11 @@ mod engine;
 mod expression;
 mod graph;
 mod indexes;
+mod materialize;
 mod types;
 
 pub use engine::CalculationEngine;
+pub use materialize::{CalculationMaterialization, CalculationMaterializationError};
 pub use types::{
     CalculationBinding, CalculationBindingId, CalculationDependencySnapshot, CalculationError,
     CalculationExpression, CalculationFailure, CalculationOperator, CalculationRecalculationReport,
@@ -19,3 +21,5 @@ pub use types::{
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_materialize;

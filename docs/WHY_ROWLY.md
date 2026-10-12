@@ -234,55 +234,61 @@ Rowlyはファイルをロックして世界を囲い込むのではなく、外
 
 それでいいです。
 
-## Excelはキーボード対応しているんじゃない。GUIをキーボードで辿らせているだけ
+## なんでバラバラなの？
 
-Excelは30年以上あります。
+Shortcutがあることは悪くありません。  
+AltのKeyTipsも悪くありません。  
+Dialogがあることも悪くありません。
 
-それでも操作によって、
+Rowlyだって全部使います。
 
-- 直接Shortcut
-- AltのKeyTips
-- Ribbonの階層
-- ダイアログ
-- Tabを何回も押してfocus移動
+**問題は、なんで同じ機能の中でバラバラなの？ということです。**
 
-と、操作体系が次々に変わります。
+Excelでは外枠罫線はキーボードから触れる。
 
-外枠罫線にはShortcutがある。  
-斜め罫線は「その他の罫線」へ落ちる。
+でも斜め罫線は同じ罫線なのに、その操作体系から落ちる。
 
-図形を選ぶだけでも、専用のnavigation modeへ入り、Tabで順番に探す。
+**同じ「罫線」だよね？**
 
-Sort / Filterはまた別のAlt系列。  
-Page Setupはまた別のダイアログ。
+なんで片方は出来て、片方は出来ないの？
 
-**これをキーボード対応とは言いません。GUIをキーボードで辿らせているだけです。**
+なんで同じ種類の操作なのに、入口も、出来る範囲も、覚える方法も揃っていないの？
 
-同じExcelの中で、操作する対象が変わるたびに「今度はどのキー体系？」を覚え直させる。
+**30年以上あって、まだそこがバラバラなの？**
 
-**30年以上あって、まだ一つの操作言語を作れていない。**
+Altが悪いんじゃない。  
+Shortcutが悪いんじゃない。  
+Dialogが悪いんじゃない。
 
-斜め罫線はその象徴です。
+**同じ操作体系として繋がっていないのが悪い。**
 
-**30年以上あって、斜め罫線ひとつキーボードで最後まで操作できない。**
+RowlyもShortcutを持ちます。  
+RowlyもAlt KeyTipsを持ちます。  
+RowlyもCommand Paletteを持ちます。  
+必要ならDialogも使います。
 
-何を作っていたんですか。
-
-Rowlyでは、主要操作をすべてCommandとして持たせます。
+でも、それらは別々の機能ではありません。
 
 ```text
-cell.copy
-file.save
-border.set
-calculation.bind
-view.group_equal_values
+Shortcut ─┐
+Alt KeyTips ─┤
+Command Palette ─┼→ 同じCommand
+Menu / Dialog ─┤
+GUI Button ─┘
 ```
 
-Shortcutでも、KeyTipsでも、Command Paletteでも、GUIでも、同じCommandへ到達する。
+入口が違うだけです。
 
-**操作方法が変わっても、操作そのものは変えない。**
+たとえば罫線なら、枠線も斜め線も「罫線のCommand」として存在する。  
+Shortcutを割り当てるかどうかとは別に、**キーボードからそのCommandへ必ず到達できる**。
 
-これが当たり前です。
+GUIから出来るならCommandがある。  
+CommandがあるならKeyboardから呼べる。  
+Automationからも同じ操作を呼べる。
+
+**なんでこれがExcelでは揃っていないの？**
+
+Rowlyは、そこを最初から揃えます。
 
 ## GUIとMacroで別の世界を作るな
 

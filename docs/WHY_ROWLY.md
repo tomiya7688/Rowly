@@ -279,8 +279,16 @@ GUI Button ─┘
 
 入口が違うだけです。
 
+そしてRowlyでは、**GUIにある操作でAltから辿れないものは一つも作りません。**
+
+専用Shortcutがなくてもいい。  
+Command Paletteだけに置くのはダメ。  
+mouseでしか触れないのは論外。
+
+**最低でもAltから全部辿れる。**
+
 たとえば罫線なら、枠線も斜め線も「罫線のCommand」として存在する。  
-Shortcutを割り当てるかどうかとは別に、**キーボードからそのCommandへ必ず到達できる**。
+Shortcutを割り当てるかどうかとは別に、**Alt KeyTipsからそのCommandへ必ず到達できる**。
 
 GUIから出来るならCommandがある。  
 CommandがあるならKeyboardから呼べる。  

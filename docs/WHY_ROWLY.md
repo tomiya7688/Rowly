@@ -234,6 +234,81 @@ Rowlyはファイルをロックして世界を囲い込むのではなく、外
 
 それでいいです。
 
+## 30年以上やっていて、まだ自分たちを制御できないの？
+
+Excelには大量のキーボード操作があります。
+
+でも、それで「キーボードで操作体系が統一されている」とは言えません。
+
+コピーは `Ctrl+C`。  
+保存は `Ctrl+S`。  
+ところが罫線になると `Alt → H → B` とRibbonの階層へ潜る。
+
+**同じExcelの操作なのに、途中から別の操作体系になります。**
+
+できるか、できないかの話ではありません。
+
+**30年以上作っていて、まだ自分たちの操作体系を一つに制御できないの？**
+
+Rowlyではそれをやりません。
+
+主要操作はすべてCommandとして名前を持ちます。
+
+```text
+cell.copy
+file.save
+border.set
+calculation.bind
+view.group_equal_values
+```
+
+Shortcutでも、KeyTipsでも、Command Paletteでも、GUIでも、同じCommandへ到達する。
+
+**操作方法が変わっても、操作そのものは変えない。**
+
+これが当たり前です。
+
+## GUIとMacroで別の世界を作るな
+
+ExcelのMacro Recorderは、GUI操作をそのまま完全な操作モデルへ変換するものではありません。
+
+記録できるのは「ほとんど」の操作です。  
+記録したコードには選択状態や余計な操作が入り、範囲が変わればそのままでは使えないこともある。  
+結局、VBAを開いて人間が直す。
+
+**GUIで出来ることと、Macroから出来ることが同じではない。**
+
+それをAutomationとは呼びません。
+
+GUIを操作して覚えたことが、そのままMacroの操作体系にならない。  
+Macroで出来ることが、そのままGUIのCommandとして表現されているわけでもない。
+
+**30年以上あって、GUIとAutomationすら同じ言葉で喋れないの？**
+
+Rowlyでは、GUIとAutomationを最初から分けません。
+
+```text
+GUI
+Keyboard
+Command Palette
+Rowly DSL
+CLI
+Luau
+   ↓
+同じCommand
+   ↓
+process
+   ↓
+CSV
+```
+
+GUI専用の秘密の操作も作らない。  
+Macro専用の裏口も作らない。
+
+**人間が出来る操作はAutomationからも出来る。Automationから出来る操作は人間にも見える。**
+
+そこを一致させます。
+
 ## GUIだけできる秘密の操作も要らない
 
 GUIでできることが、GUIでしかできない。

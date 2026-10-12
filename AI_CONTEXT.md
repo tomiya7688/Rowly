@@ -9,6 +9,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Adapters: Rowly DSL and Luau scripting are implemented in Rust; Python/openpyxl is implemented for Excel I/O.
 
 ## Source of Truth
+- Product rationale / Why Rowly: `docs/WHY_ROWLY.md` (Japanese canonical)
 - Product invariants: `README.md`
 - Architecture and dependency rules: `docs/ARCHITECTURE.md`
 - DSL declarations and assignment: `docs/DSL_BINDINGS.md` (Japanese canonical specification)

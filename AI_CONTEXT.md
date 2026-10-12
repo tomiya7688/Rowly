@@ -56,6 +56,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - レビューで必須項目への違反、CI / E2Eの失敗、または安全性・正しさの未解決懸念を確認した場合は承認しない。対象外の項目は対象外とし、未確認の項目を合格扱いにしない。
 
 ## Important Constraints
+- Every GUI Command must be reachable through an Alt KeyTips path. Dedicated shortcuts and Command Palette entries are additional entry points, never substitutes for Alt reachability. Shortcut-only, palette-only, and mouse-only GUI commands are forbidden.
 - CSV is the source of truth; Rowly-only metadata must never be required to recover table data.
 - Never mutate CSV structure merely for presentation.
 - No merged cells in the data model.

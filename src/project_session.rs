@@ -720,9 +720,7 @@ mod staging_tests {
         let reopened = ProjectSession::open(&manifest).unwrap();
         let restored = reopened.open_source_document("data").unwrap();
         assert_eq!(
-            restored
-                .column_type_declaration_by_header("Score")
-                .unwrap(),
+            restored.column_type_declaration_by_header("Score").unwrap(),
             Some(ColumnType::Integer)
         );
         assert!(restored.validation_rules().any(|(target, rule)| {
@@ -755,9 +753,11 @@ mod staging_tests {
 
         session.project_mut().name = "Recovered".into();
         session.save().unwrap();
-        assert!(fs::read_to_string(&generated)
-            .unwrap()
-            .contains("Type = Integer"));
+        assert!(
+            fs::read_to_string(&generated)
+                .unwrap()
+                .contains("Type = Integer")
+        );
         assert!(!session.is_dirty());
     }
 
@@ -791,9 +791,7 @@ mod staging_tests {
         let reopened = ProjectSession::open(&archive).unwrap();
         let restored = reopened.open_source_document("data").unwrap();
         assert_eq!(
-            restored
-                .column_type_declaration_by_header("Score")
-                .unwrap(),
+            restored.column_type_declaration_by_header("Score").unwrap(),
             Some(ColumnType::Integer)
         );
     }

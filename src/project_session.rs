@@ -1,7 +1,7 @@
 //! Editable sessions for directory projects and `.rowlyx` packages.
 
 use std::{
-    io,
+    fs, io,
     path::{Path, PathBuf},
 };
 
@@ -10,7 +10,10 @@ use thiserror::Error;
 
 use crate::{
     process::CsvDocument,
-    project::{ProjectError, RowlyProject, SourceKind, resolve_project_reference},
+    project::{
+        ProjectError, RowlyProject, SourceKind, resolve_project_reference,
+        write_project_file_atomic,
+    },
     project_init::{self, ProjectInitError},
     rowlyx::{RowlyxArchive, RowlyxError, pack_project},
 };
@@ -34,6 +37,56 @@ enum ProjectBacking {
         manifest_path: PathBuf,
         workspace: TempDir,
     },
+}
+
+
+#[derive(Debug)]
+// {
+//   責務: [
+//     ProjectFileSnapshot: save前のmanifest file状態を保持して後続処理失敗時に復元する
+//   ]
+// }
+struct ProjectFileSnapshot {
+    path: PathBuf,
+    bytes: Option<Vec<u8>>,
+}
+
+impl ProjectFileSnapshot {
+    fn capture(path: &Path) -> Result<Self, ProjectSessionError> {
+        let bytes = match fs::read(path) {
+            Ok(bytes) => Some(bytes),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(ProjectSessionError::Snapshot {
+                    path: path.display().to_string(),
+                    message: error.to_string(),
+                });
+            }
+        };
+        Ok(Self {
+            path: path.to_path_buf(),
+            bytes,
+        })
+    }
+
+    fn restore(&self) -> Result<(), ProjectSessionError> {
+        match &self.bytes {
+            Some(bytes) => {
+                write_project_file_atomic(&self.path, bytes)?;
+            }
+            None => match fs::remove_file(&self.path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(ProjectSessionError::Rollback {
+                        primary: "restore manifest snapshot".into(),
+                        rollback: error.to_string(),
+                    });
+                }
+            },
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,6 +174,7 @@ pub struct ProjectSession {
     project: RowlyProject,
     backing: ProjectBacking,
     dirty: ProjectDirtyState,
+    staged_init: Option<project_init::StagedProjectInit>,
 }
 
 impl ProjectSession {
@@ -155,6 +209,7 @@ impl ProjectSession {
                     workspace,
                 },
                 dirty: ProjectDirtyState::default(),
+                staged_init: None,
             })
         } else if extension.is_some_and(|value| value.eq_ignore_ascii_case("rwprj")) {
             let project = RowlyProject::load(&path)?;
@@ -164,6 +219,7 @@ impl ProjectSession {
                     manifest_path: path,
                 },
                 dirty: ProjectDirtyState::default(),
+                staged_init: None,
             })
         } else {
             Err(ProjectSessionError::UnsupportedBacking(
@@ -203,12 +259,14 @@ impl ProjectSession {
         {
             return Err(ProjectSessionError::SourceNotFound(source_id.to_owned()));
         }
-        project_init::save_generated_column_types(
+        let staged = project_init::stage_generated_column_types(
             &self.project,
             self.manifest_path(),
             source_id,
             document,
+            self.staged_init.as_ref(),
         )?;
+        self.staged_init = Some(staged);
         self.mark_structure_or_config_dirty();
         Ok(())
     }
@@ -234,12 +292,14 @@ impl ProjectSession {
         {
             return Err(ProjectSessionError::SourceNotFound(source_id.to_owned()));
         }
-        project_init::save_generated_validation_rules(
+        let staged = project_init::stage_generated_validation_rules(
             &self.project,
             self.manifest_path(),
             source_id,
             document,
+            self.staged_init.as_ref(),
         )?;
+        self.staged_init = Some(staged);
         self.mark_structure_or_config_dirty();
         Ok(())
     }
@@ -283,7 +343,16 @@ impl ProjectSession {
         source_id: &str,
         document: &mut CsvDocument,
     ) -> Result<(), ProjectSessionError> {
-        project_init::apply_safe_init(&self.project, self.manifest_path(), source_id, document)?;
+        if let Some(staged) = &self.staged_init {
+            staged.apply_source(source_id, document)?;
+        } else {
+            project_init::apply_safe_init(
+                &self.project,
+                self.manifest_path(),
+                source_id,
+                document,
+            )?;
+        }
         Ok(())
     }
 
@@ -435,15 +504,58 @@ impl ProjectSession {
     /// エラー: [ProjectSessionError: manifest save、pack、validation、またはarchive replacementの失敗。session dirtyは保持する]
     /// ```
     pub fn save(&mut self) -> Result<(), ProjectSessionError> {
-        self.project.save(self.manifest_path())?;
-        if let ProjectBacking::Package {
+        let manifest_path = self.manifest_path().to_path_buf();
+        let manifest_snapshot = ProjectFileSnapshot::capture(&manifest_path)?;
+
+        self.project.save(&manifest_path)?;
+
+        let init_snapshot = match &self.staged_init {
+            Some(staged) => match staged.commit() {
+                Ok(snapshot) => Some(snapshot),
+                Err(error) => {
+                    if let Err(rollback) = manifest_snapshot.restore() {
+                        return Err(ProjectSessionError::Rollback {
+                            primary: error.to_string(),
+                            rollback: rollback.to_string(),
+                        });
+                    }
+                    return Err(error.into());
+                }
+            },
+            None => None,
+        };
+
+        let package_result = if let ProjectBacking::Package {
             archive_path,
             manifest_path,
             ..
         } = &self.backing
         {
-            pack_project(manifest_path, archive_path)?;
+            pack_project(manifest_path, archive_path).map_err(ProjectSessionError::from)
+        } else {
+            Ok(())
+        };
+
+        if let Err(error) = package_result {
+            let mut rollback_errors = Vec::new();
+            if let Some(snapshot) = &init_snapshot {
+                if let Err(rollback) = snapshot.restore() {
+                    rollback_errors.push(rollback.to_string());
+                }
+            }
+            if let Err(rollback) = manifest_snapshot.restore() {
+                rollback_errors.push(rollback.to_string());
+            }
+            if !rollback_errors.is_empty() {
+                return Err(ProjectSessionError::Rollback {
+                    primary: error.to_string(),
+                    rollback: rollback_errors.join("; "),
+                });
+            }
+            return Err(error);
         }
+
+        self.staged_init = None;
         let data_dirty = self.dirty.data;
         self.dirty = ProjectDirtyState {
             data: data_dirty,
@@ -475,6 +587,10 @@ pub enum ProjectSessionError {
     UnsupportedBacking(String),
     #[error("failed to create a managed project workspace: {0}")]
     TemporaryWorkspace(io::Error),
+    #[error("failed to snapshot project file `{path}`: {message}")]
+    Snapshot { path: String, message: String },
+    #[error("project save failed: {primary}; rollback also failed: {rollback}")]
+    Rollback { primary: String, rollback: String },
     #[error(transparent)]
     Project(#[from] ProjectError),
     #[error(transparent)]

@@ -39,7 +39,6 @@ enum ProjectBacking {
     },
 }
 
-
 #[derive(Debug)]
 // {
 //   責務: [
@@ -605,10 +604,12 @@ pub enum ProjectSessionError {
     DirectorySource(String),
 }
 
-
 #[cfg(test)]
 mod staging_tests {
-    use std::{fs, path::{Path, PathBuf}};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+    };
 
     use tempfile::{TempDir, tempdir};
 

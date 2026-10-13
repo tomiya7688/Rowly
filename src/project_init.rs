@@ -30,7 +30,7 @@ struct ColumnTypeDeclaration {
     column_type: ColumnType,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct ProjectInitConfig {
     column_types: BTreeMap<(String, String), ColumnType>,
     validation_rules: BTreeMap<(String, String), ValidationRule>,
@@ -41,6 +41,111 @@ struct ValidationRuleDeclaration {
     source_id: String,
     header: String,
     rule: ValidationRule,
+}
+
+#[derive(Debug, Clone)]
+// {
+//   責務: [
+//     StagedProjectInit: ProjectSessionで未保存のgenerated init設定と確定先pathを保持する
+//   ]
+//   補足: [file書込みはcommitまで行わず、session内applyではこの設定を優先する]
+// }
+pub(crate) struct StagedProjectInit {
+    config: ProjectInitConfig,
+    init_path: PathBuf,
+    generated_path: PathBuf,
+    user_path: PathBuf,
+}
+
+#[derive(Debug)]
+// {
+//   責務: [
+//     ProjectInitSnapshot: generated init確定前の対象file状態を保持し、後続save失敗時に復元する
+//   ]
+// }
+pub(crate) struct ProjectInitSnapshot {
+    files: Vec<ProjectInitFileSnapshot>,
+}
+
+#[derive(Debug)]
+struct ProjectInitFileSnapshot {
+    path: PathBuf,
+    bytes: Option<Vec<u8>>,
+}
+
+impl ProjectInitSnapshot {
+    pub(crate) fn restore(&self) -> Result<(), ProjectInitError> {
+        for file in &self.files {
+            match &file.bytes {
+                Some(bytes) => {
+                    create_parent(&file.path)?;
+                    write_project_file_atomic(&file.path, bytes)?;
+                }
+                None => match fs::remove_file(&file.path) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                    Err(error) => {
+                        return Err(ProjectInitError::ScriptWrite {
+                            path: file.path.display().to_string(),
+                            message: error.to_string(),
+                        });
+                    }
+                },
+            }
+        }
+        Ok(())
+    }
+}
+
+impl StagedProjectInit {
+    fn snapshot(&self) -> Result<ProjectInitSnapshot, ProjectInitError> {
+        let mut files = Vec::new();
+        for path in [&self.init_path, &self.user_path, &self.generated_path] {
+            let bytes = match fs::read(path) {
+                Ok(bytes) => Some(bytes),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+                Err(error) => return Err(script_read_error(path, error)),
+            };
+            files.push(ProjectInitFileSnapshot {
+                path: path.clone(),
+                bytes,
+            });
+        }
+        Ok(ProjectInitSnapshot { files })
+    }
+
+    pub(crate) fn commit(&self) -> Result<ProjectInitSnapshot, ProjectInitError> {
+        let snapshot = self.snapshot()?;
+        let result = (|| {
+            create_if_missing(&self.user_path, "")?;
+            create_if_missing(&self.init_path, INIT_TEMPLATE)?;
+            create_parent(&self.generated_path)?;
+            write_project_file_atomic(&self.generated_path, self.config.serialize().as_bytes())?;
+            Ok::<(), ProjectInitError>(())
+        })();
+        if let Err(error) = result {
+            if let Err(rollback) = snapshot.restore() {
+                return Err(ProjectInitError::CommitRollback {
+                    primary: error.to_string(),
+                    rollback: rollback.to_string(),
+                });
+            }
+            return Err(error);
+        }
+        Ok(snapshot)
+    }
+
+    pub(crate) fn apply_source(
+        &self,
+        source_id: &str,
+        document: &mut CsvDocument,
+    ) -> Result<(), ProjectInitError> {
+        let mut config = self.config.clone();
+        let user = read_optional_config(&self.user_path)?;
+        config.column_types.extend(user.column_types);
+        config.validation_rules.extend(user.validation_rules);
+        config.apply_source(source_id, document)
+    }
 }
 
 impl ProjectInitConfig {
@@ -264,36 +369,53 @@ impl ProjectInitConfig {
     }
 }
 
-/// Save one source's Viewer column type declarations to the generated init DSL.
-/// The generated file is app-owned; the user script is only created when absent
-/// and is never rewritten by this operation.
-pub(crate) fn save_generated_column_types(
+/// Stage one source's Viewer column type declarations without writing project files.
+pub(crate) fn stage_generated_column_types(
     project: &RowlyProject,
     manifest_path: &Path,
     source_id: &str,
     document: &CsvDocument,
-) -> Result<(), ProjectInitError> {
-    save_generated_configuration(project, manifest_path, source_id, document, true, false)
+    staged: Option<&StagedProjectInit>,
+) -> Result<StagedProjectInit, ProjectInitError> {
+    stage_generated_configuration(
+        project,
+        manifest_path,
+        source_id,
+        document,
+        staged,
+        true,
+        false,
+    )
 }
 
-/// Save one source's validation rules to the generated init DSL.
-pub(crate) fn save_generated_validation_rules(
+/// Stage one source's validation rules without writing project files.
+pub(crate) fn stage_generated_validation_rules(
     project: &RowlyProject,
     manifest_path: &Path,
     source_id: &str,
     document: &CsvDocument,
-) -> Result<(), ProjectInitError> {
-    save_generated_configuration(project, manifest_path, source_id, document, false, true)
+    staged: Option<&StagedProjectInit>,
+) -> Result<StagedProjectInit, ProjectInitError> {
+    stage_generated_configuration(
+        project,
+        manifest_path,
+        source_id,
+        document,
+        staged,
+        false,
+        true,
+    )
 }
 
-fn save_generated_configuration(
+fn stage_generated_configuration(
     project: &RowlyProject,
     manifest_path: &Path,
     source_id: &str,
     document: &CsvDocument,
+    staged: Option<&StagedProjectInit>,
     update_column_types: bool,
     update_validation_rules: bool,
-) -> Result<(), ProjectInitError> {
+) -> Result<StagedProjectInit, ProjectInitError> {
     if source_id.trim().is_empty() {
         return Err(ProjectInitError::EmptySourceId);
     }
@@ -312,7 +434,10 @@ fn save_generated_configuration(
         validate_regular_file_if_present(path)?;
     }
 
-    let mut config = read_optional_config(&generated_path)?;
+    let mut config = match staged {
+        Some(staged) => staged.config.clone(),
+        None => read_optional_config(&generated_path)?,
+    };
     let user_config = read_optional_config(&user_path)?;
     if update_column_types {
         config.update_column_types(source_id, document, &user_config);
@@ -327,13 +452,13 @@ fn save_generated_configuration(
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => return Err(script_read_error(&init_path, error)),
     }
-    // Prepare all included files before replacing generated.rly so an error
-    // cannot leave the new configuration persisted with an incomplete setup.
-    create_if_missing(&user_path, "")?;
-    create_if_missing(&init_path, INIT_TEMPLATE)?;
-    create_parent(&generated_path)?;
-    write_project_file_atomic(&generated_path, config.serialize().as_bytes())?;
-    Ok(())
+
+    Ok(StagedProjectInit {
+        config,
+        init_path,
+        generated_path,
+        user_path,
+    })
 }
 
 /// Apply only the config-only statements referenced by `init.rly`.
@@ -893,6 +1018,10 @@ pub enum ProjectInitError {
     ScriptRead { path: String, message: String },
     #[error("failed to write project init script `{path}`: {message}")]
     ScriptWrite { path: String, message: String },
+    #[error(
+        "failed to restore project init after commit error: {primary}; rollback failed: {rollback}"
+    )]
+    CommitRollback { primary: String, rollback: String },
     #[error("invalid project init script `{path}` at line {line}: {message}")]
     InvalidInit {
         path: String,

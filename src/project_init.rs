@@ -43,7 +43,6 @@ struct ValidationRuleDeclaration {
     rule: ValidationRule,
 }
 
-
 #[derive(Debug, Clone)]
 // {
 //   責務: [
@@ -1019,7 +1018,9 @@ pub enum ProjectInitError {
     ScriptRead { path: String, message: String },
     #[error("failed to write project init script `{path}`: {message}")]
     ScriptWrite { path: String, message: String },
-    #[error("failed to restore project init after commit error: {primary}; rollback failed: {rollback}")]
+    #[error(
+        "failed to restore project init after commit error: {primary}; rollback failed: {rollback}"
+    )]
     CommitRollback { primary: String, rollback: String },
     #[error("invalid project init script `{path}` at line {line}: {message}")]
     InvalidInit {

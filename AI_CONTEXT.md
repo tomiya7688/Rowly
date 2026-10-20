@@ -7,11 +7,14 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Purpose: CSV-first table viewer/editor. CSV remains the canonical data source.
 - Main language/runtime: Rust.
 - Adapters: Rowly DSL and Luau scripting are implemented in Rust; Python/openpyxl is implemented for Excel I/O.
+- Stable project facts, active limits, validation routes, and decision references: `PROJECT_CONTEXT.md`.
 
 ## Source of Truth
 - Product rationale / Why Rowly: `docs/WHY_ROWLY.md` (Japanese canonical)
 - Product invariants: `README.md`
+- Stable project facts and links to rationale: `PROJECT_CONTEXT.md`
 - Architecture and dependency rules: `docs/ARCHITECTURE.md`
+- Data and calculation decisions: `docs/DATA_MODEL_PRINCIPLES.md`
 - DSL declarations and assignment: `docs/DSL_BINDINGS.md` (Japanese canonical specification)
 - Implementation truth: `src/` and matching tests
 - Task intent: the current issue/conversation takes priority over speculative future work
@@ -23,10 +26,12 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - READMEには「Rowlyとは何か / 基本原則 / 主な機能 / 起動 / 文書への導線」だけを置く。
 
 ## Read First
+Shared development instructions: `AGENTS.md`. Issue selection and handoff: `docs/DEVELOPMENT_WORKFLOW.md`. Writing quality: `AI_WRITING_RULES.md`.
+
 1. Current task / issue
-2. `README.md`
-3. `docs/ARCHITECTURE.md`
-4. Only the target source module and its tests
+2. A task-local `CONTEXT_PACK.md`, if the task provides one
+3. `README.md` and `PROJECT_CONTEXT.md` when product facts or constraints affect the task
+4. `docs/ARCHITECTURE.md` and only the target source module and its tests
 
 ## Ignore Normally
 - `target/`
@@ -40,6 +45,13 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Prefer target source -> matching tests -> detailed docs.
 - Do not mix unrelated refactors into the current change.
 - Summaries are routing aids, not substitutes for source/tests.
+
+## Decision Rationale
+- Read only the design-decision reference relevant to the current change; `PROJECT_CONTEXT.md` lists the document and heading.
+- Keep current behavior, the reason for choosing it, the evidence for that reason, and its status/date distinct.
+- Do not infer historical intent, approval, or a decision date from code. If a missing reason affects the change, report it as unverified and ask before relying on it.
+- Put long-lived rationale in the existing design document. Keep task-only reasoning in the request or task-local Context Pack; do not copy the same rationale into both.
+- Treat proposals and unverified or possibly stale reasons as undecided until the user confirms them.
 
 ## Commenting Convention
 - Rowlyの保守対象コードは `tomiya7688/Json-like-comment-outs` の日本語canonical仕様をコメント規約として使用する。
@@ -142,7 +154,6 @@ Implemented:
 - headless CLI Excel import/export commands plus the existing CSV smoke entry point
 
 Not implemented yet:
-- GUI
 - broader type inference
 - visual grouping
 

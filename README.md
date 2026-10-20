@@ -91,6 +91,8 @@ CLI 1.0では対話shell・JSON出力・Rowly DSL one-shot実行も整備しま�
 
 詳細な未実装仕様・設計判断・実装タスクはGitHub Issuesで管理します。
 
+開発に参加する場合は、[共同開発の入口](CONTRIBUTING.md)からIssueの選び方、AI共通ルール、検証・引継ぎ手順を確認してください。
+
 ## ライセンス
 
 Rowly は [Apache License 2.0](LICENSE) で公開します。

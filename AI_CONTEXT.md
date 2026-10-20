@@ -157,6 +157,9 @@ Not implemented yet:
 - broader type inference
 - visual grouping
 
+Partially implemented (Issue #140 remains open):
+- Calculation Binding DSL / GUI / project persistence for single cells and ranges. Alt KeyTips paths for its GUI commands are not implemented; they depend on Issues #109 and #113. See `PROJECT_CONTEXT.md` for current scope and limits.
+
 ## Context Priority
 - P0: current task and invariants
 - P1: target source and tests

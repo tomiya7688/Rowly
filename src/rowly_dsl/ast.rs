@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::process::calculation::{CalculationTarget, CalculationTrigger};
 use crate::process::{CellRange, ColumnType, ColumnTypeReport, JapaneseCheckReport};
 
 pub use crate::process::{ValidationExpression, ValidationOperand, ValidationRule};
@@ -202,6 +203,14 @@ pub enum Statement {
         range: CellRange,
         value: Expression,
     },
+    SetCalculationExpression {
+        target: CalculationTarget,
+        expression: Expression,
+    },
+    SetCalculationTrigger {
+        target: CalculationTarget,
+        trigger: CalculationTrigger,
+    },
     ValidateColumnType {
         selector: ColumnSelector,
         column_type: ColumnType,
@@ -360,8 +369,48 @@ impl ValidationRuleDefinition {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// ```text
+/// 責務: [CalculationBindingDefinition: calculation expressionと結果cell範囲を宣言として保持する]
+/// フィールド: [target: derived resultの出力先, expression: pure calculation expression]
+/// ```
+pub struct CalculationBindingDefinition {
+    pub(super) target: CalculationTarget,
+    pub(super) expression: Expression,
+    pub(super) trigger: CalculationTrigger,
+}
+
+impl CalculationBindingDefinition {
+    /// ```text
+    /// 責務: [target: calculation resultの出力cellを返す]
+    /// 引数: [self: calculation binding declaration]
+    /// 戻り値: [CalculationTarget: 出力cellまたは矩形範囲]
+    /// ```
+    pub const fn target(&self) -> CalculationTarget {
+        self.target
+    }
+
+    /// ```text
+    /// 責務: [expression: declarationが保持するcalculation expressionを返す]
+    /// 引数: [self: calculation binding declaration]
+    /// 戻り値: [&Expression: pure calculation DSL expression]
+    /// ```
+    pub fn expression(&self) -> &Expression {
+        &self.expression
+    }
+
+    /// ```text
+    /// 責務: [trigger: declarationが使う自動再計算条件を返す]
+    /// 引数: [self: calculation binding declaration]
+    /// 戻り値: [CalculationTrigger: 依存変更時または明示実行時の再評価条件]
+    /// ```
+    pub const fn trigger(&self) -> CalculationTrigger {
+        self.trigger
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+/// ```text
 /// 責務: [ExecutionReport: 記録対象のDSL eventと最終global scalar stateのread-only snapshot]
-/// フィールド: [events: 実行順の記録event, variables: 最終global scalar variable値, object_fields: 最終global objectのscalar field値, validation_rules: 実行時に適用されたrule宣言]
+/// フィールド: [events: 実行順の記録event, variables: 最終global scalar variable値, object_fields: 最終global objectのscalar field値, validation_rules: 実行時に適用されたrule宣言, calculation_bindings: 宣言された計算規則]
 /// ```
 pub struct ExecutionReport {
     /// statement実行中に生成されたeventをsource実行順で保持する。
@@ -372,6 +421,8 @@ pub struct ExecutionReport {
     pub(super) object_fields: HashMap<String, HashMap<String, String>>,
     /// validation ruleをstatement実行順で保持する。
     pub(super) validation_rules: Vec<ValidationRuleDefinition>,
+    /// calculation binding宣言をsource順に保持する。
+    pub(super) calculation_bindings: Vec<CalculationBindingDefinition>,
 }
 
 impl ExecutionReport {
@@ -383,6 +434,11 @@ impl ExecutionReport {
     /// 実行されたvalidation ruleをstatement実行順で返す。
     pub fn validation_rules(&self) -> &[ValidationRuleDefinition] {
         &self.validation_rules
+    }
+
+    /// 実行されたcalculation binding宣言をsource順に返す。
+    pub fn calculation_bindings(&self) -> &[CalculationBindingDefinition] {
+        &self.calculation_bindings
     }
 
     /// variable名をASCII case-insensitiveで検索し、final global scalar値を返す。
@@ -448,6 +504,13 @@ pub enum ExecutionEvent {
     },
     ValidationRuleSet {
         definition: ValidationRuleDefinition,
+    },
+    CalculationBindingSet {
+        definition: CalculationBindingDefinition,
+    },
+    CalculationBindingTriggerSet {
+        target: CalculationTarget,
+        trigger: CalculationTrigger,
     },
 }
 

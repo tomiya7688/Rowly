@@ -4,3 +4,6 @@
 
 # Local review policy. Keep the shared coding convention in version control.
 /レビュー基準.md
+
+# 今回の作業だけに使うContext Packは、共有履歴に含めません。
+/CONTEXT_PACK.md

@@ -7,6 +7,9 @@ use std::{
 
 #[path = "project_session/configuration.rs"]
 mod configuration;
+#[cfg(test)]
+#[path = "project_session/tests_staging.rs"]
+mod tests_staging;
 
 use tempfile::TempDir;
 use thiserror::Error;

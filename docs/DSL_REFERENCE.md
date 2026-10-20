@@ -448,9 +448,13 @@ DSL sourceからengineへ登録する場合は、Rust APIの `run_with_calculati
 
 Projectでは、利用者が手書きするcell / range宣言を `data/scripts/rowlydsl/init/user.rly` に記述できます。たとえば `SET This.Project.Source("sales").Worksheet.Editor.Range("D2:D10").Calculation.Expression = CellValue("B2") * CellValue("C2")` は、`sales` sourceの指定範囲に式を割り当てます。GUIは自身の変更を `generated.rly` に保存し、`user.rly` を上書きしません。
 
-ProjectSessionは `open_source_with_calculations(source_id)` でproject設定からCSVとBindingを復元し、初回結果まで評価します。GUIではpath欄から `.rwprj` または `.rowlyx` を開き、source欄でfile sourceを切り替えます。Table EditorのCalculation欄で選択cellまたは選択rangeの式とtriggerを指定し、Applyで登録、Recalculateで結果更新、Removeで規則削除を実行します。range式は左上cellの式を基準に、参照先を各出力cellへ相対移動します。依存cellはCalculation欄に表示します。Formulas menuからもeditor表示、適用、再計算、削除を実行できます。キーボード操作はCtrl+Enterで登録、F9で再計算、Ctrl+Shift+Kで解除、Ctrl+Shift+Fでeditor表示です。GUI command IDは `calculation.bind`、`calculation.unbind`、`calculation.recalculate`、`calculation.show` です。Viewerはderived resultとstale/error状態を表示し、Text Editorはcanonical CSVのraw textを表示します。SaveはBindingを `generated.rly` へ保存してからsource CSVも保存します。この保存処理は `user.rly` を書き換えません。bare CSVのopenはProjectSessionを通さないため、sidecarを作らず、Bindingも保存できません。
+ProjectSessionは `open_source_with_calculations(source_id)` でproject設定からCSVとBindingを復元し、初回結果まで評価します。GUIではpath欄から `.rwprj` または `.rowlyx` を開き、source欄でfile sourceを切り替えます。Table EditorのCalculation欄で選択cellまたは選択rangeの式とtriggerを指定し、Applyで登録、Recalculateで結果更新、Removeで規則削除を実行します。range式は左上cellの式を基準に、参照先を各出力cellへ相対移動します。依存cellはCalculation欄に表示します。Formulas menuからもeditor表示、適用、再計算、削除を実行できます。キーボード操作はCtrl+Enterで登録、F9で再計算、Ctrl+Shift+Kで解除、Ctrl+Shift+Fでeditor表示です。GUI command IDは `calculation.bind`、`calculation.unbind`、`calculation.recalculate`、`calculation.show` です。Viewerはderived resultとstale/error状態を表示し、Text Editorはcanonical CSVのraw textを表示します。Saveはsource CSVを先に保存し、その後Bindingを `generated.rly` へ保存します。Bindingの保存が失敗した場合も、先に保存したCSVは元に戻しません。この保存処理は `user.rly` を書き換えません。bare CSVのopenはProjectSessionを通さないため、sidecarを作らず、Bindingも保存できません。
 
-Table EditorではCtrl+Cで選択範囲のCSV値をclipboardへコピーし、Ctrl+Vで現在cellからTSV値を貼り付けます。貼り付け先は既存cellに限り、全値の検証に成功した場合だけ反映します。コピーと貼り付けはCSV値だけを扱い、Calculation Bindingは複製しません。Bindingを別cellへ複製する操作はまだ提供していません。
+CSV値をコピーするには、Table Editorでcellまたは範囲を選択してCtrl+Cを押してください。Rowlyは選択範囲のCSV値をTSV形式でclipboardへコピーし、タブ・改行・引用符を含むcell値には引用規則を適用します。計算Bindingが付いたcellをコピーした場合も、RowlyはCSVのraw値をコピーします。
+
+CSV値を貼り付けるには、Table Editorで貼り付け先の左上cellを選択してCtrl+Vを押してください。Rowlyは貼り付け範囲と全値を検証し、成功した場合だけ既存CSV cellを一括更新します。貼り付け範囲がCSVの行数・列数を超える場合や検証規則に違反する場合、RowlyはCSV値とUndo/Redo履歴を変更しません。短い行の欠けた末尾cellへ空欄を貼り付けても、Rowlyはその行を拡張しません。貼り付け全体は一度のUndoで取り消せます。
+
+Rowlyの通常のCopy/PasteはCSV値だけを扱い、Calculation Bindingを複製しません。RowlyはBindingを別cellへ複製する専用操作をまだ提供していません。
 
 <a id="limits"></a>
 ## CSVへ書き込める値と主要制限

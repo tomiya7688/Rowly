@@ -9,6 +9,8 @@ use eframe::egui;
 
 #[path = "gui/calculation_panel.rs"]
 mod calculation_panel;
+#[path = "gui/clipboard.rs"]
+mod clipboard;
 #[path = "gui/command_bar.rs"]
 mod command_bar;
 #[path = "gui/document_actions.rs"]

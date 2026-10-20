@@ -1,11 +1,10 @@
-use csv::{ReaderBuilder, Terminator, WriterBuilder};
 use eframe::egui;
 
 use super::{
     CELL_WIDTH, GUTTER_WIDTH, ROW_HEIGHT, RowlyApp, WorkspaceMode, cell_range, column_label,
     update_selection,
 };
-use crate::process::{CellRange, CellRef};
+use crate::process::CellRef;
 
 impl RowlyApp {
     // {
@@ -384,140 +383,6 @@ impl RowlyApp {
             } else {
                 self.status = format!("{} is outside this CSV row", self.selection);
             }
-        }
-    }
-
-    // {
-    //   責務: [copy_selected_csv_values: 選択範囲のCSV値をTSV形式でclipboardへコピーする。]
-    //   処理: [選択cellをrow-major順に読み、TSV recordとして符号化してclipboardへ渡す。]
-    //   引数: [self: documentと選択範囲を保持する画面状態。 ctx: clipboardへtextを書き込むegui context。]
-    //   戻り値: [(): CSV値をclipboardへ設定し、失敗理由はstatusへ表示する。]
-    // }
-    fn copy_selected_csv_values(&mut self, ctx: &egui::Context) {
-        let Some(document) = self.document.as_ref() else {
-            return;
-        };
-        let selected_range = CellRange::new(self.selection_anchor, self.selection);
-        let mut writer = WriterBuilder::new()
-            .delimiter(b'\t')
-            .terminator(Terminator::Any(b'\n'))
-            .from_writer(Vec::new());
-        for row_index in selected_range.start().row()..=selected_range.end().row() {
-            let values = (selected_range.start().column()..=selected_range.end().column())
-                .map(|column_index| document.cell(row_index, column_index).unwrap_or(""))
-                .collect::<Vec<_>>();
-            if let Err(error) = writer.write_record(values) {
-                self.status = format!("CSV値をclipboardへコピーできません: {error}");
-                return;
-            }
-        }
-        match writer.into_inner() {
-            Ok(bytes) => match String::from_utf8(bytes) {
-                Ok(text) => ctx.copy_text(text),
-                Err(error) => self.status = format!("clipboard textを生成できません: {error}"),
-            },
-            Err(error) => {
-                self.status = format!("clipboard textを生成できません: {}", error.error())
-            }
-        }
-    }
-
-    // {
-    //   責務: [paste_csv_values: TSV形式のclipboard値を既存CSV cellへ一括適用する。]
-    //   処理: [TSVをparseし、貼り付け範囲と全cellを確認してからCSV内容を一括置換する。]
-    //   引数: [self: documentと貼り付け先selectionを保持する画面状態。 text: clipboardから受け取ったTSV text。]
-    //   戻り値: [(): 全値の検証成功時に内容を反映し、失敗時はdocumentを変更せずstatusへ理由を表示する。]
-    //   副作用: [成功時にCSV内容とCalculationEngineの依存結果を更新する。]
-    // }
-    fn paste_csv_values(&mut self, text: &str) {
-        if self.code_buffer_dirty {
-            self.status = "先にCodeの未適用CSV変更を適用してください".to_owned();
-            return;
-        }
-        let mut reader = ReaderBuilder::new()
-            .delimiter(b'\t')
-            .has_headers(false)
-            .flexible(true)
-            .from_reader(text.as_bytes());
-        let pasted_rows = match reader
-            .records()
-            .map(|record| record.map(|record| record.iter().map(str::to_owned).collect()))
-            .collect::<Result<Vec<Vec<String>>, _>>()
-        {
-            Ok(rows) if !rows.is_empty() => rows,
-            Ok(_) => return,
-            Err(error) => {
-                self.status = format!("clipboardの表データを読めません: {error}");
-                return;
-            }
-        };
-
-        let (mut rows, column_count) = match self.document.as_ref() {
-            Some(document) => (
-                document.rows().map(<[String]>::to_vec).collect::<Vec<_>>(),
-                document.column_count(),
-            ),
-            None => return,
-        };
-        let start_row = self.selection.row();
-        let start_column = self.selection.column();
-        // 貼り付け後の終端行がCSVの行数を超える場合は、一部だけ反映せず全体を拒否する。
-        if start_row
-            .checked_add(pasted_rows.len())
-            .is_none_or(|end_row| end_row > rows.len())
-        {
-            self.status = "貼り付け範囲がCSVの行数を超えています".to_owned();
-            return;
-        }
-        if pasted_rows.iter().any(|row| {
-            start_column
-                .checked_add(row.len())
-                .is_none_or(|end_column| end_column > column_count)
-        }) {
-            self.status = "貼り付け範囲がCSVの列数を超えています".to_owned();
-            return;
-        }
-
-        let mut changed_cells = Vec::new();
-        for (row_offset, pasted_row) in pasted_rows.into_iter().enumerate() {
-            let row_index = start_row + row_offset;
-            for (column_offset, pasted_value) in pasted_row.into_iter().enumerate() {
-                let column_index = start_column + column_offset;
-                let Some(existing_value) = rows[row_index].get_mut(column_index) else {
-                    if pasted_value.is_empty() {
-                        continue;
-                    }
-                    self.status =
-                        format!("貼り付け先cell ({row_index}, {column_index}) が存在しません");
-                    return;
-                };
-                if *existing_value != pasted_value {
-                    *existing_value = pasted_value;
-                    changed_cells.push(CellRef::new(row_index, column_index));
-                }
-            }
-        }
-        if changed_cells.is_empty() {
-            self.status = "貼り付け値に変更はありません".to_owned();
-            return;
-        }
-
-        let Some(document) = self.document.as_mut() else {
-            return;
-        };
-        if let Err(error) = document.replace_contents(rows) {
-            self.status = error.to_string();
-            return;
-        }
-        self.status = match self
-            .calculation_engine
-            .recalculate_for_changes(document, changed_cells)
-        {
-            Ok(_) => "CSV値を貼り付けました".to_owned(),
-            Err(error) => error.to_string(),
-        };
-        if !self.code_buffer_dirty {
-            self.refresh_code_buffer();
         }
     }
 }

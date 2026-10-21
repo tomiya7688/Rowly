@@ -248,6 +248,65 @@ pub enum PureCalculationFunction {
 
 impl CalculationExpression {
     /// ```text
+    /// 責務: [to_dsl_source: CalculationExpressionをRowly DSLの安全な式表記へ変換する]
+    /// 引数: [self: 変換するpure calculation AST]
+    /// 戻り値: [String: parserが再度受理できるDSL expression]
+    /// ```
+    pub fn to_dsl_source(&self) -> String {
+        match self {
+            Self::Literal(CalculationValue::Text(value)) => {
+                format!("String({})", quote_calculation_text(value))
+            }
+            Self::Literal(CalculationValue::Integer(value)) => {
+                format!("Integer({})", quote_calculation_text(&value.to_string()))
+            }
+            Self::Literal(CalculationValue::Decimal(value)) => {
+                format!("Decimal({})", quote_calculation_text(&value.to_string()))
+            }
+            Self::Cell(reference) => {
+                format!(
+                    "CellValue({})",
+                    quote_calculation_text(&reference.to_string())
+                )
+            }
+            Self::Negate(operand) => format!("-({})", operand.to_dsl_source()),
+            Self::Arithmetic {
+                left,
+                operator,
+                right,
+            } => {
+                let operator = match operator {
+                    CalculationOperator::Add => "+",
+                    CalculationOperator::Subtract => "-",
+                    CalculationOperator::Multiply => "*",
+                    CalculationOperator::Divide => "/",
+                };
+                format!(
+                    "({}) {operator} ({})",
+                    left.to_dsl_source(),
+                    right.to_dsl_source()
+                )
+            }
+            Self::Call {
+                function,
+                arguments,
+            } => {
+                let function = match function {
+                    PureCalculationFunction::Abs => "Abs",
+                    PureCalculationFunction::Min => "Min",
+                    PureCalculationFunction::Max => "Max",
+                };
+                let arguments = arguments
+                    .iter()
+                    .map(Self::to_dsl_source)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{function}({arguments})")
+            }
+        }
+    }
+
+    /// ```text
     /// 責務: [dependencies: 式が直接読むcanonical CSV cell位置を重複なく列挙する]
     /// 引数: [self: 走査するexpression]
     /// 戻り値: [BTreeSet<CellRef>: row/column順に安定した依存cell集合]
@@ -275,6 +334,65 @@ impl CalculationExpression {
 
         dependencies
     }
+
+    /// {
+    ///   責務: [shift_cell_references: 範囲式を複製する出力cellに合わせて依存cell参照を相対移動する。]
+    ///   引数: [row_offset: 移動する行数。 column_offset: 移動する列数。]
+    ///   戻り値: [Option<Self>: 全参照を有効な座標へ移動できた式。]
+    /// }
+    pub fn shift_cell_references(&self, row_offset: isize, column_offset: isize) -> Option<Self> {
+        match self {
+            Self::Literal(value) => Some(Self::Literal(value.clone())),
+            Self::Cell(reference) => Some(Self::Cell(CellRef::new(
+                reference.row().checked_add_signed(row_offset)?,
+                reference.column().checked_add_signed(column_offset)?,
+            ))),
+            Self::Negate(operand) => Some(Self::Negate(Box::new(
+                operand.shift_cell_references(row_offset, column_offset)?,
+            ))),
+            Self::Arithmetic {
+                left,
+                operator,
+                right,
+            } => Some(Self::Arithmetic {
+                left: Box::new(left.shift_cell_references(row_offset, column_offset)?),
+                operator: *operator,
+                right: Box::new(right.shift_cell_references(row_offset, column_offset)?),
+            }),
+            Self::Call {
+                function,
+                arguments,
+            } => Some(Self::Call {
+                function: *function,
+                arguments: arguments
+                    .iter()
+                    .map(|argument| argument.shift_cell_references(row_offset, column_offset))
+                    .collect::<Option<Vec<_>>>()?,
+            }),
+        }
+    }
+}
+
+// {
+//   責務: [quote_calculation_text: DSL literal内の引用符と制御文字をescapeする]
+//   引数: [value: 引用符で囲む文字列]
+//   戻り値: [String: Rowly DSLのquoted string]
+// }
+fn quote_calculation_text(value: &str) -> String {
+    let mut quoted = String::with_capacity(value.len() + 2);
+    quoted.push('"');
+    for character in value.chars() {
+        match character {
+            '"' => quoted.push_str("\\\""),
+            '\\' => quoted.push_str("\\\\"),
+            '\n' => quoted.push_str("\\n"),
+            '\r' => quoted.push_str("\\r"),
+            '\t' => quoted.push_str("\\t"),
+            character => quoted.push(character),
+        }
+    }
+    quoted.push('"');
+    quoted
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

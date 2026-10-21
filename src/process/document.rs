@@ -752,6 +752,9 @@ impl CsvDocument {
     // 責務: [
     // validation_report_for: 指定tableのデータ行を検証規則に照らして検査する
     // ]
+    // 処理: [
+    // 対象tableのheaderと列数から規則の対象を解決し、データ行のcellを検証する
+    // ]
     // 引数: [
     // table: &Table
     // ]
@@ -764,7 +767,26 @@ impl CsvDocument {
         let mut rules_by_column =
             BTreeMap::<usize, Vec<(&ValidationTarget, &ValidationRule)>>::new();
         for (target, rule) in &self.validation_rules {
-            if let Ok(column) = self.resolve_validation_target(target) {
+            // 置換前のself.tableを参照すると、headerを入れ替えた貼り付けで別の列を検証してしまう。
+            let column = match target {
+                ValidationTarget::Index(column) => {
+                    (*column < table.column_count()).then_some(*column)
+                }
+                ValidationTarget::Header(header) => {
+                    let mut matching_columns = table
+                        .rows()
+                        .first()
+                        .into_iter()
+                        .flatten()
+                        .enumerate()
+                        .filter(|(_, name)| *name == header);
+                    match (matching_columns.next(), matching_columns.next()) {
+                        (Some((column, _)), None) => Some(column),
+                        _ => None,
+                    }
+                }
+            };
+            if let Some(column) = column {
                 rules_by_column
                     .entry(column)
                     .or_default()

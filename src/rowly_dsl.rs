@@ -7,12 +7,13 @@ mod ast;
 mod parser;
 mod runtime;
 
+pub use crate::process::calculation::CalculationEngine;
 pub use crate::process::{ValidationComparisonOperator, ValidationTarget};
 pub use ast::{
-    ArithmeticOperator, ClassDefinition, ColumnSelector, ComparisonOperator, Condition,
-    DeclarationKind, ExecutionEvent, ExecutionReport, Expression, FieldDefinition,
-    FunctionDefinition, Program, StandardNamespace, Statement, UnaryOperator, ValidationExpression,
-    ValidationOperand, ValidationRuleDefinition,
+    ArithmeticOperator, CalculationBindingDefinition, ClassDefinition, ColumnSelector,
+    ComparisonOperator, Condition, DeclarationKind, ExecutionEvent, ExecutionReport, Expression,
+    FieldDefinition, FunctionDefinition, Program, StandardNamespace, Statement, UnaryOperator,
+    ValidationExpression, ValidationOperand, ValidationRuleDefinition,
 };
 pub use parser::ParseError;
 pub use runtime::ExecutionError;
@@ -47,6 +48,22 @@ pub fn execute(
 }
 
 /// ```text
+/// 責務: [execute_with_calculation_engine: DSLを実行しCalculation Bindingをengineへ登録する]
+/// 処理: [parser AST、canonical CSV、calculation engineをruntimeへ渡す]
+/// 引数: [program: 実行するDSL AST, document: CSV source, engine: bindingとderived resultを管理するengine]
+/// 戻り値: [Result<ExecutionReport, ExecutionError>: event、state、calculation宣言]
+/// 副作用: [CSV commandを適用し、Calculation Bindingをengineへ登録する。CSV cell値はbinding式で変更しない]
+/// エラー: [ExecutionError: DSL runtime、CSV documentまたはcalculation engineの失敗]
+/// ```
+pub fn execute_with_calculation_engine(
+    program: &Program,
+    document: &mut CsvDocument,
+    engine: &mut CalculationEngine,
+) -> Result<ExecutionReport, ExecutionError> {
+    runtime::execute_with_calculation_engine(program, document, engine)
+}
+
+/// ```text
 /// 責務: [run: DSL sourceのparseとexecuteを続けて行う]
 /// 引数: [source: 実行するDSL source, document: DSL commandの対象document]
 /// 戻り値: [ExecutionReport: 記録eventとglobal scalar stateの部分snapshot]
@@ -56,6 +73,22 @@ pub fn execute(
 pub fn run(source: &str, document: &mut CsvDocument) -> Result<ExecutionReport, DslError> {
     let program = parse(source)?;
     Ok(execute(&program, document)?)
+}
+
+/// ```text
+/// 責務: [run_with_calculation_engine: DSL sourceをparseしてCalculation Bindingをengineへ登録する]
+/// 引数: [source: 実行するDSL text, document: canonical CSV, engine: bindingとderived resultを保持するengine]
+/// 戻り値: [Result<ExecutionReport, DslError>: parse / runtime reportまたはerror]
+/// 副作用: [DSL commandとCalculation Bindingを適用する。CSVへ式やderived resultは書き込まない]
+/// エラー: [DslError: parser、runtime、documentまたはcalculation engineの失敗]
+/// ```
+pub fn run_with_calculation_engine(
+    source: &str,
+    document: &mut CsvDocument,
+    engine: &mut CalculationEngine,
+) -> Result<ExecutionReport, DslError> {
+    let program = parse(source)?;
+    Ok(execute_with_calculation_engine(&program, document, engine)?)
 }
 
 #[derive(Debug, Error)]

@@ -12,6 +12,7 @@
 //! ```
 mod address;
 pub mod calculation;
+mod clipboard;
 mod column;
 mod document;
 mod history;

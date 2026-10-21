@@ -6,7 +6,7 @@ menu、toolbar、shortcut、Command Palette、Alt KeyTipsが別々の操作定�
 
 共有契約の実装入口は `src/gui_commands.rs` です。`CommandRegistry` は画面やCSVを所有せず、検査に成功したactionをadapterのhandlerへ渡します。実際のCSV操作はGUI adapterから既存のprocess APIへ接続してください。
 
-この共有契約だけでは既存GUIの操作は変わりません。menu・toolbarへの配線、Command Palette、Alt表示と階層操作は未接続です。KeyTips metadataの登録成功は、実GUIでAltから到達できることの証拠にはなりません。これらの接続と操作確認は #109 / #113で続けます。
+既存GUIのOpen・Save・Undo・Redoは、menu・toolbar・専用shortcutから共有Registryを通して実行します。Command Palette、Alt表示と階層操作は未接続です。KeyTips metadataの登録成功は、実GUIでAltから到達できることの証拠にはなりません。PaletteとKeyTipsの接続、GUI実操作の確認は #109 / #113で続けます。
 
 ## 登録情報
 
@@ -72,6 +72,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 実GUIへ接続するときは、同じhandlerからOpen/Save/Undo/Redoを呼び、menu・toolbar・shortcutごとの独立した操作実装を作らないでください。text widgetへfocusしている間のUndo/Redoは、CSV履歴へ渡さないでください。
+
+## 既存GUIへの接続
+
+`src/gui/command_dispatch.rs` は、GUI状態からcontextを作り、Registryが許可した操作を既存の `open_csv`・`save_csv`・`undo`・`redo` へ渡します。基本4操作のmenu・toolbarは、Registryの表示名・説明・enabled条件を使います。画面のbuttonを押した後にも現在contextを再検査します。Registryの登録失敗は起動時のstatusへ表示し、基本4操作を提供しません。
+
+focusはeguiのmodal layerを最優先します。inline cell編集中、またはfocus中のwidgetがTextEditの場合は `TextInput` とし、CSV履歴のUndo/Redoを無効にします。Text EditorではCSV履歴を呼ばず、CSV text widget自身のUndo/Redoを使います。HelpとViewerでもOpen/Saveの共通条件を使い、Viewerの通常focusではCSV履歴を実行できます。未適用CSV textがある場合、別modeへ移った後もSaveを無効にします。
+
+shortcutはgridやtext widgetの描画前に、押下イベント自身のmodifierとlogical keyを使って照合します。登録定義とscopeが一致した押下だけを消費します。text入力へfocus中のUndo/Redoや未登録のkeyはwidgetへ残します。frame開始時に動的に無効なshortcutは消費し、statusへ拒否理由を表示します。長押しのrepeatイベントは消費しますが、同じ操作を繰り返しません。frame開始時に許可された複数の押下も、操作ごとに最新contextで再検査します。
+
+### 基本操作の実行方法
+
+1. toolbarのCSV path欄へファイルのpathを入力し、［CSVを開く］またはCtrl+Oを実行してください。Rowlyは指定したCSVを開きます。Table EditorまたはViewerでは読み込んだ表を表示し、Text EditorではCSV textを表示します。Help表示中はHelpを維持します。読み込み失敗時は現在のdocumentを保持し、statusへ理由を表示します。
+2. CSVへ適用済みの変更を保存するときは、［CSVを保存］またはCtrl+Sを実行してください。CSV textの未適用変更がある場合は、Text Editorの［Apply Code］で変更を適用してください。Rowlyは未適用変更が残る間、保存を無効にします。
+3. Table EditorまたはViewerでCSV編集を取り消すときは、入力欄からfocusを外し、［CSV編集を元に戻す］またはCtrl+Zを実行してください。cellのinline編集中はEnterで入力を確定するか、Escapeで入力を取り消してください。再適用するときは［CSV編集をやり直す］、Ctrl+Y、Ctrl+Shift+Zのいずれかを実行してください。
+
+menuのFileとEditにも同じ4操作があります。macOSの専用shortcutはCtrlの代わりにCmdを使います。実GUIの操作確認は別途必要です。
 
 ## 最初の基本定義
 

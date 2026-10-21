@@ -36,7 +36,7 @@ impl CoreCommand {
 //   処理: [scope・動的enabled条件・shortcut・Alt階層を各操作へ設定する。],
 //   引数: [],
 //   戻り値: [Vec<CommandDefinition<CoreCommand>>: Registryへ登録する4定義。],
-//   補足: [実GUIへ接続する前の契約。text widgetのUndo/RedoはCSV履歴へ渡さない。]
+//   補足: [GUI adapterは同じ定義を表示と実行に使う。text widgetのUndo/RedoはCSV履歴へ渡さない。]
 // }
 pub fn core_command_definitions() -> Vec<CommandDefinition<CoreCommand>> {
     let file_scope = CommandScope {

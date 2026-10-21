@@ -1,7 +1,17 @@
 use eframe::egui;
 use std::path::PathBuf;
 
+use crate::gui_commands::{
+    CommandRegistry, CommandRegistryError, CoreCommand, core_command_definitions,
+};
 use crate::process::{CellRef, CsvDocument, CsvFileWatcher, DocumentError, ValidationViolation};
+
+#[path = "gui/command_dispatch.rs"]
+mod command_dispatch;
+#[path = "gui/command_menu.rs"]
+mod command_menu;
+#[path = "gui/command_toolbar.rs"]
+mod command_toolbar;
 
 #[path = "gui_help.rs"]
 mod help;
@@ -35,7 +45,7 @@ enum WorkspaceMode {
 
 // {
 //   責務: [RowlyApp: CSV documentとGUI各画面の状態を保持し、ユーザー操作をprocess APIへ仲介する。]
-//   フィールド: [mode/help_return_mode: 現在画面とhelpからの復帰先。 path_input/reference_input: pathとcell address入力。 code_buffer/code_buffer_dirty: CSV text編集値と未適用状態。 document/file_watcher: 開いたCSVと外部変更監視。 status/zoom: 表示messageと拡大率。 selection/selection_anchor: 選択cellと範囲起点。 editing/edit_value: inline edit状態と入力text。 validation_candidates_open/validation_candidate_index: 入力候補popup状態。 help: help viewer。]
+//   フィールド: [mode/help_return_mode: 現在画面とhelpからの復帰先。 path_input/reference_input: pathとcell address入力。 code_buffer/code_buffer_dirty: CSV text編集値と未適用状態。 document/file_watcher: 開いたCSVと外部変更監視。 status/zoom: 表示messageと拡大率。 selection/selection_anchor: 選択cellと範囲起点。 editing/edit_value: inline edit状態と入力text。 validation_candidates_open/validation_candidate_index: 入力候補popup状態。 help: help viewer, command_registry: 共通操作定義または登録失敗。]
 // }
 pub struct RowlyApp {
     mode: WorkspaceMode,
@@ -55,6 +65,7 @@ pub struct RowlyApp {
     validation_candidates_open: bool,
     validation_candidate_index: usize,
     help: help::HelpViewer,
+    command_registry: Result<CommandRegistry<CoreCommand>, CommandRegistryError>,
 }
 
 impl Default for RowlyApp {
@@ -65,6 +76,12 @@ impl Default for RowlyApp {
     //   戻り値: [RowlyApp: CSV未読込の初期GUI状態。]
     // }
     fn default() -> Self {
+        // 登録不整合がある場合は操作を開始せず、起動時のstatusに理由を残す。
+        let command_registry = CommandRegistry::new(core_command_definitions());
+        let status = command_registry.as_ref().map_or_else(
+            |error| format!("GUI操作の登録に失敗しました: {error}"),
+            |_| "CSV ファイルを開いてください".to_owned(),
+        );
         Self {
             mode: WorkspaceMode::TableEditor,
             help_return_mode: WorkspaceMode::TableEditor,
@@ -74,7 +91,7 @@ impl Default for RowlyApp {
             code_buffer_dirty: false,
             document: None,
             file_watcher: None,
-            status: "CSV ファイルを開いてください".to_owned(),
+            status,
             zoom: 100.0,
             selection: CellRef::new(0, 0),
             selection_anchor: CellRef::new(0, 0),
@@ -83,6 +100,7 @@ impl Default for RowlyApp {
             validation_candidates_open: false,
             validation_candidate_index: 0,
             help: help::HelpViewer::default(),
+            command_registry,
         }
     }
 }
@@ -147,212 +165,6 @@ impl RowlyApp {
         match document.save() {
             Ok(()) => self.status = format!("{} を保存しました", document.path().display()),
             Err(error) => self.status = error.to_string(),
-        }
-    }
-
-    // {
-    //   責務: [show_menu: file・edit・help menuを描画し、選択操作を実行する。]
-    //   処理: [menu actionを記録してUI描画後にopen・save・undo・redo・help遷移を呼ぶ。]
-    //   引数: [self: 表示状態と操作対象document。 ctx: menu描画先。]
-    //   戻り値: [(): menu表示と選択された操作を反映する。]
-    // }
-    fn show_menu(&mut self, ctx: &egui::Context) {
-        let mut open_requested = false;
-        let mut save_requested = false;
-        let mut help_target = None;
-        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.menu_button("File", |ui| {
-                    if ui.button("Open CSV…").clicked() {
-                        open_requested = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("Save").clicked() {
-                        save_requested = true;
-                        ui.close_menu();
-                    }
-                });
-                ui.menu_button("Edit", |ui| {
-                    let can_undo = self.document.as_ref().is_some_and(CsvDocument::can_undo);
-                    let can_redo = self.document.as_ref().is_some_and(CsvDocument::can_redo);
-                    if ui
-                        .add_enabled(can_undo, egui::Button::new("Undo"))
-                        .clicked()
-                    {
-                        self.undo();
-                        ui.close_menu();
-                    }
-                    if ui
-                        .add_enabled(can_redo, egui::Button::new("Redo"))
-                        .clicked()
-                    {
-                        self.redo();
-                        ui.close_menu();
-                    }
-                });
-                ui.menu_button("View", |ui| {
-                    ui.label("Choose a workspace mode from the toolbar.");
-                });
-                ui.menu_button("Help", |ui| {
-                    if ui.button("DSL 文法リファレンス").clicked() {
-                        help_target = Some(help::HelpTarget::new(
-                            help::HelpDocument::Reference,
-                            "source",
-                        ));
-                        ui.close_menu();
-                    }
-                    if ui.button("DSL チュートリアル").clicked() {
-                        help_target = Some(help::HelpTarget::new(
-                            help::HelpDocument::Tutorial,
-                            "tutorial-getting-started",
-                        ));
-                        ui.close_menu();
-                    }
-                });
-                ui.separator();
-                ui.label("Rowly");
-            });
-        });
-        if open_requested {
-            self.open_csv(ctx);
-        }
-        if save_requested {
-            self.save_csv();
-        }
-        if let Some(target) = help_target {
-            self.open_help_target(target);
-        }
-    }
-
-    // {
-    //   責務: [show_toolbar: path・cell reference・編集操作・workspace切替用toolbarを描画する。]
-    //   処理: [document状態に応じた操作を有効化し、UI描画後に選択された操作を実行する。]
-    //   引数: [self: 入力値・workspace・documentを保持する画面状態。 ctx: toolbar描画先。]
-    //   戻り値: [(): toolbar表示とユーザー操作を反映する。]
-    // }
-    fn show_toolbar(&mut self, ctx: &egui::Context) {
-        if self.mode == WorkspaceMode::Help {
-            return;
-        }
-        let mut open_requested = false;
-        let mut save_requested = false;
-        let mut undo_requested = false;
-        let mut redo_requested = false;
-        let mut insert_row_requested = false;
-        let mut delete_row_requested = false;
-        let mut insert_column_requested = false;
-        let mut delete_column_requested = false;
-        let mut navigate_requested = false;
-        let mut apply_code_requested = false;
-        let previous_mode = self.mode;
-        egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.label("CSV");
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.path_input)
-                        .hint_text("CSV file path")
-                        .desired_width(360.0),
-                );
-                if ui.button("Open").clicked() {
-                    open_requested = true;
-                }
-                if ui
-                    .add_enabled(
-                        self.document.is_some()
-                            && !(self.mode == WorkspaceMode::TextEditor && self.code_buffer_dirty),
-                        egui::Button::new("Save"),
-                    )
-                    .clicked()
-                {
-                    save_requested = true;
-                }
-                if self.mode == WorkspaceMode::TextEditor
-                    && ui
-                        .add_enabled(self.document.is_some(), egui::Button::new("Apply Code"))
-                        .clicked()
-                {
-                    apply_code_requested = true;
-                }
-                let can_undo = self.document.as_ref().is_some_and(CsvDocument::can_undo);
-                let can_redo = self.document.as_ref().is_some_and(CsvDocument::can_redo);
-                if ui
-                    .add_enabled(can_undo, egui::Button::new("Undo"))
-                    .clicked()
-                {
-                    undo_requested = true;
-                }
-                if ui
-                    .add_enabled(can_redo, egui::Button::new("Redo"))
-                    .clicked()
-                {
-                    redo_requested = true;
-                }
-                ui.separator();
-                ui.label("Cell");
-                let address = ui
-                    .add(egui::TextEdit::singleline(&mut self.reference_input).desired_width(58.0));
-                if address.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
-                    navigate_requested = true;
-                }
-                if ui.button("Go").clicked() {
-                    navigate_requested = true;
-                }
-                if self.mode == WorkspaceMode::TableEditor {
-                    ui.separator();
-                    if ui.button("Insert row").clicked() {
-                        insert_row_requested = true;
-                    }
-                    if ui.button("Delete row").clicked() {
-                        delete_row_requested = true;
-                    }
-                    if ui.button("Insert column").clicked() {
-                        insert_column_requested = true;
-                    }
-                    if ui.button("Delete column").clicked() {
-                        delete_column_requested = true;
-                    }
-                }
-                ui.separator();
-                ui.selectable_value(&mut self.mode, WorkspaceMode::TableEditor, "Table Editor");
-                ui.selectable_value(&mut self.mode, WorkspaceMode::TextEditor, "Text Editor");
-                ui.selectable_value(&mut self.mode, WorkspaceMode::Viewer, "Viewer");
-            });
-        });
-        if open_requested {
-            self.open_csv(ctx);
-        }
-        if save_requested {
-            self.save_csv();
-        }
-        if undo_requested {
-            self.undo();
-        }
-        if redo_requested {
-            self.redo();
-        }
-        if insert_row_requested {
-            self.insert_row();
-        }
-        if delete_row_requested {
-            self.delete_row();
-        }
-        if insert_column_requested {
-            self.insert_column();
-        }
-        if delete_column_requested {
-            self.delete_column();
-        }
-        if navigate_requested {
-            self.navigate_to_cell();
-        }
-        if previous_mode != WorkspaceMode::TextEditor
-            && self.mode == WorkspaceMode::TextEditor
-            && !self.code_buffer_dirty
-        {
-            self.refresh_code_buffer();
-        }
-        if apply_code_requested {
-            self.apply_code_buffer();
         }
     }
 
@@ -1278,12 +1090,13 @@ impl RowlyApp {
 impl eframe::App for RowlyApp {
     // {
     //   責務: [update: egui frameごとに外部変更とGUI操作を処理し各panelを描画する。]
-    //   処理: [change polling・grid keyboard・menu・toolbar・conflict・status・workspaceの順に実行する。]
+    //   処理: [外部変更、Registry shortcut、grid navigation、各panelを順に更新する。]
     //   引数: [self: frame間で保持するRowlyApp状態。 ctx: 現在のegui context。 _frame: eframe frame handle。]
     //   戻り値: [(): 1 frame分のGUIを更新する。]
     // }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll_external_changes();
+        self.dispatch_core_shortcuts(ctx);
         self.handle_grid_keys(ctx);
         self.show_menu(ctx);
         self.show_toolbar(ctx);
@@ -1383,8 +1196,8 @@ fn update_selection(
 
 impl RowlyApp {
     // {
-    //   責務: [handle_grid_keys: grid操作中のkeyboard shortcutをselection・edit・undo/redoへ適用する。]
-    //   処理: [text inputへfocus中・grid外・inline edit中を除外し、navigationとcommand keyをdispatchする。]
+    //   責務: [handle_grid_keys: grid操作中の方向key・編集開始・取消を処理する。]
+    //   処理: [text inputへfocus中・grid外・inline edit中を除外し、grid固有のnavigationと編集keyを処理する。CSV履歴shortcutはRegistryで処理済みとする。]
     //   引数: [self: mode・selection・document・editing状態。 ctx: key inputとfocus状態を読むegui context。]
     //   戻り値: [(): keyboard inputに応じた画面操作を実行する。]
     // }
@@ -1396,8 +1209,7 @@ impl RowlyApp {
             return;
         }
 
-        let (undo, redo, edit, cancel, direction, extend) = ctx.input(|input| {
-            let command = input.modifiers.command;
+        let (edit, cancel, direction, extend) = ctx.input(|input| {
             let direction = if input.key_pressed(egui::Key::ArrowUp) {
                 Some((0isize, -1isize))
             } else if input.key_pressed(egui::Key::ArrowDown) {
@@ -1410,10 +1222,6 @@ impl RowlyApp {
                 None
             };
             (
-                command && input.key_pressed(egui::Key::Z) && !input.modifiers.shift,
-                command
-                    && (input.key_pressed(egui::Key::Y)
-                        || input.modifiers.shift && input.key_pressed(egui::Key::Z)),
                 input.key_pressed(egui::Key::F2) || input.key_pressed(egui::Key::Enter),
                 input.key_pressed(egui::Key::Escape),
                 direction,
@@ -1421,11 +1229,7 @@ impl RowlyApp {
             )
         });
 
-        if undo {
-            self.undo();
-        } else if redo {
-            self.redo();
-        } else if cancel {
+        if cancel {
             self.editing = false;
         } else if let Some((dx, dy)) = direction {
             let next = CellRef::new(

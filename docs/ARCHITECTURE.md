@@ -29,6 +29,8 @@ ProjectSession内でGUI等から更新したgenerated init/configは、設定API
 
 ## 依存方向
 
+GUI commandの登録・context検査・共通dispatchの契約は `src/gui_commands.rs` にあります。[Command Registry共有契約](COMMAND_REGISTRY.md)を参照してください。Registryは画面やCSVを所有せず、許可されたactionをGUI adapterのhandlerへ渡します。既存menuへの配線、Command Palette、実際のAlt KeyTips操作はまだ未接続です。
+
 ```text
 UI / Rowly DSL / Luau / Python adapters
                 |

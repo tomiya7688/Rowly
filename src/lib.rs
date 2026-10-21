@@ -18,6 +18,11 @@ pub mod excel_python;
 #[cfg(feature = "gui")]
 pub mod gui;
 // {
+//   責務: [gui_commands: GUI操作の登録情報・context検査・共通dispatch契約を提供する。]
+// }
+#[cfg(feature = "gui")]
+pub mod gui_commands;
+// {
 //   責務: [
 //     logical_table: project sourceのCSVをschemaごとに論理表示し、source provenanceを保つ
 //   ]

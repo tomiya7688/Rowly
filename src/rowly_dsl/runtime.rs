@@ -3,12 +3,17 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
-use crate::process::{ColumnError, CsvDocument, DocumentError, ValidationTarget};
+use crate::process::calculation::{
+    CalculationBindingId, CalculationEngine, CalculationError, CalculationExpression,
+    CalculationOperator, CalculationTarget, CalculationTrigger, CalculationValue,
+    PureCalculationFunction,
+};
+use crate::process::{CellRef, ColumnError, CsvDocument, DocumentError, ValidationTarget};
 
 use super::ast::{
-    ArithmeticOperator, ColumnSelector, ComparisonOperator, Condition, DeclarationKind,
-    ExecutionEvent, ExecutionReport, Expression, Program, StandardNamespace, Statement,
-    UnaryOperator, ValidationRuleDefinition, normalize_identifier,
+    ArithmeticOperator, CalculationBindingDefinition, ColumnSelector, ComparisonOperator,
+    Condition, DeclarationKind, ExecutionEvent, ExecutionReport, Expression, Program,
+    StandardNamespace, Statement, UnaryOperator, ValidationRuleDefinition, normalize_identifier,
 };
 
 // {
@@ -80,7 +85,23 @@ pub fn execute(
     program: &Program,
     document: &mut CsvDocument,
 ) -> Result<ExecutionReport, ExecutionError> {
-    Runtime::new(program, document).execute()
+    Runtime::new(program, document, None).execute()
+}
+
+/// ```text
+/// 責務: [execute_with_calculation_engine: DSLを実行し計算規則をengineへ登録する]
+/// 処理: [通常のdocument commandを実行し、pure calculation宣言をCSV外のengineへ追加する]
+/// 引数: [program: 実行AST, document: canonical CSV, engine: bindingを保持するcalculation engine]
+/// 戻り値: [Result<ExecutionReport, ExecutionError>: 実行eventと宣言snapshot]
+/// 副作用: [document commandとengine bindingを更新する。計算結果は再評価しない]
+/// エラー: [ExecutionError: DSL、documentまたはcalculation bindingの失敗]
+/// ```
+pub fn execute_with_calculation_engine(
+    program: &Program,
+    document: &mut CsvDocument,
+    engine: &mut CalculationEngine,
+) -> Result<ExecutionReport, ExecutionError> {
+    Runtime::new(program, document, Some(engine)).execute()
 }
 
 // {
@@ -93,6 +114,10 @@ pub enum ExecutionError {
     Column(#[from] ColumnError),
     #[error(transparent)]
     Document(#[from] DocumentError),
+    #[error(transparent)]
+    Calculation(#[from] CalculationError),
+    #[error("invalid calculation expression: {0}")]
+    InvalidCalculationExpression(String),
     #[error("unknown Rowly DSL variable `{0}`")]
     UnknownVariable(String),
     #[error("cannot assign to Rowly DSL constant `{0}`")]
@@ -207,16 +232,18 @@ enum Flow {
 // {
 //   責務: [Runtime: DSL programの評価状態とdocumentへの操作を管理する]
 //   フィールド: [program/document: 実行入力と編集対象, scopes: lexical binding stack]
-//   フィールド: [objects: 実行時instance, events: 実行event, validation_rules: 設定履歴]
+//   フィールド: [objects: 実行時instance, events: 実行event, validation_rules: validation宣言, calculation_bindings: calculation宣言]
 //   フィールド: [call_depth: 再帰深度, method_context: 現在のmethod class履歴]
 // }
 struct Runtime<'a> {
     program: &'a Program,
     document: &'a mut CsvDocument,
+    calculation_engine: Option<&'a mut CalculationEngine>,
     scopes: Vec<HashMap<String, Binding>>,
     objects: Vec<ObjectInstance>,
     events: Vec<ExecutionEvent>,
     validation_rules: Vec<ValidationRuleDefinition>,
+    calculation_bindings: Vec<CalculationBindingDefinition>,
     call_depth: usize,
     method_context: Vec<String>,
 }
@@ -227,14 +254,20 @@ impl<'a> Runtime<'a> {
     //   引数: [program: 実行AST, document: 操作対象のmutable document]
     //   戻り値: [Runtime: 指定programとdocumentを保持した実行state]
     // }
-    fn new(program: &'a Program, document: &'a mut CsvDocument) -> Self {
+    fn new(
+        program: &'a Program,
+        document: &'a mut CsvDocument,
+        calculation_engine: Option<&'a mut CalculationEngine>,
+    ) -> Self {
         Self {
             program,
             document,
+            calculation_engine,
             scopes: vec![HashMap::new()],
             objects: Vec::new(),
             events: Vec::new(),
             validation_rules: Vec::new(),
+            calculation_bindings: Vec::new(),
             call_depth: 0,
             method_context: Vec::new(),
         }
@@ -290,6 +323,7 @@ impl<'a> Runtime<'a> {
             variables,
             object_fields,
             validation_rules: self.validation_rules,
+            calculation_bindings: self.calculation_bindings,
         })
     }
 
@@ -454,6 +488,149 @@ impl<'a> Runtime<'a> {
                         range: *range,
                         value,
                     });
+                }
+                Statement::SetCalculationExpression { target, expression } => {
+                    // Bindingはcalculation engineだけを更新し、canonical CSVには式を書き込まない。
+                    let definition = CalculationBindingDefinition {
+                        target: *target,
+                        expression: expression.clone(),
+                        trigger: CalculationTrigger::DependencyChange,
+                    };
+                    if let Some(engine) = self.calculation_engine.as_deref_mut() {
+                        let target_cells = expand_calculation_target(*target, self.document)?;
+                        let origin = calculation_target_origin(*target);
+                        let calculation_expression = compile_calculation_expression(expression)?;
+                        let expanded = target_cells
+                            .into_iter()
+                            .map(|target_cell| {
+                                let row_offset = isize::try_from(target_cell.row())
+                                    .and_then(|row| {
+                                        isize::try_from(origin.row()).map(|origin| row - origin)
+                                    })
+                                    .map_err(|_| {
+                                        ExecutionError::InvalidCalculationExpression(
+                                            "calculation target row is too large".to_owned(),
+                                        )
+                                    })?;
+                                let column_offset = isize::try_from(target_cell.column())
+                                    .and_then(|column| {
+                                        isize::try_from(origin.column())
+                                            .map(|origin| column - origin)
+                                    })
+                                    .map_err(|_| {
+                                        ExecutionError::InvalidCalculationExpression(
+                                            "calculation target column is too large".to_owned(),
+                                        )
+                                    })?;
+                                let expression = calculation_expression
+                                    .shift_cell_references(row_offset, column_offset)
+                                    .ok_or_else(|| {
+                                        ExecutionError::InvalidCalculationExpression(format!(
+                                            "relative cell reference is outside the table for target {target_cell}"
+                                        ))
+                                    })?;
+                                let id = CalculationBindingId::new(format!("dsl:{target_cell}"))?;
+                                Ok::<_, ExecutionError>((target_cell, id, expression))
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        for (target_cell, id, _) in &expanded {
+                            if engine.bindings().any(|binding| {
+                                binding.target().single_cell() == Some(*target_cell)
+                                    && binding.id() != id
+                            }) {
+                                return Err(CalculationError::DuplicateTarget(*target_cell).into());
+                            }
+                        }
+                        if matches!(target, CalculationTarget::Range(_)) {
+                            let mut staged_engine = engine.clone();
+                            for (target_cell, id, expression) in expanded {
+                                staged_engine.set_binding(
+                                    self.document,
+                                    id,
+                                    CalculationTarget::Cell(target_cell),
+                                    expression,
+                                    CalculationTrigger::DependencyChange,
+                                )?;
+                            }
+                            *engine = staged_engine;
+                        } else {
+                            for (target_cell, id, expression) in expanded {
+                                engine.set_binding(
+                                    self.document,
+                                    id,
+                                    CalculationTarget::Cell(target_cell),
+                                    expression,
+                                    CalculationTrigger::DependencyChange,
+                                )?;
+                            }
+                        }
+                    }
+                    self.calculation_bindings.push(definition.clone());
+                    self.events
+                        .push(ExecutionEvent::CalculationBindingSet { definition });
+                }
+                Statement::SetCalculationTrigger { target, trigger } => {
+                    let target_cells = expand_calculation_target(*target, self.document)?;
+                    if let Some(engine) = self.calculation_engine.as_deref_mut() {
+                        let updates = target_cells
+                            .into_iter()
+                            .map(|target_cell| {
+                                let binding_id =
+                                    CalculationBindingId::new(format!("dsl:{target_cell}"))?;
+                                let binding = engine.binding(&binding_id).ok_or_else(|| {
+                                ExecutionError::InvalidCalculationExpression(format!(
+                                    "cell {target_cell} has no calculation expression to configure"
+                                ))
+                            })?;
+                                let expression = binding.expression().clone();
+                                Ok::<_, ExecutionError>((target_cell, binding_id, expression))
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        if matches!(target, CalculationTarget::Range(_)) {
+                            let mut staged_engine = engine.clone();
+                            for (target_cell, binding_id, expression) in updates {
+                                staged_engine.set_binding(
+                                    self.document,
+                                    binding_id,
+                                    CalculationTarget::Cell(target_cell),
+                                    expression,
+                                    *trigger,
+                                )?;
+                            }
+                            *engine = staged_engine;
+                        } else {
+                            for (target_cell, binding_id, expression) in updates {
+                                engine.set_binding(
+                                    self.document,
+                                    binding_id,
+                                    CalculationTarget::Cell(target_cell),
+                                    expression,
+                                    *trigger,
+                                )?;
+                            }
+                        }
+                    } else if !self
+                        .calculation_bindings
+                        .iter()
+                        .any(|definition| definition.target == *target)
+                    {
+                        return Err(ExecutionError::InvalidCalculationExpression(format!(
+                            "calculation target {target:?} has no expression to configure"
+                        )));
+                    }
+                    if let Some(definition) = self
+                        .calculation_bindings
+                        .iter_mut()
+                        .rev()
+                        .find(|definition| definition.target == *target)
+                    {
+                        definition.trigger = *trigger;
+                    }
+                    self.events
+                        .push(ExecutionEvent::CalculationBindingTriggerSet {
+                            target: *target,
+                            trigger: *trigger,
+                        });
                 }
                 Statement::ValidateColumnType {
                     selector,
@@ -1887,6 +2064,178 @@ fn conversion_error(
 //   戻り値: [Result<usize, ColumnError>: document列index]
 //   エラー: [ColumnError: indexまたはheaderが解決できない]
 // }
+// {
+//   責務: [expand_calculation_target: calculation targetを既存CSV内の出力cell列へ展開する。]
+//   引数: [target: cellまたはrange target。 document: targetの存在検証に使うCSV。]
+//   戻り値: [Result<Vec<CellRef>, ExecutionError>: 検証済み出力cell列またはtarget error。]
+// }
+fn expand_calculation_target(
+    target: CalculationTarget,
+    document: &CsvDocument,
+) -> Result<Vec<CellRef>, ExecutionError> {
+    let cells = match target {
+        CalculationTarget::Cell(cell) => vec![cell],
+        CalculationTarget::Range(range) => {
+            if document.cell_ref(range.end()).is_none() {
+                return Err(CalculationError::MissingTarget(range.end()).into());
+            }
+            range.iter().collect()
+        }
+        CalculationTarget::ColumnRelative { .. } => {
+            return Err(ExecutionError::InvalidCalculationExpression(
+                "column-relative calculation targets are not supported".to_owned(),
+            ));
+        }
+    };
+    if let Some(missing) = cells
+        .iter()
+        .copied()
+        .find(|cell| document.cell_ref(*cell).is_none())
+    {
+        return Err(CalculationError::MissingTarget(missing).into());
+    }
+    Ok(cells)
+}
+
+// {
+//   責務: [calculation_target_origin: relative式の基準にするtarget先頭cellを返す。]
+//   引数: [target: 計算target。]
+//   戻り値: [CellRef: relative offsetの原点。]
+// }
+fn calculation_target_origin(target: CalculationTarget) -> CellRef {
+    match target {
+        CalculationTarget::Cell(cell) => cell,
+        CalculationTarget::Range(range) => range.start(),
+        CalculationTarget::ColumnRelative {
+            column,
+            first_data_row,
+        } => CellRef::new(first_data_row, column),
+    }
+}
+
+fn compile_calculation_expression(
+    expression: &Expression,
+) -> Result<CalculationExpression, ExecutionError> {
+    match expression {
+        Expression::Literal(value) => {
+            if let Ok(integer) = value.parse::<i64>() {
+                return Ok(CalculationExpression::Literal(CalculationValue::Integer(
+                    integer,
+                )));
+            }
+            let decimal = value.parse::<f64>().map_err(|_| {
+                ExecutionError::InvalidCalculationExpression(format!(
+                    "literal `{value}` is not numeric"
+                ))
+            })?;
+            if !decimal.is_finite() {
+                return Err(ExecutionError::InvalidCalculationExpression(format!(
+                    "decimal literal `{value}` is not finite"
+                )));
+            }
+            Ok(CalculationExpression::Literal(CalculationValue::Decimal(
+                decimal,
+            )))
+        }
+        Expression::Unary { operand, .. } => Ok(CalculationExpression::Negate(Box::new(
+            compile_calculation_expression(operand)?,
+        ))),
+        Expression::Arithmetic {
+            left,
+            operator,
+            right,
+        } => {
+            let operator = match operator {
+                ArithmeticOperator::Add => CalculationOperator::Add,
+                ArithmeticOperator::Subtract => CalculationOperator::Subtract,
+                ArithmeticOperator::Multiply => CalculationOperator::Multiply,
+                ArithmeticOperator::Divide => CalculationOperator::Divide,
+            };
+            Ok(CalculationExpression::Arithmetic {
+                left: Box::new(compile_calculation_expression(left)?),
+                operator,
+                right: Box::new(compile_calculation_expression(right)?),
+            })
+        }
+        Expression::Call { name, arguments } if name.eq_ignore_ascii_case("cellvalue") => {
+            let reference = calculation_literal_argument(arguments, name)?
+                .parse::<CellRef>()
+                .map_err(|error| ExecutionError::InvalidCalculationExpression(error.to_string()))?;
+            Ok(CalculationExpression::Cell(reference))
+        }
+        Expression::Call { name, arguments } if name.eq_ignore_ascii_case("integer") => {
+            let value = calculation_literal_argument(arguments, name)?
+                .parse::<i64>()
+                .map_err(|_| {
+                    ExecutionError::InvalidCalculationExpression(
+                        "Integer requires an integer string".to_owned(),
+                    )
+                })?;
+            Ok(CalculationExpression::Literal(CalculationValue::Integer(
+                value,
+            )))
+        }
+        Expression::Call { name, arguments } if name.eq_ignore_ascii_case("decimal") => {
+            let value = calculation_literal_argument(arguments, name)?
+                .parse::<f64>()
+                .map_err(|_| {
+                    ExecutionError::InvalidCalculationExpression(
+                        "Decimal requires a finite number string".to_owned(),
+                    )
+                })?;
+            if !value.is_finite() {
+                return Err(ExecutionError::InvalidCalculationExpression(
+                    "Decimal requires a finite number string".to_owned(),
+                ));
+            }
+            Ok(CalculationExpression::Literal(CalculationValue::Decimal(
+                value,
+            )))
+        }
+        Expression::Call { name, arguments } if name.eq_ignore_ascii_case("string") => {
+            Ok(CalculationExpression::Literal(CalculationValue::Text(
+                calculation_literal_argument(arguments, name)?.to_owned(),
+            )))
+        }
+        Expression::Call { name, arguments }
+            if name.eq_ignore_ascii_case("abs")
+                || name.eq_ignore_ascii_case("min")
+                || name.eq_ignore_ascii_case("max") =>
+        {
+            let function = if name.eq_ignore_ascii_case("abs") {
+                PureCalculationFunction::Abs
+            } else if name.eq_ignore_ascii_case("min") {
+                PureCalculationFunction::Min
+            } else {
+                PureCalculationFunction::Max
+            };
+            let arguments = arguments
+                .iter()
+                .map(compile_calculation_expression)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(CalculationExpression::Call {
+                function,
+                arguments,
+            })
+        }
+        _ => Err(ExecutionError::InvalidCalculationExpression(
+            "expression contains an unsupported DSL operation".to_owned(),
+        )),
+    }
+}
+
+fn calculation_literal_argument<'a>(
+    arguments: &'a [Expression],
+    function_name: &str,
+) -> Result<&'a str, ExecutionError> {
+    match arguments {
+        [Expression::Literal(value)] => Ok(value),
+        _ => Err(ExecutionError::InvalidCalculationExpression(format!(
+            "{function_name} requires one literal argument"
+        ))),
+    }
+}
+
 fn resolve_column(selector: &ColumnSelector, document: &CsvDocument) -> Result<usize, ColumnError> {
     match selector {
         ColumnSelector::Index(column) => {

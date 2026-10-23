@@ -10,11 +10,14 @@ use eframe::egui;
 use crate::gui_commands::{
     CommandRegistry, CommandRegistryError, CoreCommand, core_command_definitions,
 };
-use crate::process::{CellRef, CsvDocument, CsvFileWatcher, DocumentError, ValidationViolation};
 
 #[path = "gui/command_dispatch.rs"]
 mod command_dispatch;
-
+#[cfg(test)]
+#[path = "gui/command_tests.rs"]
+mod command_tests;
+#[path = "gui/keytips.rs"]
+mod keytips;
 
 #[path = "gui/calculation_panel.rs"]
 mod calculation_panel;
@@ -142,6 +145,7 @@ pub struct RowlyApp {
     validation_candidate_index: usize,
     help: help::HelpViewer,
     command_registry: Result<CommandRegistry<CoreCommand>, CommandRegistryError>,
+    keytips: keytips::KeyTipsState,
 }
 
 impl Default for RowlyApp {
@@ -184,6 +188,7 @@ impl Default for RowlyApp {
             validation_candidate_index: 0,
             help: help::HelpViewer::default(),
             command_registry,
+            keytips: keytips::KeyTipsState::default(),
         }
     }
 }
@@ -365,12 +370,13 @@ impl RowlyApp {
 impl eframe::App for RowlyApp {
     // {
     //   責務: [update: egui frameごとに外部変更とGUI操作を処理し各panelを描画する。]
-    //   処理: [外部変更、Registry shortcut、grid navigation、各panelを順に更新する。]
+    //   処理: [外部変更、Alt階層、Registry shortcut、表操作、各panelとKeyTips表示を順に更新する。]
     //   引数: [self: frame間で保持するRowlyApp状態。 ctx: 現在のegui context。 _frame: eframe frame handle。]
     //   戻り値: [(): 1 frame分のGUIを更新する。]
     // }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll_external_changes();
+        self.dispatch_keytips(ctx);
         self.dispatch_core_shortcuts(ctx);
         self.handle_grid_keys(ctx);
         self.handle_calculation_shortcuts(ctx);
@@ -379,6 +385,7 @@ impl eframe::App for RowlyApp {
         self.show_external_conflicts(ctx);
         self.show_status(ctx);
         self.show_workspace(ctx);
+        self.show_keytips(ctx);
     }
 }
 
@@ -469,5 +476,3 @@ fn update_selection(
     *reference_input = reference.to_string();
     *editing = false;
 }
-
-impl RowlyApp {}

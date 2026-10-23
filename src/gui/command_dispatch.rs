@@ -12,7 +12,7 @@ impl RowlyApp {
     //   引数: [self: 現在の画面状態, ctx: focusとmodalを保持するegui context。],
     //   戻り値: [CommandContext: Registryの有効条件へ渡す現在値。]
     // }
-    fn command_context(&self, ctx: &egui::Context) -> CommandContext {
+    pub(super) fn command_context(&self, ctx: &egui::Context) -> CommandContext {
         let (modal_open, focused_widget) =
             ctx.memory(|memory| (memory.top_modal_layer().is_some(), memory.focused()));
         let text_focused = self.editing
@@ -116,17 +116,14 @@ impl RowlyApp {
                 else {
                     return true;
                 };
-                let result = registry.dispatch_shortcut(
-                    egui::KeyboardShortcut::new(*modifiers, *key),
-                    &context,
-                    |action| *action,
-                );
+                let shortcut = egui::KeyboardShortcut::new(*modifiers, *key);
+                let result = registry.dispatch_shortcut(shortcut, &context, |action| *action);
                 match result {
                     None => true,
-                    Some(result) => {
+                    Some(_) => {
                         // 長押しによる再openと、同じ押下のwidgetへの二重配送を避ける。
                         if !repeat {
-                            commands.push(result);
+                            commands.push(shortcut);
                         }
                         false
                     }
@@ -134,10 +131,22 @@ impl RowlyApp {
             });
         });
         // 入力lockを保持したままI/Oやrepaintを呼ばない。複数要求も実行時に再検査する。
-        for command in commands {
-            match command {
-                Ok(command) => self.dispatch_core_command(ctx, command),
-                Err(error) => self.status = error.to_string(),
+        for shortcut in commands {
+            // 前のUndo/Openで変わった履歴とdocument状態を、候補ごとに取り直す。
+            let result = match &self.command_registry {
+                Ok(registry) => {
+                    registry
+                        .dispatch_shortcut(shortcut, &self.command_context(ctx), |action| *action)
+                }
+                Err(error) => {
+                    self.status = format!("GUI操作の登録に失敗しました: {error}");
+                    return;
+                }
+            };
+            match result {
+                Some(Ok(command)) => self.dispatch_core_command(ctx, command),
+                Some(Err(error)) => self.status = error.to_string(),
+                None => {}
             }
         }
     }

@@ -4,7 +4,7 @@ use super::{CommandDefinition, CommandFocus, CommandMode, CommandScope};
 
 // {
 //   責務: [CoreCommand: Registryの最初のadapter接続対象となる既存GUI操作を識別する。],
-//   フィールド: [Open: path欄のCSVを開く, Save: CSVを保存, Undo/Redo: CSV編集履歴の移動。]
+//   フィールド: [Open: path欄のCSVまたはprojectを開く, Save: CSVとprojectの生成設定を保存, Undo/Redo: CSV編集履歴の移動。]
 // }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CoreCommand {
@@ -50,8 +50,8 @@ pub fn core_command_definitions() -> Vec<CommandDefinition<CoreCommand>> {
     vec![
         CommandDefinition {
             id: CoreCommand::Open.id(),
-            name: "CSVを開く",
-            description: "path欄に指定したCSVを開きます。",
+            name: "ファイルを開く",
+            description: "path欄に指定したCSVまたはprojectを開きます。",
             category: "ファイル",
             scope: file_scope,
             enabled: |_| true,
@@ -61,8 +61,8 @@ pub fn core_command_definitions() -> Vec<CommandDefinition<CoreCommand>> {
         },
         CommandDefinition {
             id: CoreCommand::Save.id(),
-            name: "CSVを保存",
-            description: "開いているCSVを保存します。未適用のCSV text変更がある場合は無効です。",
+            name: "変更を保存",
+            description: "開いているCSVを保存し、project利用時は計算規則も保存します。未適用のCSV text変更がある場合は無効です。",
             category: "ファイル",
             scope: file_scope,
             enabled: |context| context.has_document && !context.has_unapplied_csv_text,

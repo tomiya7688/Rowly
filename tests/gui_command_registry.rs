@@ -35,7 +35,7 @@ fn editable_context() -> CommandContext {
 fn ids_and_all_shortcut_aliases_use_the_same_action() -> Result<(), Box<dyn Error>> {
     let registry = CommandRegistry::new(core_command_definitions())?;
     let context = editable_context();
-    assert_eq!(registry.commands().len(), 4);
+    assert_eq!(registry.commands().len(), 7);
     for definition in registry.commands() {
         assert_eq!(definition.id, definition.action.id());
         let mut calls = 0;
@@ -53,6 +53,60 @@ fn ids_and_all_shortcut_aliases_use_the_same_action() -> Result<(), Box<dyn Erro
             );
         }
         assert_eq!(calls, definition.shortcuts.len() + 1);
+    }
+    Ok(())
+}
+
+// {
+//   責務: [workspace_ids_and_alt_paths_cover_document_and_focus_states: 画面切替の固定ID・Alt経路・有効条件を検証する。],
+//   処理: [Table Editor・Text Editor・Viewer・HelpでCSVの有無とfocusを組み合わせ、modal以外で画面切替が有効になることを確認する。],
+//   引数: [],
+//   戻り値: [Result<(), Box<dyn Error>>: 全assertion成功、またはRegistryの登録エラー。]
+// }
+#[test]
+fn workspace_ids_and_alt_paths_cover_document_and_focus_states() -> Result<(), Box<dyn Error>> {
+    let registry = CommandRegistry::new(core_command_definitions())?;
+    for (command, id, path) in [
+        (
+            CoreCommand::ShowTableEditor,
+            "view.table_editor",
+            ["V", "E"],
+        ),
+        (CoreCommand::ShowTextEditor, "view.text_editor", ["V", "C"]),
+        (CoreCommand::ShowViewer, "view.viewer", ["V", "V"]),
+    ] {
+        assert_eq!(command.id(), id);
+        let definition = registry
+            .commands()
+            .find(|entry| entry.id == id)
+            .ok_or("画面切替の固定IDがRegistryに登録されていません")?;
+        assert_eq!(definition.keytips_path, path);
+        for mode in [
+            CommandMode::TableEditor,
+            CommandMode::TextEditor,
+            CommandMode::Viewer,
+            CommandMode::Help,
+        ] {
+            for focus in [
+                CommandFocus::Workspace,
+                CommandFocus::TextInput,
+                CommandFocus::Modal,
+            ] {
+                for has_document in [false, true] {
+                    let context = CommandContext {
+                        mode,
+                        focus,
+                        has_document,
+                        has_unapplied_csv_text: true,
+                        ..editable_context()
+                    };
+                    assert_eq!(
+                        definition.is_enabled(&context),
+                        focus != CommandFocus::Modal
+                    );
+                }
+            }
+        }
     }
     Ok(())
 }

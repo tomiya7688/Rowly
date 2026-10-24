@@ -1,19 +1,18 @@
 use eframe::egui;
 
-use crate::project::SourceKind;
+use crate::{gui_commands::CoreCommand, project::SourceKind};
 
-use super::{CalculationCommand, CsvDocument, HelpDocument, HelpTarget, RowlyApp, WorkspaceMode};
+use super::{CalculationCommand, HelpDocument, HelpTarget, RowlyApp, WorkspaceMode};
 
 impl RowlyApp {
     // {
-    //   責務: [show_menu: file・edit・help menuを描画し、選択操作を実行する。]
-    //   処理: [menu actionを記録してUI描画後にopen・save・undo・redo・help遷移を呼ぶ。]
+    //   責務: [show_menu: ファイル・編集・計算・表示・ヘルプのmenuを描画し、選択操作を実行する。]
+    //   処理: [ファイル・履歴・画面切替はRegistryの定義から描画し、選択を共通dispatchへ渡す。計算とヘルプは既存handlerへ渡す。]
     //   引数: [self: 表示状態と操作対象document。 ctx: menu描画先。]
     //   戻り値: [(): menu表示と選択された操作を反映する。]
     // }
     pub(super) fn show_menu(&mut self, ctx: &egui::Context) {
-        let mut open_requested = false;
-        let mut save_requested = false;
+        let mut command_requested = None;
         let mut calculation_apply_requested = false;
         let mut calculation_recalculate_requested = false;
         let mut calculation_remove_requested = false;
@@ -22,31 +21,21 @@ impl RowlyApp {
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.menu_button("File", |ui| {
-                    if ui.button("Open CSV…").clicked() {
-                        open_requested = true;
+                    if self.show_core_command_button(ui, CoreCommand::Open, true) {
+                        command_requested = Some(CoreCommand::Open);
                         ui.close_menu();
                     }
-                    if ui.button("Save").clicked() {
-                        save_requested = true;
+                    if self.show_core_command_button(ui, CoreCommand::Save, true) {
+                        command_requested = Some(CoreCommand::Save);
                         ui.close_menu();
                     }
                 });
                 ui.menu_button("Edit", |ui| {
-                    let can_undo = self.document.as_ref().is_some_and(CsvDocument::can_undo);
-                    let can_redo = self.document.as_ref().is_some_and(CsvDocument::can_redo);
-                    if ui
-                        .add_enabled(can_undo, egui::Button::new("Undo"))
-                        .clicked()
-                    {
-                        self.undo();
-                        ui.close_menu();
-                    }
-                    if ui
-                        .add_enabled(can_redo, egui::Button::new("Redo"))
-                        .clicked()
-                    {
-                        self.redo();
-                        ui.close_menu();
+                    for command in [CoreCommand::Undo, CoreCommand::Redo] {
+                        if self.show_core_command_button(ui, command, true) {
+                            command_requested = Some(command);
+                            ui.close_menu();
+                        }
                     }
                 });
                 ui.menu_button("Formulas", |ui| {
@@ -81,7 +70,12 @@ impl RowlyApp {
                     }
                 });
                 ui.menu_button("View", |ui| {
-                    ui.label("Choose a workspace mode from the toolbar.");
+                    for command in CoreCommand::WORKSPACE_SWITCHES {
+                        if self.show_core_command_button(ui, command, false) {
+                            command_requested = Some(command);
+                            ui.close_menu();
+                        }
+                    }
                 });
                 ui.menu_button("Help", |ui| {
                     if ui.button("DSL 文法リファレンス").clicked() {
@@ -100,11 +94,8 @@ impl RowlyApp {
                 ui.label("Rowly");
             });
         });
-        if open_requested {
-            self.open_csv(ctx);
-        }
-        if save_requested {
-            self.save_csv();
+        if let Some(command) = command_requested {
+            self.dispatch_core_command(ctx, command);
         }
         if calculation_apply_requested {
             self.dispatch_calculation_command(CalculationCommand::Bind);
@@ -133,10 +124,7 @@ impl RowlyApp {
         if self.mode == WorkspaceMode::Help {
             return;
         }
-        let mut open_requested = false;
-        let mut save_requested = false;
-        let mut undo_requested = false;
-        let mut redo_requested = false;
+        let mut command_requested = None;
         let mut insert_row_requested = false;
         let mut delete_row_requested = false;
         let mut insert_column_requested = false;
@@ -145,7 +133,6 @@ impl RowlyApp {
         let mut apply_code_requested = false;
         let mut project_source_changed = false;
         let previous_project_source = self.project_source_id.clone();
-        let previous_mode = self.mode;
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.label("CSV / Project");
@@ -174,18 +161,10 @@ impl RowlyApp {
                             }
                         });
                 }
-                if ui.button("Open").clicked() {
-                    open_requested = true;
-                }
-                if ui
-                    .add_enabled(
-                        self.document.is_some()
-                            && !(self.mode == WorkspaceMode::TextEditor && self.code_buffer_dirty),
-                        egui::Button::new("Save"),
-                    )
-                    .clicked()
-                {
-                    save_requested = true;
+                for command in [CoreCommand::Open, CoreCommand::Save] {
+                    if self.show_core_command_button(ui, command, false) {
+                        command_requested = Some(command);
+                    }
                 }
                 if self.mode == WorkspaceMode::TextEditor
                     && ui
@@ -194,19 +173,10 @@ impl RowlyApp {
                 {
                     apply_code_requested = true;
                 }
-                let can_undo = self.document.as_ref().is_some_and(CsvDocument::can_undo);
-                let can_redo = self.document.as_ref().is_some_and(CsvDocument::can_redo);
-                if ui
-                    .add_enabled(can_undo, egui::Button::new("Undo"))
-                    .clicked()
-                {
-                    undo_requested = true;
-                }
-                if ui
-                    .add_enabled(can_redo, egui::Button::new("Redo"))
-                    .clicked()
-                {
-                    redo_requested = true;
+                for command in [CoreCommand::Undo, CoreCommand::Redo] {
+                    if self.show_core_command_button(ui, command, false) {
+                        command_requested = Some(command);
+                    }
                 }
                 ui.separator();
                 ui.label("Cell");
@@ -234,27 +204,20 @@ impl RowlyApp {
                     }
                 }
                 ui.separator();
-                ui.selectable_value(&mut self.mode, WorkspaceMode::TableEditor, "Table Editor");
-                ui.selectable_value(&mut self.mode, WorkspaceMode::TextEditor, "Text Editor");
-                ui.selectable_value(&mut self.mode, WorkspaceMode::Viewer, "Viewer");
+                for command in CoreCommand::WORKSPACE_SWITCHES {
+                    if self.show_core_command_button(ui, command, false) {
+                        command_requested = Some(command);
+                    }
+                }
             });
         });
-        if open_requested {
-            self.open_csv(ctx);
+        if let Some(command) = command_requested {
+            self.dispatch_core_command(ctx, command);
         }
         if project_source_changed && self.project_source_id != previous_project_source {
             if let Some(source_id) = self.project_source_id.clone() {
                 self.open_project_source(&source_id, previous_project_source.as_deref(), ctx);
             }
-        }
-        if save_requested {
-            self.save_csv();
-        }
-        if undo_requested {
-            self.undo();
-        }
-        if redo_requested {
-            self.redo();
         }
         if insert_row_requested {
             self.insert_row();
@@ -279,12 +242,6 @@ impl RowlyApp {
         }
         if navigate_requested {
             self.navigate_to_cell();
-        }
-        if previous_mode != WorkspaceMode::TextEditor
-            && self.mode == WorkspaceMode::TextEditor
-            && !self.code_buffer_dirty
-        {
-            self.refresh_code_buffer();
         }
         if apply_code_requested {
             self.apply_code_buffer();

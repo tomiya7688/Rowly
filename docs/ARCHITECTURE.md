@@ -27,7 +27,7 @@ Rowly は CSV-first のエディタです。表示、スクリプト、外部連
 
 ## 依存方向
 
-GUI commandの登録・context検査・共通dispatchの契約は `src/gui_commands.rs` にあります。[Command Registry共有契約](COMMAND_REGISTRY.md)を参照してください。Registryは画面やCSVを所有せず、許可されたactionをGUI adapterのhandlerへ渡します。Open/Save/Undo/Redoのmenu・toolbar・shortcutは `src/gui/command_dispatch.rs` で共通dispatchへ接続します。基本4操作のAlt階層は `src/gui/keytips.rs` から同じdispatchへ接続します。Command Paletteと基本4操作以外のAlt KeyTips経路は未接続です。
+GUI commandの登録・context検査・共通dispatchの契約は `src/gui_commands.rs` にあります。[Command Registry共有契約](COMMAND_REGISTRY.md)を参照してください。Registryは画面やCSVを所有せず、許可されたactionをGUI adapterのhandlerへ渡します。Open/Save/Undo/Redoのmenu・toolbar・shortcutと、Table Editor/Text Editor/Viewerへの画面切替のmenu・toolbarは `src/gui/command_dispatch.rs` で共通dispatchへ接続します。ファイル・履歴・画面切替のAlt階層は `src/gui/keytips.rs` から同じdispatchへ接続します。Command Paletteと残るGUI操作のAlt KeyTips経路は未接続です。
 
 ```text
 UI / Rowly DSL / Luau / Python adapters

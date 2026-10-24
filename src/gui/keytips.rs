@@ -129,7 +129,7 @@ impl RowlyApp {
     //   責務: [dispatch_keytips: Alt開始・階層入力・取消を処理し、leafを共通dispatchへ渡す。],
     //   処理: [focus・modal・pointer変更で終了し、選択文字をwidgetへ配送せず操作をlock外で実行する。],
     //   引数: [self: GUIと階層状態。 ctx: 現在frameの入力。],
-    //   戻り値: [(): 基本4操作を実行するか、階層状態を更新する。]
+    //   戻り値: [(): 登録済みの基本操作を実行するか、Alt階層の状態を更新する。]
     // }
     pub(super) fn dispatch_keytips(&mut self, ctx: &egui::Context) {
         let context = self.command_context(ctx);
@@ -245,7 +245,7 @@ impl RowlyApp {
             .interactable(false)
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.label("Alt キー操作（基本4操作） / Escで戻る");
+                    ui.label("Alt キー操作（登録済み操作） / Escで戻る");
                     for (key, name, enabled) in hints {
                         ui.add_enabled(enabled, egui::Label::new(format!("[{key}] {name}")));
                     }

@@ -18,6 +18,9 @@ mod command_dispatch;
 mod command_tests;
 #[path = "gui/keytips.rs"]
 mod keytips;
+#[cfg(test)]
+#[path = "gui/workspace_command_tests.rs"]
+mod workspace_command_tests;
 
 #[path = "gui/calculation_panel.rs"]
 mod calculation_panel;

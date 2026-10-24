@@ -9,7 +9,7 @@ use crate::{gui_commands::CoreCommand, process::CsvDocument};
 //   引数: [key: 押すキー。 modifiers: 押下時の修飾状態。],
 //   戻り値: [Event: eguiへ渡す押下イベント。]
 // }
-fn press(key: Key, modifiers: Modifiers) -> Event {
+pub(super) fn press(key: Key, modifiers: Modifiers) -> Event {
     Event::Key {
         key,
         physical_key: Some(key),
@@ -25,7 +25,7 @@ fn press(key: Key, modifiers: Modifiers) -> Event {
 //   引数: [app: 検証するGUI。 ctx: frame間で保持するegui状態。 modifiers: frameの修飾状態。 events: 配送する入力。],
 //   戻り値: [Vec<Event>: adapterが消費しなかった入力。]
 // }
-fn input_frame(
+pub(super) fn input_frame(
     app: &mut RowlyApp,
     ctx: &egui::Context,
     modifiers: Modifiers,
@@ -101,7 +101,7 @@ fn held_input_frame(
 //   引数: [],
 //   戻り値: [(TempDir, RowlyApp): CSVの寿命を保持するdirectoryと画面状態。]
 // }
-fn edited_app() -> (tempfile::TempDir, RowlyApp) {
+pub(super) fn edited_app() -> (tempfile::TempDir, RowlyApp) {
     let directory = tempfile::tempdir().expect("test directory");
     let path = directory.path().join("table.csv");
     std::fs::write(&path, "old\n").expect("CSV fixture");

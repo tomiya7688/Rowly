@@ -56,7 +56,13 @@ impl RowlyApp {
         let Some(definition) = registry.commands().find(|entry| entry.action == command) else {
             return false;
         };
-        let mut button = egui::Button::new(definition.name);
+        let selected = matches!(
+            (command, self.mode),
+            (CoreCommand::ShowTableEditor, WorkspaceMode::TableEditor)
+                | (CoreCommand::ShowTextEditor, WorkspaceMode::TextEditor)
+                | (CoreCommand::ShowViewer, WorkspaceMode::Viewer)
+        );
+        let mut button = egui::Button::new(definition.name).selected(selected);
         if let Some(shortcut) = definition.shortcuts.first().filter(|_| show_shortcut) {
             button = button.shortcut_text(ui.ctx().format_shortcut(shortcut));
         }
@@ -73,7 +79,7 @@ impl RowlyApp {
     //   処理: [最新contextでstable IDを解決し、許可された操作だけを既存GUI handlerへ渡す。],
     //   引数: [self: Registryと操作対象, ctx: 現在のegui context, command: 要求された操作。],
     //   戻り値: [(): 実行結果または拒否理由をstatusへ反映する。],
-    //   副作用: [許可されたOpen/Save/Undo/Redoをprocess API経由で実行する。]
+    //   副作用: [ファイル・履歴操作はprocess API経由で実行し、画面切替ではCSVを変更しない。]
     // }
     pub(super) fn dispatch_core_command(&mut self, ctx: &egui::Context, command: CoreCommand) {
         let action = match &self.command_registry {
@@ -88,8 +94,32 @@ impl RowlyApp {
             Ok(CoreCommand::Save) => self.save_csv(),
             Ok(CoreCommand::Undo) => self.undo(),
             Ok(CoreCommand::Redo) => self.redo(),
+            Ok(CoreCommand::ShowTableEditor) => {
+                self.switch_workspace_mode(WorkspaceMode::TableEditor)
+            }
+            Ok(CoreCommand::ShowTextEditor) => {
+                self.switch_workspace_mode(WorkspaceMode::TextEditor)
+            }
+            Ok(CoreCommand::ShowViewer) => self.switch_workspace_mode(WorkspaceMode::Viewer),
             Err(error) => self.status = error,
         }
+    }
+
+    // {
+    //   責務: [switch_workspace_mode: 未適用の編集を保持して作業画面を切り替える。],
+    //   処理: [別画面からText Editorへ移る際、未適用変更がなければCSVテキストを正本から取得する。],
+    //   引数: [self: 現在の画面と編集状態。 mode: 表示する作業画面。],
+    //   戻り値: [(): CSV正本と履歴を保持したまま画面と必要な表示用bufferを更新する。]
+    // }
+    fn switch_workspace_mode(&mut self, mode: WorkspaceMode) {
+        // 再選択と未適用テキストの復帰では、編集中のbufferを上書きしない。
+        if self.mode != WorkspaceMode::TextEditor
+            && mode == WorkspaceMode::TextEditor
+            && !self.code_buffer_dirty
+        {
+            self.refresh_code_buffer();
+        }
+        self.mode = mode;
     }
 
     // {

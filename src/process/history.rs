@@ -545,7 +545,6 @@ impl EditHistory {
     }
 }
 
-
 #[cfg(test)]
 mod memory_bound_tests {
     use super::*;

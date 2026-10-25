@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 
 use super::{CellRef, ValidationRule, ValidationTarget};
 
+const MAX_UNDO_COMMANDS: usize = 256;
+
 #[derive(Debug, Clone)]
 // ```text
 // 責務: [
@@ -411,6 +413,10 @@ impl EditHistory {
         };
         self.current_state_id = command.after_state_id;
         self.undo.push(command);
+        if self.undo.len() > MAX_UNDO_COMMANDS {
+            let excess = self.undo.len() - MAX_UNDO_COMMANDS;
+            self.undo.drain(0..excess);
+        }
         self.redo.clear();
     }
 
@@ -536,5 +542,34 @@ impl EditHistory {
     // ```
     pub(super) fn mark_saved(&mut self) {
         self.saved_csv_state_id = self.current_csv_state_id;
+    }
+}
+
+
+#[cfg(test)]
+mod memory_bound_tests {
+    use super::*;
+
+    fn contents_change(index: usize) -> EditOperation {
+        EditOperation::Contents {
+            before: vec![vec![format!("before-{index}")]],
+            after: vec![vec![format!("after-{index}")]],
+        }
+    }
+
+    #[test]
+    fn committed_history_is_bounded() {
+        let mut history = EditHistory::default();
+
+        for index in 0..(MAX_UNDO_COMMANDS + 32) {
+            history.record(contents_change(index));
+        }
+
+        assert_eq!(history.undo.len(), MAX_UNDO_COMMANDS);
+        assert!(history.can_undo());
+        assert_eq!(
+            history.undo.last().map(|command| command.after_state_id),
+            Some((MAX_UNDO_COMMANDS + 32) as u64)
+        );
     }
 }

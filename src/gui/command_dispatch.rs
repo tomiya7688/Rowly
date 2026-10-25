@@ -3,7 +3,7 @@ use eframe::egui;
 use crate::gui_commands::{CommandContext, CommandFocus, CommandMode, CoreCommand};
 use crate::process::CsvDocument;
 
-use super::{RowlyApp, WorkspaceMode};
+use super::{CalculationCommand, RowlyApp, WorkspaceMode};
 
 impl RowlyApp {
     // {
@@ -102,6 +102,9 @@ impl RowlyApp {
                 self.switch_workspace_mode(WorkspaceMode::TextEditor)
             }
             Ok(CoreCommand::ShowViewer) => self.switch_workspace_mode(WorkspaceMode::Viewer),
+            Ok(CoreCommand::ShowCalculationEditor) => {
+                self.dispatch_calculation_command(CalculationCommand::Show)
+            }
             Err(error) => self.status = error,
         }
     }

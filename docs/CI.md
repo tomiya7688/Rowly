@@ -6,7 +6,7 @@
 
 Windows を公式対応 OS、Ubuntu を準対応 OS とする。CI の両 OS 実行は、Ubuntu を Windows と同一の公式サポートへ格上げするものではない。
 
-`.github/workflows/ci.yml` は既存の `push` / `pull_request` を対象とし、Rust stable と Python 3.12 を使って `windows-latest` / `ubuntu-latest` の両方で検証する。ランナーの具体的な OS イメージや Rust のパッチバージョンは固定せず、各実行のログで確認する。
+`.github/workflows/ci.yml` は既存の `push` / `pull_request` を対象とし、Rust 1.98.1 と Python 3.12.10を使って `windows-latest` / `ubuntu-latest` の両方で検証します。Rustとrustfmt・Clippyは、ローカルの `rust-toolchain.toml` とCIで同じバージョンに固定しています。ランナーの具体的なOSイメージは各実行のログで確認してください。
 
 ## ジョブ構成
 
@@ -23,7 +23,7 @@ packaged Rowly だけで実 XLSX fixture を import / export
 生成 CSV を CsvDocument で再 open して値を検証
 ```
 
-`fail-fast: false` により、片方の OS が失敗しても他方の検証を打ち切らない。各 OS ジョブには20分の上限を設定する。
+`fail-fast: false` により、片方のOSが失敗しても他方の検証を打ち切りません。各OSジョブには35分の上限を設定しています。
 
 従来のチェック名 `rust` は集約ジョブとして維持する。`always()` で両 OS の結果を評価し、matrix 全体が `success` のときだけ成功する。失敗・キャンセル・スキップを成功とみなさない。既存のブランチ保護設定自体はこの変更で更新しない。
 

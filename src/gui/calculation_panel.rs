@@ -173,7 +173,7 @@ impl RowlyApp {
             CalculationCommand::Recalculate => self.recalculate_calculations(),
             CalculationCommand::Show => {
                 self.mode = WorkspaceMode::TableEditor;
-                self.status = "選択cellのCalculation Editorを表示しました".to_owned();
+                self.status = "Table EditorのCalculation欄を表示しました".to_owned();
             }
         }
     }
@@ -192,7 +192,8 @@ impl RowlyApp {
     }
 
     // {
-    //   責務: [handle_calculation_shortcuts: Table Editor用のcalculation keyboard shortcutを処理する。]
+    //   責務: [handle_calculation_shortcuts: Table Editorで計算規則の登録・削除・再計算のshortcutを処理する。]
+    //   処理: [テキスト入力中の実行を避け、計算欄表示のshortcutは共通Registryへ任せる。]
     //   引数: [self: GUI操作対象。 ctx: shortcutとkeyboard focusの参照元。]
     //   戻り値: [(): shortcutに対応するstable commandをdispatchする。]
     // }
@@ -200,13 +201,12 @@ impl RowlyApp {
         if self.mode != WorkspaceMode::TableEditor || ctx.wants_keyboard_input() {
             return;
         }
-        let (bind, unbind, recalculate, show) = ctx.input(|input| {
+        let (bind, unbind, recalculate) = ctx.input(|input| {
             let command = input.modifiers.command;
             (
                 command && input.key_pressed(egui::Key::Enter),
                 command && input.modifiers.shift && input.key_pressed(egui::Key::K),
                 input.key_pressed(egui::Key::F9),
-                command && input.modifiers.shift && input.key_pressed(egui::Key::F),
             )
         });
         if bind {
@@ -215,8 +215,6 @@ impl RowlyApp {
             self.dispatch_calculation_command(CalculationCommand::Unbind);
         } else if recalculate {
             self.dispatch_calculation_command(CalculationCommand::Recalculate);
-        } else if show {
-            self.dispatch_calculation_command(CalculationCommand::Show);
         }
     }
 

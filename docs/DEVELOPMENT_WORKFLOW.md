@@ -79,6 +79,14 @@ base SHA: <コードを取得したcommit>
 
 ## 検証・レビュー・完了
 
+### Rustの整形
+
+repoルートの `rust-toolchain.toml` はRust 1.98.1と同梱のrustfmt・Clippyを指定しています。開発環境にはrustupを導入してください。repo内でCargoを実行すると、rustupが指定toolchainを選択します。CIも同じRustバージョンを使用します。
+
+実装後、変更したRustファイルをrepoルートから `rustfmt --edition 2024 --config skip_children=true <変更ファイルのpath...>` で整形してください。`skip_children=true` は親moduleから担当外の子moduleまで再帰的に書き換えることを防ぎます。変更ファイルをすべて明示し、生成物、vendor、キャッシュ、他者のdirty変更は対象に含めないでください。
+
+整形後は `cargo fmt --all -- --check` で、CIと同じ書換えなしの検査を実行してください。指摘を修正した場合も、変更ファイルを再整形してから関連テストとレビューを行ってください。
+
 機能変更では最小の関連テストから始め、CIで必要なformat、Clippy、build、testを確認してください。具体的なコマンドと配布物検証は [`CI.md`](CI.md) と [CI定義](../.github/workflows/ci.yml) を参照してください。文書だけの変更ではリンク、参照先、テンプレートの必須項目、文章と事実の一致を確認してください。
 
 レビュー担当は、実装担当の説明に加えて差分と根拠を確認してください。別のAIを使ったことだけで独立レビューの合格証拠にしないでください。懸念・指摘がない場合も、確認した範囲と未確認の境界を残してください。

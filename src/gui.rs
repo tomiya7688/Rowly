@@ -11,6 +11,9 @@ use crate::gui_commands::{
     CommandRegistry, CommandRegistryError, CoreCommand, core_command_definitions,
 };
 
+#[cfg(test)]
+#[path = "gui/calculation_command_tests.rs"]
+mod calculation_command_tests;
 #[path = "gui/command_dispatch.rs"]
 mod command_dispatch;
 #[cfg(test)]

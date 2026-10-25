@@ -4,7 +4,7 @@ use super::{CommandDefinition, CommandFocus, CommandMode, CommandScope};
 
 // {
 //   責務: [CoreCommand: 共通Registryを通して実行するGUIの基本操作を識別する。],
-//   フィールド: [Open: path欄のCSVまたはprojectを開く。 Save: CSVとprojectの生成設定を保存する。 Undo/Redo: CSV編集履歴を移動する。 ApplyCsvText: 編集用テキストをCSVへ適用する。 ShowTableEditor/ShowTextEditor/ShowViewer: 指定した作業画面を表示する。]
+//   フィールド: [Open: path欄のCSVまたはprojectを開く。 Save: CSVとprojectの生成設定を保存する。 Undo/Redo: CSV編集履歴を移動する。 ApplyCsvText: 編集用テキストをCSVへ適用する。 ShowTableEditor/ShowTextEditor/ShowViewer: 指定した作業画面を表示する。 ShowCalculationEditor: Table Editorの計算欄を表示する。]
 // }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CoreCommand {
@@ -16,6 +16,7 @@ pub enum CoreCommand {
     ShowTableEditor,
     ShowTextEditor,
     ShowViewer,
+    ShowCalculationEditor,
 }
 
 impl CoreCommand {
@@ -44,12 +45,13 @@ impl CoreCommand {
             Self::ShowTableEditor => "view.table_editor",
             Self::ShowTextEditor => "view.text_editor",
             Self::ShowViewer => "view.viewer",
+            Self::ShowCalculationEditor => "calculation.show",
         }
     }
 }
 
 // {
-//   責務: [core_command_definitions: ファイル・履歴・テキスト適用・画面切替の共通metadataを作る。],
+//   責務: [core_command_definitions: ファイル・履歴・テキスト適用・画面切替・計算欄表示の共通metadataを作る。],
 //   処理: [scope・動的enabled条件・shortcut・Alt階層を各操作へ設定する。],
 //   引数: [],
 //   戻り値: [Vec<CommandDefinition<CoreCommand>>: Registryへ登録する基本操作の定義。],
@@ -164,6 +166,23 @@ pub fn core_command_definitions() -> Vec<CommandDefinition<CoreCommand>> {
             shortcuts: vec![],
             keytips_path: &["V", "V"],
             action: CoreCommand::ShowViewer,
+        },
+        CommandDefinition {
+            id: CoreCommand::ShowCalculationEditor.id(),
+            name: "計算エディターを表示",
+            description: "開いているCSVの計算式を編集できるTable EditorのCalculation欄を表示します。未適用のCSVテキストは保持します。",
+            category: "計算",
+            scope: non_modal_scope,
+            enabled: |context| context.has_document,
+            shortcuts: vec![KeyboardShortcut::new(
+                Modifiers {
+                    shift: true,
+                    ..Modifiers::COMMAND
+                },
+                Key::F,
+            )],
+            keytips_path: &["C", "S"],
+            action: CoreCommand::ShowCalculationEditor,
         },
     ]
 }

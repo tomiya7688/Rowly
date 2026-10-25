@@ -6,7 +6,7 @@ menu、toolbar、shortcut、Command Palette、Alt KeyTipsが別々の操作定�
 
 共有契約の実装入口は `src/gui_commands.rs` です。`CommandRegistry` は画面やCSVを所有せず、検査に成功したactionをadapterのhandlerへ渡します。実際のCSV操作はGUI adapterから既存のprocess APIへ接続してください。
 
-既存GUIのOpen・Save・Undo・Redoは、menu・toolbar・専用shortcutから共有Registryを通して実行します。Table Editor・Text Editor・Viewerへの画面切替も、View menuとtoolbarから共有Registryを通して実行します。Text EditorのCSVテキスト適用も、Edit menu・toolbar・Altから共有Registryを通して実行します。ファイル・履歴・テキスト適用・画面切替のAlt表示と階層操作もRegistryを使います。Command Paletteと残るGUI操作のAlt経路は未接続です。KeyTips metadataの登録成功は、実GUIでAltから到達できることの証拠にはなりません。Palette、残るGUI操作のKeyTips接続、GUI実操作の確認は #109 / #113で続けます。
+既存GUIのOpen・Save・Undo・Redoは、menu・toolbar・専用shortcutから共有Registryを通して実行します。Table Editor・Text Editor・Viewerへの画面切替も、View menuとtoolbarから共有Registryを通して実行します。Text EditorのCSVテキスト適用も、Edit menu・toolbar・Altから共有Registryを通して実行します。計算欄表示はFormulas menu・専用shortcut・Altから共有Registryを通して実行します。ファイル・履歴・テキスト適用・画面切替・計算欄表示のAlt表示と階層操作もRegistryを使います。Command Paletteと残るGUI操作のAlt経路は未接続です。KeyTips metadataの登録成功は、実GUIでAltから到達できることの証拠にはなりません。Palette、残るGUI操作のKeyTips接続、GUI実操作の確認は #109 / #113で続けます。
 
 ## 登録情報
 
@@ -75,13 +75,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 既存GUIへの接続
 
-`src/gui/command_dispatch.rs` は、GUI状態からcontextを作り、Registryが許可した操作を `open_csv`・`save_csv`・`undo`・`redo`・`apply_code_buffer`・`switch_workspace_mode` へ渡します。ファイル・履歴・テキスト適用・画面切替のmenu・toolbarは、Registryの表示名・説明・enabled条件を使います。画面のbuttonを押した後にも現在contextを再検査します。Registryの登録失敗は起動時のstatusへ表示し、Registryに登録した基本操作を提供しません。
+`src/gui/command_dispatch.rs` は、GUI状態からcontextを作り、Registryが許可した操作を `open_csv`・`save_csv`・`undo`・`redo`・`apply_code_buffer`・`switch_workspace_mode`・`dispatch_calculation_command` へ渡します。ファイル・履歴・テキスト適用・画面切替のmenu・toolbarは、Registryの表示名・説明・enabled条件を使います。Formulas menuの［計算エディターを表示］もRegistryの表示名・説明・enabled条件を使います。画面のbuttonを押した後にも現在contextを再検査します。Registryの登録失敗は起動時のstatusへ表示し、Registryに登録した基本操作を提供しません。
 
 focusはeguiのmodal layerを最優先します。inline cell編集中、またはfocus中のwidgetがTextEditの場合は `TextInput` とし、CSV履歴のUndo/Redoを無効にします。Text EditorではCSV履歴を呼ばず、CSV text widget自身のUndo/Redoを使います。HelpとViewerでもOpen/Saveの共通条件を使い、Viewerの通常focusではCSV履歴を実行できます。未適用CSV textがある場合、別modeへ移った後もSaveを無効にします。
 
 shortcutはgridやtext widgetの描画前に、押下イベント自身のmodifierとlogical keyを使って照合します。登録定義とscopeが一致した押下だけを消費します。text入力へfocus中のUndo/Redoや未登録のkeyはwidgetへ残します。scopeが一致した候補は、有効状態にかかわらず消費します。実行時の最新状態で無効な場合はstatusへ拒否理由を表示します。長押しのrepeatイベントは消費しますが、同じ操作を繰り返しません。同frameの複数の押下も、操作ごとに最新contextで再検査します。たとえばUndoに続くRedoは、Undo後に利用可能になった履歴を参照します。
 
 ### 基本操作の実行方法
+
+CSVを開いた状態で計算式の編集欄を表示するには、Formulas menuの［計算エディターを表示］、Ctrl+Shift+F、Alt → C → Sのいずれかを実行してください。RowlyはTable EditorのCalculation欄を表示します。計算欄表示ではCSV、履歴、未適用のCSVテキスト、編集中のセル値、計算式を変更しません。
+
+計算欄表示は、CSVがあるTable Editor・Text Editor・Viewer・Helpのmodal外で有効です。従来Table Editorの通常focusで処理していたCtrl+Shift+Fも、menuとAltに合わせて全画面・テキスト入力中で有効にしています。計算欄表示の各GUI入口は `calculation.show` を共有し、既存の `CalculationCommand::Show` handlerへ委譲します。公開APIの `dispatch_calculation_command_id` はegui contextを受け取らない従来の入口として保持します。計算の登録・削除・再計算は、今回のRegistry接続の対象外です。
 
 1. toolbarのpath欄へCSVまたはproject（`.rwprj` / `.rowlyx`）のpathを入力し、［ファイルを開く］またはCtrl+Oを実行してください。Rowlyは指定したCSV、またはproject内で最初に宣言されたfile sourceを開きます。Table EditorまたはViewerでは読み込んだ表を表示し、Text EditorではCSV textを表示します。Help表示中はHelpを維持します。読み込み失敗時は現在のdocumentを保持し、statusへ理由を表示します。
 2. CSVへ適用済みの変更を保存するときは、［変更を保存］またはCtrl+Sを実行してください。CSV textの未適用変更がある場合は、Text Editorの［CSVテキストを適用］で変更を適用してください。Rowlyは未適用変更が残る間、保存を無効にします。project利用時は、CSVの保存成功後に計算規則とproject設定を保存します。設定保存の失敗時はstatusへ理由を表示しますが、先に成功したCSV保存は取り消しません。
@@ -103,7 +107,7 @@ toolbarまたはView menuで［Table Editor］、［Text Editor］、［Viewer�
 
 ## 登録済み基本操作のAlt階層
 
-修飾キーを併用せずAltを押して離すと、menu直下に現在のmodeとfocusで選べるキーを表示します。Fを押すとファイル操作、Eを押すと編集操作、Vを押すと画面切替の候補へ進みます。ファイル階層ではOでOpen、SでSaveを実行してください。編集階層では、Table EditorまたはViewerの通常focusでUによるUndo、RによるRedoを実行してください。Text EditorではAでCSVテキストを適用してください。表示階層ではEでTable Editor、CでText Editor、VでViewerへ切り替えてください。経路と表示名はRegistryから取得し、無効な操作はdisabled表示します。leafを選んだ時も共通dispatchが最新contextを検査します。
+修飾キーを併用せずAltを押して離すと、menu直下に現在のmodeとfocusで選べるキーを表示します。Fを押すとファイル操作、Eを押すと編集操作、Vを押すと画面切替、Cを押すと計算欄表示の候補へ進みます。計算階層ではSで計算エディターを表示してください。ファイル階層ではOでOpen、SでSaveを実行してください。編集階層では、Table EditorまたはViewerの通常focusでUによるUndo、RによるRedoを実行してください。Text EditorではAでCSVテキストを適用してください。表示階層ではEでTable Editor、CでText Editor、VでViewerへ切り替えてください。経路と表示名はRegistryから取得し、無効な操作はdisabled表示します。leafを選んだ時も共通dispatchが最新contextを検査します。
 
 Escは入力途中のlabelを消去するか、一階層戻ります。rootでEscを押すとKeyTipsを終了します。Altの再押下、windowのfocus喪失、modeまたはfocus中widgetの変更、mouse押下でもKeyTipsを終了します。Alt+Shiftなどの組合せでは開始しません。Shift併用またはIME入力に移った場合もKeyTipsを終了し、言語入力を保持します。階層選択に使った文字は入力欄へ配送しません。操作完了後に別のキーで入力した文字は保持します。
 
@@ -111,7 +115,7 @@ Escは入力途中のlabelを消去するか、一階層戻ります。rootでEs
 
 ## 最初の基本定義
 
-`core_command_definitions()` は以下の8定義を返します。Ctrl表記はWindows/Linuxのprimary modifierです。macOSではeguiの論理CommandによりCmdへ対応します。これはmodifier照合の契約であり、macOS GUIの実操作確認ではありません。
+`core_command_definitions()` は以下の9定義を返します。Ctrl表記はWindows/Linuxのprimary modifierです。macOSではeguiの論理CommandによりCmdへ対応します。これはmodifier照合の契約であり、macOS GUIの実操作確認ではありません。
 
 | ID | 専用shortcut | Alt経路metadata | 有効条件 |
 | --- | --- | --- | --- |
@@ -120,6 +124,7 @@ Escは入力途中のlabelを消去するか、一階層戻ります。rootでEs
 | `edit.undo` | Ctrl+Z | E → U | Table EditorまたはViewerの通常focus、CSVあり、Undo可能。 |
 | `edit.redo` | Ctrl+Y / Ctrl+Shift+Z | E → R | Table EditorまたはViewerの通常focus、CSVあり、Redo可能。 |
 | `edit.apply_csv_text` | なし | E → A | Text Editorのdialog外、CSVあり。 |
+| `calculation.show` | Ctrl+Shift+F | C → S | 全画面のdialog外、CSVあり。テキスト入力中も有効。 |
 | `view.table_editor` | なし | V → E | dialog外。CSVの有無にかかわらず有効。 |
 | `view.text_editor` | なし | V → C | dialog外。CSVの有無にかかわらず有効。 |
 | `view.viewer` | なし | V → V | dialog外。CSVの有無にかかわらず有効。 |
@@ -127,6 +132,8 @@ Escは入力途中のlabelを消去するか、一階層戻ります。rootでEs
 Import/Export、Calculation Binding、View grouping、Materializeなどの定義は、それぞれの操作をGUIへ接続する段階で追加します。未実装の操作を空handlerで登録して実行成功と扱わないでください。
 
 ## 確認方法と境界
+
+`cargo test --all-features gui::calculation_command_tests --lib` は、計算欄表示の全画面・focus・CSV有無による有効条件、Alt C Sと専用shortcutの共通dispatch、入力消費、CSV・履歴・未適用テキスト・編集中のセル値・計算式の保持を確認します。計算欄表示のテストもOSのwindowを作らない検証です。
 
 `cargo test --features gui gui::command_tests --lib` は、実CsvDocumentとeguiの入力frameで基本4操作のAlt経路、保存拒否、入力消費、長押し、focusとmodal、取消を確認します。OSのwindowを作らない検証であり、実GUI操作とは区別します。
 

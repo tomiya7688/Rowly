@@ -7,7 +7,7 @@ use super::{CalculationCommand, HelpDocument, HelpTarget, RowlyApp, WorkspaceMod
 impl RowlyApp {
     // {
     //   責務: [show_menu: ファイル・編集・計算・表示・ヘルプのmenuを描画し、選択操作を実行する。]
-    //   処理: [ファイル・履歴・テキスト適用・画面切替はRegistryの定義から描画し、選択を共通dispatchへ渡す。計算とヘルプは既存handlerへ渡す。]
+    //   処理: [ファイル・履歴・テキスト適用・画面切替・計算欄表示はRegistryの定義から描画し、選択を共通dispatchへ渡す。計算の更新とヘルプは既存handlerへ渡す。]
     //   引数: [self: 表示状態と操作対象document。 ctx: menu描画先。]
     //   戻り値: [(): menu表示と選択された操作を反映する。]
     // }
@@ -16,7 +16,6 @@ impl RowlyApp {
         let mut calculation_apply_requested = false;
         let mut calculation_recalculate_requested = false;
         let mut calculation_remove_requested = false;
-        let mut calculation_show_requested = false;
         let mut help_target = None;
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -44,11 +43,8 @@ impl RowlyApp {
                 });
                 ui.menu_button("Formulas", |ui| {
                     let has_document = self.document.is_some();
-                    if ui
-                        .add_enabled(has_document, egui::Button::new("Show Calculation Editor"))
-                        .clicked()
-                    {
-                        calculation_show_requested = true;
+                    if self.show_core_command_button(ui, CoreCommand::ShowCalculationEditor, true) {
+                        command_requested = Some(CoreCommand::ShowCalculationEditor);
                         ui.close_menu();
                     }
                     if ui
@@ -109,9 +105,6 @@ impl RowlyApp {
         }
         if calculation_remove_requested {
             self.dispatch_calculation_command(CalculationCommand::Unbind);
-        }
-        if calculation_show_requested {
-            self.dispatch_calculation_command(CalculationCommand::Show);
         }
         if let Some(target) = help_target {
             self.open_help_target(target);

@@ -7,7 +7,7 @@ use super::{CalculationCommand, HelpDocument, HelpTarget, RowlyApp, WorkspaceMod
 impl RowlyApp {
     // {
     //   責務: [show_menu: ファイル・編集・計算・表示・ヘルプのmenuを描画し、選択操作を実行する。]
-    //   処理: [ファイル・履歴・画面切替はRegistryの定義から描画し、選択を共通dispatchへ渡す。計算とヘルプは既存handlerへ渡す。]
+    //   処理: [ファイル・履歴・テキスト適用・画面切替はRegistryの定義から描画し、選択を共通dispatchへ渡す。計算とヘルプは既存handlerへ渡す。]
     //   引数: [self: 表示状態と操作対象document。 ctx: menu描画先。]
     //   戻り値: [(): menu表示と選択された操作を反映する。]
     // }
@@ -31,7 +31,11 @@ impl RowlyApp {
                     }
                 });
                 ui.menu_button("Edit", |ui| {
-                    for command in [CoreCommand::Undo, CoreCommand::Redo] {
+                    for command in [
+                        CoreCommand::Undo,
+                        CoreCommand::Redo,
+                        CoreCommand::ApplyCsvText,
+                    ] {
                         if self.show_core_command_button(ui, command, true) {
                             command_requested = Some(command);
                             ui.close_menu();
@@ -130,7 +134,6 @@ impl RowlyApp {
         let mut insert_column_requested = false;
         let mut delete_column_requested = false;
         let mut navigate_requested = false;
-        let mut apply_code_requested = false;
         let mut project_source_changed = false;
         let previous_project_source = self.project_source_id.clone();
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
@@ -167,11 +170,9 @@ impl RowlyApp {
                     }
                 }
                 if self.mode == WorkspaceMode::TextEditor
-                    && ui
-                        .add_enabled(self.document.is_some(), egui::Button::new("Apply Code"))
-                        .clicked()
+                    && self.show_core_command_button(ui, CoreCommand::ApplyCsvText, false)
                 {
-                    apply_code_requested = true;
+                    command_requested = Some(CoreCommand::ApplyCsvText);
                 }
                 for command in [CoreCommand::Undo, CoreCommand::Redo] {
                     if self.show_core_command_button(ui, command, false) {
@@ -242,9 +243,6 @@ impl RowlyApp {
         }
         if navigate_requested {
             self.navigate_to_cell();
-        }
-        if apply_code_requested {
-            self.apply_code_buffer();
         }
     }
 }

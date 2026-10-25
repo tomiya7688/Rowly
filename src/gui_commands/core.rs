@@ -4,7 +4,7 @@ use super::{CommandDefinition, CommandFocus, CommandMode, CommandScope};
 
 // {
 //   責務: [CoreCommand: 共通Registryを通して実行するGUIの基本操作を識別する。],
-//   フィールド: [Open: path欄のCSVまたはprojectを開く。 Save: CSVとprojectの生成設定を保存する。 Undo/Redo: CSV編集履歴を移動する。 ShowTableEditor/ShowTextEditor/ShowViewer: 指定した作業画面を表示する。]
+//   フィールド: [Open: path欄のCSVまたはprojectを開く。 Save: CSVとprojectの生成設定を保存する。 Undo/Redo: CSV編集履歴を移動する。 ApplyCsvText: 編集用テキストをCSVへ適用する。 ShowTableEditor/ShowTextEditor/ShowViewer: 指定した作業画面を表示する。]
 // }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CoreCommand {
@@ -12,6 +12,7 @@ pub enum CoreCommand {
     Save,
     Undo,
     Redo,
+    ApplyCsvText,
     ShowTableEditor,
     ShowTextEditor,
     ShowViewer,
@@ -39,6 +40,7 @@ impl CoreCommand {
             Self::Save => "file.save",
             Self::Undo => "edit.undo",
             Self::Redo => "edit.redo",
+            Self::ApplyCsvText => "edit.apply_csv_text",
             Self::ShowTableEditor => "view.table_editor",
             Self::ShowTextEditor => "view.text_editor",
             Self::ShowViewer => "view.viewer",
@@ -47,7 +49,7 @@ impl CoreCommand {
 }
 
 // {
-//   責務: [core_command_definitions: ファイル・履歴・画面切替の共通metadataを作る。],
+//   責務: [core_command_definitions: ファイル・履歴・テキスト適用・画面切替の共通metadataを作る。],
 //   処理: [scope・動的enabled条件・shortcut・Alt階層を各操作へ設定する。],
 //   引数: [],
 //   戻り値: [Vec<CommandDefinition<CoreCommand>>: Registryへ登録する基本操作の定義。],
@@ -115,6 +117,20 @@ pub fn core_command_definitions() -> Vec<CommandDefinition<CoreCommand>> {
             ],
             keytips_path: &["E", "R"],
             action: CoreCommand::Redo,
+        },
+        CommandDefinition {
+            id: CoreCommand::ApplyCsvText.id(),
+            name: "CSVテキストを適用",
+            description: "Text EditorのCSVテキストを検証して表へ適用します。ファイルへ保存するには、適用後に［変更を保存］を実行してください。",
+            category: "編集",
+            scope: CommandScope {
+                modes: &[CommandMode::TextEditor],
+                focuses: non_modal_scope.focuses,
+            },
+            enabled: |context| context.has_document,
+            shortcuts: vec![],
+            keytips_path: &["E", "A"],
+            action: CoreCommand::ApplyCsvText,
         },
         CommandDefinition {
             id: CoreCommand::ShowTableEditor.id(),

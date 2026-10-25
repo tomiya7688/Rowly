@@ -94,6 +94,7 @@ impl RowlyApp {
             Ok(CoreCommand::Save) => self.save_csv(),
             Ok(CoreCommand::Undo) => self.undo(),
             Ok(CoreCommand::Redo) => self.redo(),
+            Ok(CoreCommand::ApplyCsvText) => self.apply_code_buffer(),
             Ok(CoreCommand::ShowTableEditor) => {
                 self.switch_workspace_mode(WorkspaceMode::TableEditor)
             }

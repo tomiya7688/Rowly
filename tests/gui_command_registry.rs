@@ -34,9 +34,14 @@ fn editable_context() -> CommandContext {
 #[test]
 fn ids_and_all_shortcut_aliases_use_the_same_action() -> Result<(), Box<dyn Error>> {
     let registry = CommandRegistry::new(core_command_definitions())?;
-    let context = editable_context();
-    assert_eq!(registry.commands().len(), 7);
+    assert_eq!(registry.commands().len(), 8);
     for definition in registry.commands() {
+        // Registryは空scopeを拒否するため、各定義の先頭mode/focusを有効なfixtureに使える。
+        let context = CommandContext {
+            mode: definition.scope.modes[0],
+            focus: definition.scope.focuses[0],
+            ..editable_context()
+        };
         assert_eq!(definition.id, definition.action.id());
         let mut calls = 0;
         let by_id = registry.dispatch(definition.id, &context, |action| {

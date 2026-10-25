@@ -19,6 +19,9 @@ mod command_tests;
 #[path = "gui/keytips.rs"]
 mod keytips;
 #[cfg(test)]
+#[path = "gui/text_command_tests.rs"]
+mod text_command_tests;
+#[cfg(test)]
 #[path = "gui/workspace_command_tests.rs"]
 mod workspace_command_tests;
 

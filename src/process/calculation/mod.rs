@@ -7,6 +7,7 @@ mod engine;
 mod expression;
 mod graph;
 mod indexes;
+mod recalculation;
 mod types;
 
 pub use engine::CalculationEngine;

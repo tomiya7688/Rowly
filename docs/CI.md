@@ -14,6 +14,7 @@ Windows を公式対応 OS、Ubuntu を準対応 OS とする。CI の両 OS 実
 
 ```text
 固定版 Python runtime / openpyxl / PyInstaller 依存の準備
+Blackによる整形ツールsource検査とstable rustfmt対象限定契約の回帰
 cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo build --all-targets --all-features

@@ -29,7 +29,11 @@ jobs:
         with:
           python-version: "3.12.10"
       - name: Python runtime / build 依存を準備
-        run: python -m pip install -r python/requirements.txt -r python/build-requirements.txt
+        run: python -m pip install -r python/requirements.txt -r python/build-requirements.txt -r python/dev-requirements.txt
+      - name: 整形ツールのPython sourceを検証
+        run: python -m black --check tools/format_rust.py tools/test_format_rust.py
+      - name: stable rustfmtの対象限定契約を検証
+        run: python tools/test_format_rust.py
       - name: Rust の整形を検証
         run: cargo fmt --all -- --check
       - name: Rust の警告を検証

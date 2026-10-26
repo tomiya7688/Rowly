@@ -1,3 +1,4 @@
+use crate::gui_commands::CoreCommand;
 use eframe::egui;
 
 use crate::{
@@ -38,6 +39,23 @@ impl RowlyApp {
         let mut recalculate_requested = false;
         let mut remove_requested = false;
         let mut show_raw_csv_requested = false;
+        // 描画中は計算式を編集するため、先にRegistryから表示情報と有効条件を取得する。
+        let recalculate_button = self.command_registry.as_ref().ok().and_then(|registry| {
+            registry
+                .commands()
+                .find(|entry| entry.action == CoreCommand::Recalculate)
+                .map(|entry| {
+                    (
+                        entry.name,
+                        entry.description,
+                        entry.is_enabled(&self.command_context(ui.ctx())),
+                        entry
+                            .shortcuts
+                            .first()
+                            .map(|shortcut| ui.ctx().format_shortcut(shortcut)),
+                    )
+                })
+        });
         let raw_csv_value = self
             .document
             .as_ref()
@@ -56,12 +74,11 @@ impl RowlyApp {
                         .hint_text("CellValue(\"A1\") * Integer(2)")
                         .desired_width(300.0),
                 );
-                let (apply_shortcut, recalculate_shortcut, remove_shortcut) =
+                let (apply_shortcut, remove_shortcut) =
                     ui.input(|input| {
                         let command = input.modifiers.command;
                         (
                             command && input.key_pressed(egui::Key::Enter),
-                            input.key_pressed(egui::Key::F9),
                             command
                                 && input.modifiers.shift
                                 && input.key_pressed(egui::Key::K),
@@ -74,9 +91,6 @@ impl RowlyApp {
                     && ui.input(|input| input.key_pressed(egui::Key::Enter))
                 {
                     apply_requested = true;
-                }
-                if expression_response.has_focus() && recalculate_shortcut {
-                    recalculate_requested = true;
                 }
                 if expression_response.has_focus() && remove_shortcut {
                     remove_requested = true;
@@ -98,13 +112,17 @@ impl RowlyApp {
                             "Manual",
                         );
                     });
-                if ui.button("Apply").clicked() {
+                if ui.button("計算規則を登録").clicked() {
                     apply_requested = true;
                 }
-                if ui.button("Recalculate").clicked() {
-                    recalculate_requested = true;
+                if let Some((name, description, enabled, shortcut)) = &recalculate_button {
+                    let mut button = egui::Button::new(*name);
+                    if let Some(shortcut) = shortcut { button = button.shortcut_text(shortcut); }
+                    if ui.add_enabled(*enabled, button).on_hover_text(*description).clicked() {
+                        recalculate_requested = true;
+                    }
                 }
-                if ui.button("Remove").clicked() {
+                if ui.button("計算規則を削除").clicked() {
                     remove_requested = true;
                 }
             });
@@ -143,7 +161,7 @@ impl RowlyApp {
             self.dispatch_calculation_command(CalculationCommand::Bind);
         }
         if recalculate_requested {
-            self.dispatch_calculation_command(CalculationCommand::Recalculate);
+            self.dispatch_core_command(ui.ctx(), CoreCommand::Recalculate);
         }
         if remove_requested {
             self.dispatch_calculation_command(CalculationCommand::Unbind);
@@ -192,8 +210,8 @@ impl RowlyApp {
     }
 
     // {
-    //   責務: [handle_calculation_shortcuts: Table Editorで計算規則の登録・削除・再計算のshortcutを処理する。]
-    //   処理: [テキスト入力中の実行を避け、計算欄表示のshortcutは共通Registryへ任せる。]
+    //   責務: [handle_calculation_shortcuts: Table Editorで計算規則の登録・削除のshortcutを処理する。]
+    //   処理: [テキスト入力中の実行を避け、計算欄表示と再計算のshortcutは共通Registryへ任せる。]
     //   引数: [self: GUI操作対象。 ctx: shortcutとkeyboard focusの参照元。]
     //   戻り値: [(): shortcutに対応するstable commandをdispatchする。]
     // }
@@ -201,20 +219,17 @@ impl RowlyApp {
         if self.mode != WorkspaceMode::TableEditor || ctx.wants_keyboard_input() {
             return;
         }
-        let (bind, unbind, recalculate) = ctx.input(|input| {
+        let (bind, unbind) = ctx.input(|input| {
             let command = input.modifiers.command;
             (
                 command && input.key_pressed(egui::Key::Enter),
                 command && input.modifiers.shift && input.key_pressed(egui::Key::K),
-                input.key_pressed(egui::Key::F9),
             )
         });
         if bind {
             self.dispatch_calculation_command(CalculationCommand::Bind);
         } else if unbind {
             self.dispatch_calculation_command(CalculationCommand::Unbind);
-        } else if recalculate {
-            self.dispatch_calculation_command(CalculationCommand::Recalculate);
         }
     }
 

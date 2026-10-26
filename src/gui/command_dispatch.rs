@@ -105,6 +105,9 @@ impl RowlyApp {
             Ok(CoreCommand::ShowCalculationEditor) => {
                 self.dispatch_calculation_command(CalculationCommand::Show)
             }
+            Ok(CoreCommand::Recalculate) => {
+                self.dispatch_calculation_command(CalculationCommand::Recalculate)
+            }
             Err(error) => self.status = error,
         }
     }

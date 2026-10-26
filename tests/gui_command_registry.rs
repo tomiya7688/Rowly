@@ -34,7 +34,7 @@ fn editable_context() -> CommandContext {
 #[test]
 fn ids_and_all_shortcut_aliases_use_the_same_action() -> Result<(), Box<dyn Error>> {
     let registry = CommandRegistry::new(core_command_definitions())?;
-    assert_eq!(registry.commands().len(), 9);
+    assert_eq!(registry.commands().len(), 10);
     for definition in registry.commands() {
         // Registryは空scopeを拒否するため、各定義の先頭mode/focusを有効なfixtureに使える。
         let context = CommandContext {

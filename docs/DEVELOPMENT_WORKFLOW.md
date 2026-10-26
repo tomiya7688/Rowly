@@ -89,7 +89,7 @@ repoルートの `rust-toolchain.toml` はRust 1.98.1と同梱のrustfmt・Clipp
 
 指定ファイルだけを確認する場合は `python tools/format_rust.py --check <path...>` を実行してください。未整形なら終了コード1を返し、ファイルは書き換えません。整形後は `cargo fmt --all -- --check` でCIと同じ全体検査も実行してください。指摘を修正した場合も、変更ファイルを再整形してから関連テストとレビューを行ってください。
 
-整形ツールの開発では、開発用Python環境へ `python -m pip install -r python/dev-requirements.txt` でBlack 24.10.0を導入してください。変更したPythonファイルだけを `python -m black tools/format_rust.py tools/test_format_rust.py` で整形し、同じコマンドの `--check` で確認してください。`python tools/test_format_rust.py` は親だけの整形、check時の非書換え、解析失敗時の保持、範囲外や生成物の拒否、LF／CRLFの保持、repo設定と明示した改行設定の優先を検証します。ローカルのfixture作成先は `ROWLY_FORMAT_TEST_ROOT` へEドライブのpathを指定してください。未指定のCIではrepoの `target/formatter-tests` を使います。
+整形ツールの開発では、開発用Python環境へ `python -m pip install -r python/dev-requirements.txt` でBlack 24.10.0を導入してください。変更したPythonファイルだけを `python -m black tools/format_rust.py tools/test_format_rust.py` で整形し、同じコマンドの `--check` で確認してください。`python tools/test_format_rust.py` は親だけの整形、check時の非書換え、解析失敗時の保持、範囲外や生成物の拒否、LF／CRLFの保持、repo設定と明示した改行設定の優先を検証します。Windowsのローカル環境では、`ROWLY_FORMAT_TEST_ROOT` に `E:/program_files/soft/claude/tmp/rowly-formatter-tests` を指定してください。Ubuntuでは環境変数を省略するとrepoの `target/formatter-tests` を使います。CIも環境変数を省略し、同じ既定pathを使います。
 
 機能変更では最小の関連テストから始め、CIで必要なformat、Clippy、build、testを確認してください。具体的なコマンドと配布物検証は [`CI.md`](CI.md) と [CI定義](../.github/workflows/ci.yml) を参照してください。文書だけの変更ではリンク、参照先、テンプレートの必須項目、文章と事実の一致を確認してください。
 

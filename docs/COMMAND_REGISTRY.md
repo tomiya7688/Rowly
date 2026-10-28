@@ -131,7 +131,6 @@ Escは入力途中のlabelを消去するか、一階層戻ります。rootでEs
 | `calculation.recalculate` | F9 | C → R | 全画面のdialog外、CSVあり。テキスト入力中も有効。 |
 | `calculation.unbind` | Ctrl+Shift+K | C → U | Table Editorのmodal外の通常領域または計算式入力欄、CSVあり。 |
 | `calculation.bind` | Ctrl+Enter | C → B | Table Editorのmodal外の通常領域または計算式入力欄、CSVあり。 |
-
 | `view.table_editor` | なし | V → E | dialog外。CSVの有無にかかわらず有効。 |
 | `view.text_editor` | なし | V → C | dialog外。CSVの有無にかかわらず有効。 |
 | `view.viewer` | なし | V → V | dialog外。CSVの有無にかかわらず有効。 |

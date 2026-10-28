@@ -2,18 +2,17 @@ use eframe::egui;
 
 use crate::{gui_commands::CoreCommand, project::SourceKind};
 
-use super::{CalculationCommand, HelpDocument, HelpTarget, RowlyApp, WorkspaceMode};
+use super::{HelpDocument, HelpTarget, RowlyApp, WorkspaceMode};
 
 impl RowlyApp {
     // {
     //   責務: [show_menu: ファイル・編集・計算・表示・ヘルプのmenuを描画し、選択操作を実行する。]
-    //   処理: [ファイル・履歴・テキスト適用・画面切替・計算欄表示・再計算はRegistryから描画し、共通dispatchへ渡す。計算規則の登録と削除、ヘルプは既存handlerへ渡す。]
+    //   処理: [ファイル・履歴・テキスト適用・画面切替・計算操作をRegistryから描画し、共通dispatchへ渡す。ヘルプは既存handlerへ渡す。]
     //   引数: [self: 表示状態と操作対象document。 ctx: menu描画先。]
     //   戻り値: [(): menu表示と選択された操作を反映する。]
     // }
     pub(super) fn show_menu(&mut self, ctx: &egui::Context) {
         let mut command_requested = None;
-        let mut calculation_apply_requested = false;
         let mut help_target = None;
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -40,16 +39,12 @@ impl RowlyApp {
                     }
                 });
                 ui.menu_button("Formulas", |ui| {
-                    let has_document = self.document.is_some();
                     if self.show_core_command_button(ui, CoreCommand::ShowCalculationEditor, true) {
                         command_requested = Some(CoreCommand::ShowCalculationEditor);
                         ui.close_menu();
                     }
-                    if ui
-                        .add_enabled(has_document, egui::Button::new("Apply to selected cell"))
-                        .clicked()
-                    {
-                        calculation_apply_requested = true;
+                    if self.show_core_command_button(ui, CoreCommand::BindCalculation, true) {
+                        command_requested = Some(CoreCommand::BindCalculation);
                         ui.close_menu();
                     }
                     if self.show_core_command_button(ui, CoreCommand::Recalculate, true) {
@@ -92,9 +87,6 @@ impl RowlyApp {
         });
         if let Some(command) = command_requested {
             self.dispatch_core_command(ctx, command);
-        }
-        if calculation_apply_requested {
-            self.dispatch_calculation_command(CalculationCommand::Bind);
         }
         if let Some(target) = help_target {
             self.open_help_target(target);

@@ -12,8 +12,12 @@ use crate::gui_commands::{
 };
 
 #[cfg(test)]
+#[path = "gui/calculation_bind_tests.rs"]
+mod calculation_bind_tests;
+#[cfg(test)]
 #[path = "gui/calculation_command_tests.rs"]
 mod calculation_command_tests;
+
 #[cfg(test)]
 #[path = "gui/calculation_unbind_tests.rs"]
 mod calculation_unbind_tests;
@@ -391,7 +395,6 @@ impl eframe::App for RowlyApp {
         self.dispatch_keytips(ctx);
         self.dispatch_core_shortcuts(ctx);
         self.handle_grid_keys(ctx);
-        self.handle_calculation_shortcuts(ctx);
         self.show_menu(ctx);
         self.show_toolbar(ctx);
         self.show_external_conflicts(ctx);

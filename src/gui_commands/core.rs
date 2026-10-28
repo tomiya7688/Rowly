@@ -4,7 +4,7 @@ use super::{CommandDefinition, CommandFocus, CommandMode, CommandScope};
 
 // {
 //   責務: [CoreCommand: 共通Registryを通して実行するGUIの基本操作を識別する。],
-//   フィールド: [Open: path欄のCSVまたはprojectを開く。 Save: CSVとprojectの生成設定を保存する。 Undo/Redo: CSV編集履歴を移動する。 ApplyCsvText: 編集用テキストをCSVへ適用する。 ShowTableEditor/ShowTextEditor/ShowViewer: 指定した作業画面を表示する。 ShowCalculationEditor: 計算欄を表示する。 Recalculate: 開いているCSVの計算結果を更新する。 RemoveCalculationBinding: 選択範囲の計算規則を削除する。]
+//   フィールド: [Open: path欄のCSVまたはprojectを開く。 Save: CSVとprojectの生成設定を保存する。 Undo/Redo: CSV編集履歴を移動する。 ApplyCsvText: 編集用テキストをCSVへ適用する。 ShowTableEditor/ShowTextEditor/ShowViewer: 指定した作業画面を表示する。 ShowCalculationEditor: 計算欄を表示する。 Recalculate: 開いているCSVの計算結果を更新する。 BindCalculation: 選択範囲へ計算規則を登録する。 RemoveCalculationBinding: 選択範囲の計算規則を削除する。]
 // }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CoreCommand {
@@ -18,6 +18,7 @@ pub enum CoreCommand {
     ShowViewer,
     ShowCalculationEditor,
     Recalculate,
+    BindCalculation,
     RemoveCalculationBinding,
 }
 
@@ -49,6 +50,7 @@ impl CoreCommand {
             Self::ShowViewer => "view.viewer",
             Self::ShowCalculationEditor => "calculation.show",
             Self::Recalculate => "calculation.recalculate",
+            Self::BindCalculation => "calculation.bind",
             Self::RemoveCalculationBinding => "calculation.unbind",
         }
     }
@@ -198,6 +200,24 @@ pub fn core_command_definitions() -> Vec<CommandDefinition<CoreCommand>> {
             shortcuts: vec![KeyboardShortcut::new(Modifiers::NONE, Key::F9)],
             keytips_path: &["C", "R"],
             action: CoreCommand::Recalculate,
+        },
+        CommandDefinition {
+            id: CoreCommand::BindCalculation.id(),
+            name: "計算規則を登録",
+            description: "Table Editorの選択セルまたは範囲に入力した計算式を登録します。CSVの値は変更しません。",
+            category: "計算",
+            scope: CommandScope {
+                modes: &[CommandMode::TableEditor],
+                focuses: non_modal_scope.focuses,
+            },
+            enabled: |context| {
+                context.has_document
+                    && (context.focus == CommandFocus::Workspace
+                        || context.calculation_expression_focused)
+            },
+            shortcuts: vec![KeyboardShortcut::new(Modifiers::COMMAND, Key::Enter)],
+            keytips_path: &["C", "B"],
+            action: CoreCommand::BindCalculation,
         },
         CommandDefinition {
             id: CoreCommand::RemoveCalculationBinding.id(),

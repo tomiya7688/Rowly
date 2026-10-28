@@ -170,7 +170,7 @@ fn calculation_show_shortcut_uses_shared_dispatch() {
             assert_eq!(app.mode, WorkspaceMode::TableEditor);
             assert_eq!(app.status, "Table EditorのCalculation欄を表示しました");
             app.status = "consumed".to_owned();
-            app.handle_calculation_shortcuts(&ctx);
+            app.dispatch_core_shortcuts(&ctx);
             assert_eq!(app.status, "consumed");
             assert_eq!(app.edit_value, "unfinished");
         }
@@ -279,7 +279,7 @@ fn calculation_recalculate_routes_preserve_drafts() {
             Some(expected_f9.as_str())
         );
         app.status = "consumed".to_owned();
-        app.handle_calculation_shortcuts(&ctx);
+        app.dispatch_core_shortcuts(&ctx);
         assert_eq!(app.status, "consumed");
         assert_eq!(app.code_buffer, "unapplied\n");
         assert!(app.code_buffer_dirty);

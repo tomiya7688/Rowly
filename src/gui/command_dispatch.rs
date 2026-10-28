@@ -1,6 +1,8 @@
 use eframe::egui;
 
-use crate::gui_commands::{CommandContext, CommandFocus, CommandMode, CoreCommand};
+use crate::gui_commands::{
+    CommandContext, CommandDispatchError, CommandFocus, CommandMode, CoreCommand,
+};
 use crate::process::CsvDocument;
 
 use super::{CalculationCommand, RowlyApp, WorkspaceMode};
@@ -113,6 +115,9 @@ impl RowlyApp {
             Ok(CoreCommand::Recalculate) => {
                 self.dispatch_calculation_command(CalculationCommand::Recalculate)
             }
+            Ok(CoreCommand::BindCalculation) => {
+                self.dispatch_calculation_command(CalculationCommand::Bind)
+            }
             Ok(CoreCommand::RemoveCalculationBinding) => {
                 self.dispatch_calculation_command(CalculationCommand::Unbind)
             }
@@ -165,6 +170,14 @@ impl RowlyApp {
                 let result = registry.dispatch_shortcut(shortcut, &context, |action| *action);
                 match result {
                     None => true,
+                    Some(Err(CommandDispatchError::DisabledCommand(id)))
+                        if id == CoreCommand::BindCalculation.id()
+                            && context.focus == CommandFocus::TextInput
+                            && !context.calculation_expression_focused =>
+                    {
+                        // 他のテキスト欄に属するCtrl+Enterは、その欄へ配送する。
+                        true
+                    }
                     Some(_) => {
                         // 長押しによる再openと、同じ押下のwidgetへの二重配送を避ける。
                         if !repeat {

@@ -287,6 +287,12 @@ fn unbind_preserves_user_defined_binding() {
     app.project_session = Some(ProjectSession::open(&manifest).expect("project fixture"));
     app.project_source_id = Some("data".to_owned());
     let id = add_test_binding(&mut app);
+    app.calculation_expression = "Integer(8)".to_owned();
+    app.status = "登録要求前".to_owned();
+    app.dispatch_core_command(&egui::Context::default(), CoreCommand::BindCalculation);
+    assert!(app.status.contains("user.rly"));
+    assert!(app.calculation_engine.binding(&id).is_some());
+    assert!(!app.calculation_bindings_dirty);
     app.dispatch_core_command(
         &egui::Context::default(),
         CoreCommand::RemoveCalculationBinding,
@@ -312,6 +318,12 @@ fn unbind_preserves_user_defined_binding() {
         .expect("B1 binding fixture");
     app.selection_anchor = CellRef::new(0, 0);
     app.selection = CellRef::new(0, 1);
+    app.status = "範囲登録要求前".to_owned();
+    app.dispatch_core_command(&egui::Context::default(), CoreCommand::BindCalculation);
+    assert!(app.status.contains("user.rly"));
+    assert!(app.calculation_engine.binding(&id).is_some());
+    assert!(app.calculation_engine.binding(&gui_id).is_some());
+    assert!(!app.calculation_bindings_dirty);
     app.status = "範囲要求前".to_owned();
     app.dispatch_core_command(
         &egui::Context::default(),

@@ -1,6 +1,11 @@
 use crate::gui_commands::CoreCommand;
 use eframe::egui;
 
+// {
+//   責務: [CALCULATION_EXPRESSION_WIDGET_ID: 計算式入力欄のfocusをGUI操作の条件から識別する。]
+// }
+pub(super) const CALCULATION_EXPRESSION_WIDGET_ID: &str = "calculation-expression-input";
+
 use crate::{
     gui::{CalculationCommand, RowlyApp, WorkspaceMode},
     process::{
@@ -40,22 +45,30 @@ impl RowlyApp {
         let mut remove_requested = false;
         let mut show_raw_csv_requested = false;
         // 描画中は計算式を編集するため、先にRegistryから表示情報と有効条件を取得する。
-        let recalculate_button = self.command_registry.as_ref().ok().and_then(|registry| {
-            registry
-                .commands()
-                .find(|entry| entry.action == CoreCommand::Recalculate)
-                .map(|entry| {
-                    (
-                        entry.name,
-                        entry.description,
-                        entry.is_enabled(&self.command_context(ui.ctx())),
-                        entry
-                            .shortcuts
-                            .first()
-                            .map(|shortcut| ui.ctx().format_shortcut(shortcut)),
-                    )
+        let (recalculate_button, remove_button) = {
+            let button_info = |command| {
+                self.command_registry.as_ref().ok().and_then(|registry| {
+                    registry
+                        .commands()
+                        .find(|entry| entry.action == command)
+                        .map(|entry| {
+                            (
+                                entry.name,
+                                entry.description,
+                                entry.is_enabled(&self.command_context(ui.ctx())),
+                                entry
+                                    .shortcuts
+                                    .first()
+                                    .map(|shortcut| ui.ctx().format_shortcut(shortcut)),
+                            )
+                        })
                 })
-        });
+            };
+            (
+                button_info(CoreCommand::Recalculate),
+                button_info(CoreCommand::RemoveCalculationBinding),
+            )
+        };
         let raw_csv_value = self
             .document
             .as_ref()
@@ -71,18 +84,14 @@ impl RowlyApp {
                 ui.label("Expression");
                 let expression_response = ui.add(
                     egui::TextEdit::singleline(&mut self.calculation_expression)
+                        .id(egui::Id::new(CALCULATION_EXPRESSION_WIDGET_ID))
                         .hint_text("CellValue(\"A1\") * Integer(2)")
                         .desired_width(300.0),
                 );
-                let (apply_shortcut, remove_shortcut) =
+                let apply_shortcut =
                     ui.input(|input| {
                         let command = input.modifiers.command;
-                        (
-                            command && input.key_pressed(egui::Key::Enter),
-                            command
-                                && input.modifiers.shift
-                                && input.key_pressed(egui::Key::K),
-                        )
+                        command && input.key_pressed(egui::Key::Enter)
                     });
                 if expression_response.has_focus() && apply_shortcut {
                     apply_requested = true;
@@ -91,9 +100,6 @@ impl RowlyApp {
                     && ui.input(|input| input.key_pressed(egui::Key::Enter))
                 {
                     apply_requested = true;
-                }
-                if expression_response.has_focus() && remove_shortcut {
-                    remove_requested = true;
                 }
                 egui::ComboBox::from_id_salt("calculation_trigger")
                     .selected_text(match self.calculation_trigger {
@@ -122,8 +128,12 @@ impl RowlyApp {
                         recalculate_requested = true;
                     }
                 }
-                if ui.button("計算規則を削除").clicked() {
-                    remove_requested = true;
+                if let Some((name, description, enabled, shortcut)) = &remove_button {
+                    let mut button = egui::Button::new(*name);
+                    if let Some(shortcut) = shortcut { button = button.shortcut_text(shortcut); }
+                    if ui.add_enabled(*enabled, button).on_hover_text(*description).clicked() {
+                        remove_requested = true;
+                    }
                 }
             });
             let binding_id = CalculationBindingId::new(format!("dsl:{expression_target}")).ok();
@@ -164,7 +174,7 @@ impl RowlyApp {
             self.dispatch_core_command(ui.ctx(), CoreCommand::Recalculate);
         }
         if remove_requested {
-            self.dispatch_calculation_command(CalculationCommand::Unbind);
+            self.dispatch_core_command(ui.ctx(), CoreCommand::RemoveCalculationBinding);
         }
         if show_raw_csv_requested {
             if !self.code_buffer_dirty {
@@ -210,8 +220,8 @@ impl RowlyApp {
     }
 
     // {
-    //   責務: [handle_calculation_shortcuts: Table Editorで計算規則の登録・削除のshortcutを処理する。]
-    //   処理: [テキスト入力中の実行を避け、計算欄表示と再計算のshortcutは共通Registryへ任せる。]
+    //   責務: [handle_calculation_shortcuts: Table Editorで計算規則登録のshortcutを処理する。]
+    //   処理: [テキスト入力中の実行を避け、計算欄表示・再計算・削除のshortcutは共通Registryへ任せる。]
     //   引数: [self: GUI操作対象。 ctx: shortcutとkeyboard focusの参照元。]
     //   戻り値: [(): shortcutに対応するstable commandをdispatchする。]
     // }
@@ -219,17 +229,10 @@ impl RowlyApp {
         if self.mode != WorkspaceMode::TableEditor || ctx.wants_keyboard_input() {
             return;
         }
-        let (bind, unbind) = ctx.input(|input| {
-            let command = input.modifiers.command;
-            (
-                command && input.key_pressed(egui::Key::Enter),
-                command && input.modifiers.shift && input.key_pressed(egui::Key::K),
-            )
-        });
+        let bind =
+            ctx.input(|input| input.modifiers.command && input.key_pressed(egui::Key::Enter));
         if bind {
             self.dispatch_calculation_command(CalculationCommand::Bind);
-        } else if unbind {
-            self.dispatch_calculation_command(CalculationCommand::Unbind);
         }
     }
 

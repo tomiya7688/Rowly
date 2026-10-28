@@ -18,6 +18,7 @@ fn editable_context() -> CommandContext {
     CommandContext {
         mode: CommandMode::TableEditor,
         focus: CommandFocus::Workspace,
+        calculation_expression_focused: false,
         has_document: true,
         can_undo: true,
         can_redo: true,
@@ -34,7 +35,7 @@ fn editable_context() -> CommandContext {
 #[test]
 fn ids_and_all_shortcut_aliases_use_the_same_action() -> Result<(), Box<dyn Error>> {
     let registry = CommandRegistry::new(core_command_definitions())?;
-    assert_eq!(registry.commands().len(), 10);
+    assert_eq!(registry.commands().len(), 11);
     for definition in registry.commands() {
         // Registryは空scopeを拒否するため、各定義の先頭mode/focusを有効なfixtureに使える。
         let context = CommandContext {

@@ -14,6 +14,9 @@ use crate::gui_commands::{
 #[cfg(test)]
 #[path = "gui/calculation_command_tests.rs"]
 mod calculation_command_tests;
+#[cfg(test)]
+#[path = "gui/calculation_unbind_tests.rs"]
+mod calculation_unbind_tests;
 #[path = "gui/command_dispatch.rs"]
 mod command_dispatch;
 #[cfg(test)]

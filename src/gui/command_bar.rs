@@ -14,7 +14,6 @@ impl RowlyApp {
     pub(super) fn show_menu(&mut self, ctx: &egui::Context) {
         let mut command_requested = None;
         let mut calculation_apply_requested = false;
-        let mut calculation_remove_requested = false;
         let mut help_target = None;
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -57,11 +56,12 @@ impl RowlyApp {
                         command_requested = Some(CoreCommand::Recalculate);
                         ui.close_menu();
                     }
-                    if ui
-                        .add_enabled(has_document, egui::Button::new("Remove binding"))
-                        .clicked()
-                    {
-                        calculation_remove_requested = true;
+                    if self.show_core_command_button(
+                        ui,
+                        CoreCommand::RemoveCalculationBinding,
+                        true,
+                    ) {
+                        command_requested = Some(CoreCommand::RemoveCalculationBinding);
                         ui.close_menu();
                     }
                 });
@@ -95,9 +95,6 @@ impl RowlyApp {
         }
         if calculation_apply_requested {
             self.dispatch_calculation_command(CalculationCommand::Bind);
-        }
-        if calculation_remove_requested {
-            self.dispatch_calculation_command(CalculationCommand::Unbind);
         }
         if let Some(target) = help_target {
             self.open_help_target(target);

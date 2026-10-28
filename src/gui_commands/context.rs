@@ -23,12 +23,13 @@ pub enum CommandFocus {
 
 // {
 //   責務: [CommandContext: command実行直前のGUI状態を読み取り専用の値として渡す。],
-//   フィールド: [mode: workspace, focus: 操作領域, has_document: CSVの有無, can_undo/can_redo: CSV履歴の可否, has_unapplied_csv_text: 未適用のCSV text編集の有無。]
+//   フィールド: [mode: workspace, focus: 操作領域, calculation_expression_focused: 計算式入力欄のfocus, has_document: CSVの有無, can_undo/can_redo: CSV履歴の可否, has_unapplied_csv_text: 未適用のCSV text編集の有無。]
 // }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CommandContext {
     pub mode: CommandMode,
     pub focus: CommandFocus,
+    pub calculation_expression_focused: bool,
     pub has_document: bool,
     pub can_undo: bool,
     pub can_redo: bool,

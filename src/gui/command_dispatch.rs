@@ -31,6 +31,11 @@ impl RowlyApp {
             } else {
                 CommandFocus::Workspace
             },
+            calculation_expression_focused: !modal_open
+                && focused_widget
+                    == Some(egui::Id::new(
+                        super::calculation_panel::CALCULATION_EXPRESSION_WIDGET_ID,
+                    )),
             has_document: self.document.is_some(),
             can_undo: self.document.as_ref().is_some_and(CsvDocument::can_undo),
             can_redo: self.document.as_ref().is_some_and(CsvDocument::can_redo),
@@ -107,6 +112,9 @@ impl RowlyApp {
             }
             Ok(CoreCommand::Recalculate) => {
                 self.dispatch_calculation_command(CalculationCommand::Recalculate)
+            }
+            Ok(CoreCommand::RemoveCalculationBinding) => {
+                self.dispatch_calculation_command(CalculationCommand::Unbind)
             }
             Err(error) => self.status = error,
         }

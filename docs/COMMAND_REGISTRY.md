@@ -60,6 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let context = CommandContext {
         mode: CommandMode::TableEditor,
         focus: CommandFocus::Workspace,
+        calculation_expression_focused: false,
         has_document: true,
         can_undo: false,
         can_redo: false,
@@ -70,6 +71,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+`CommandContext` を構造体リテラルで作成する既存コードには `calculation_expression_focused` の追加が必要です。計算式入力欄にfocusがないcontextでは `false` を指定してください。
 
 実GUIへ接続するときは、同じhandlerからOpen/Save/Undo/Redoを呼び、menu・toolbar・shortcutごとの独立した操作実装を作らないでください。text widgetへfocusしている間のUndo/Redoは、CSV履歴へ渡さないでください。
 
@@ -85,7 +88,7 @@ shortcutはgridやtext widgetの描画前に、押下イベント自身のmodifi
 
 CSVを開いた状態で計算式の編集欄を表示するには、Formulas menuの［計算エディターを表示］、Ctrl+Shift+F、Alt → C → Sのいずれかを実行してください。RowlyはTable EditorのCalculation欄を表示します。計算欄表示ではCSV、履歴、未適用のCSVテキスト、編集中のセル値、計算式を変更しません。
 
-計算欄表示と再計算は、CSVがあるTable Editor・Text Editor・Viewer・Helpのmodal外で有効です。Ctrl+Shift+FとF9は、各画面のテキスト入力中も実行できます。計算欄表示と再計算のGUI入口は、それぞれ `calculation.show` と `calculation.recalculate` を共有し、既存のCalculation handlerへ委譲します。再計算は開いているCSVを参照し、未適用のCSVテキストや編集中のセル値を適用しません。公開APIの `dispatch_calculation_command_id` はegui contextを受け取らない従来の入口として保持します。計算の登録・削除は、今回のRegistry接続の対象外です。
+計算欄表示と再計算は、CSVがあるTable Editor・Text Editor・Viewer・Helpのmodal外で有効です。Ctrl+Shift+FとF9は、各画面のテキスト入力中も実行できます。計算欄表示と再計算のGUI入口は、それぞれ `calculation.show` と `calculation.recalculate` を共有し、既存のCalculation handlerへ委譲します。再計算は開いているCSVを参照し、未適用のCSVテキストや編集中のセル値を適用しません。計算規則の削除はTable EditorでCSVを開き、通常領域か計算式入力欄にfocusがある場合に実行できます。選択範囲の計算規則を削除するには、Formulas menu、計算欄、Alt → C → U、Ctrl+Shift+Kのいずれかを使用してください。選択範囲に `user.rly` の手書き規則が一つでも含まれる場合、Rowlyは範囲全体の削除を拒否します。Rowlyは計算規則の削除時にCSV値を変更しません。公開APIの `dispatch_calculation_command_id` はegui contextを受け取らない従来の入口として保持します。計算の登録は、今回のRegistry接続の対象外です。
 
 1. toolbarのpath欄へCSVまたはproject（`.rwprj` / `.rowlyx`）のpathを入力し、［ファイルを開く］またはCtrl+Oを実行してください。Rowlyは指定したCSV、またはproject内で最初に宣言されたfile sourceを開きます。Table EditorまたはViewerでは読み込んだ表を表示し、Text EditorではCSV textを表示します。Help表示中はHelpを維持します。読み込み失敗時は現在のdocumentを保持し、statusへ理由を表示します。
 2. CSVへ適用済みの変更を保存するときは、［変更を保存］またはCtrl+Sを実行してください。CSV textの未適用変更がある場合は、Text Editorの［CSVテキストを適用］で変更を適用してください。Rowlyは未適用変更が残る間、保存を無効にします。project利用時は、CSVの保存成功後に計算規則とproject設定を保存します。設定保存の失敗時はstatusへ理由を表示しますが、先に成功したCSV保存は取り消しません。
@@ -115,7 +118,7 @@ Escは入力途中のlabelを消去するか、一階層戻ります。rootでEs
 
 ## 最初の基本定義
 
-`core_command_definitions()` は以下の10定義を返します。Ctrl表記はWindows/Linuxのprimary modifierです。macOSではeguiの論理CommandによりCmdへ対応します。modifier照合の契約はmacOS GUIの実操作確認ではありません。
+`core_command_definitions()` は以下の11定義を返します。Ctrl表記はWindows/Linuxのprimary modifierです。macOSではeguiの論理CommandによりCmdへ対応します。modifier照合の契約はmacOS GUIの実操作確認ではありません。
 
 | ID | 専用shortcut | Alt経路metadata | 有効条件 |
 | --- | --- | --- | --- |
@@ -126,6 +129,7 @@ Escは入力途中のlabelを消去するか、一階層戻ります。rootでEs
 | `edit.apply_csv_text` | なし | E → A | Text Editorのdialog外、CSVあり。 |
 | `calculation.show` | Ctrl+Shift+F | C → S | 全画面のdialog外、CSVあり。テキスト入力中も有効。 |
 | `calculation.recalculate` | F9 | C → R | 全画面のdialog外、CSVあり。テキスト入力中も有効。 |
+| `calculation.unbind` | Ctrl+Shift+K | C → U | Table Editorのmodal外の通常領域または計算式入力欄、CSVあり。 |
 | `view.table_editor` | なし | V → E | dialog外。CSVの有無にかかわらず有効。 |
 | `view.text_editor` | なし | V → C | dialog外。CSVの有無にかかわらず有効。 |
 | `view.viewer` | なし | V → V | dialog外。CSVの有無にかかわらず有効。 |

@@ -54,6 +54,7 @@ fn calculation_show_metadata_covers_modes_and_focus() {
                 let context = CommandContext {
                     mode,
                     focus,
+                    calculation_expression_focused: false,
                     has_document,
                     can_undo: false,
                     can_redo: false,

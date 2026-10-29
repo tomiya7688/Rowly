@@ -30,4 +30,4 @@ Apache-2.0 は Rowly の名称・ロゴ等の商標利用を包括的に許可�
 
 ## GUI の日本語フォント
 
-Rowly GUI は Noto Sans JP を組み込みます。フォントは SIL Open Font License 1.1 で提供されます。出典とライセンス本文は `assets/fonts/README.md` と `assets/fonts/OFL.txt` を参照してください。GUI 実行ファイルを単独で配布する場合も、ライセンス本文を実行ファイルと一緒に配布してください。
+Rowly GUI は Noto Sans JP を組み込みます。フォントは SIL Open Font License 1.1 で提供されます。出典とライセンス本文は `assets/fonts/README.md` と `assets/fonts/OFL.txt` を参照してください。配布ビルドはライセンス本文と著作権表示を含む `licenses/NotoSansJP-OFL.txt` を作成します。GUI 実行ファイルを別途配布する場合は、`assets/fonts/OFL.txt` を実行ファイルと同じ配布物にコピーしてください。

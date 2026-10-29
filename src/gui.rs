@@ -22,7 +22,6 @@ mod external_changes;
 #[path = "gui/fonts.rs"]
 mod fonts;
 
-pub use fonts::install_japanese_font;
 #[path = "gui_help.rs"]
 mod help;
 #[path = "gui/table_editor.rs"]

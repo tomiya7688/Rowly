@@ -10,7 +10,10 @@ pub fn install_japanese_font(context: &egui::Context) {
     let mut fonts = FontDefinitions::default();
     fonts.font_data.insert(
         "noto-sans-jp".to_owned(),
-        FontData::from_static(include_bytes!("../../assets/fonts/NotoSansJP-variable.ttf")).into(),
+        FontData::from_static(include_bytes!(
+            "../../assets/fonts/NotoSansCJKjp-Regular.otf"
+        ))
+        .into(),
     );
     for family in [FontFamily::Proportional, FontFamily::Monospace] {
         // 既定フォントのラテン文字と記号を維持し、日本語をフォールバックする。

@@ -82,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 focusはeguiのmodal layerを最優先します。inline cell編集中、またはfocus中のwidgetがTextEditの場合は `TextInput` とし、CSV履歴のUndo/Redoを無効にします。Text EditorではCSV履歴を呼ばず、CSV text widget自身のUndo/Redoを使います。HelpとViewerでもOpen/Saveの共通条件を使い、Viewerの通常focusではCSV履歴を実行できます。未適用CSV textがある場合、別modeへ移った後もSaveを無効にします。
 
-shortcutはgridやtext widgetの描画前に、押下イベント自身のmodifierとlogical keyを使って照合します。登録定義とscopeが一致した押下だけを消費します。text入力へfocus中のUndo/Redoや未登録のkeyはwidgetへ残します。scopeが一致した候補は、有効状態にかかわらず消費します。実行時の最新状態で無効な場合はstatusへ拒否理由を表示します。長押しのrepeatイベントは消費しますが、同じ操作を繰り返しません。同frameの複数の押下も、操作ごとに最新contextで再検査します。たとえばUndoに続くRedoは、Undo後に利用可能になった履歴を参照します。
+shortcutはgridやtext widgetの描画前に、押下イベント自身のmodifierとlogical keyを使って照合します。登録定義とscopeが一致した押下だけを消費します。text入力へfocus中のUndo/Redoや未登録のkeyはwidgetへ残します。計算式欄以外のテキスト入力中は、無効な計算規則登録のCtrl+Enterも入力欄へ渡します。計算式欄以外でのCtrl+Enterを除き、scopeが一致した候補は有効状態にかかわらず消費します。実行時の最新状態で無効な場合はstatusへ拒否理由を表示します。長押しのrepeatイベントは消費しますが、同じ操作を繰り返しません。同frameの複数の押下も、操作ごとに最新contextで再検査します。たとえばUndoに続くRedoは、Undo後に利用可能になった履歴を参照します。
 
 ### 基本操作の実行方法
 
@@ -136,6 +136,8 @@ Escは入力途中のlabelを消去するか、一階層戻ります。rootでEs
 | `view.viewer` | なし | V → V | dialog外。CSVの有無にかかわらず有効。 |
 
 計算式欄以外のテキスト入力中は、Ctrl+Enterを計算規則の登録に使わず、入力欄へ渡します。計算式欄のEnterは入力した式を登録し、Ctrl+EnterはRegistryから一度だけ登録します。
+
+計算欄の［Open raw CSV in Code］は、画面切替の `view.text_editor` を使います。Alt → V → Cでも同じText Editorへ移動でき、未適用CSVテキストがある場合はその内容を保持します。
 
 公開enum `CoreCommand` に `BindCalculation` を追加しています。外部コードが `CoreCommand` の全variantを列挙してmatchする場合、新しいvariantの処理を追加してください。
 

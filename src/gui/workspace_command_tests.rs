@@ -6,6 +6,63 @@ use super::command_tests::{edited_app, input_frame, press};
 use super::{HelpDocument, HelpTarget, RowlyApp, WorkspaceMode};
 
 // {
+//   責務: [calculation_raw_csv_button_switches_via_registry: 計算欄のボタンによるText Editorへの切替を検証する。],
+//   処理: [実際の計算欄を描画してボタンをクリックし、CSVテキストと未適用の編集を比較する。],
+//   引数: [],
+//   戻り値: [(): 表示切替と編集内容の保持が正しければ成功する。]
+// }
+#[test]
+fn calculation_raw_csv_button_switches_via_registry() {
+    for dirty in [false, true] {
+        let (directory, mut app) = edited_app();
+        let ctx = egui::Context::default();
+        app.code_buffer = "draft\n".to_owned();
+        app.code_buffer_dirty = dirty;
+        let output = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| app.show_calculation_panel(ui));
+        });
+        let position = output
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.job.text == "Open raw CSV in Code" => {
+                    Some(text.visual_bounding_rect().center())
+                }
+                _ => None,
+            })
+            .expect("計算欄のボタンを描画する");
+        for pressed in [true, false] {
+            let _ = ctx.run(
+                egui::RawInput {
+                    focused: true,
+                    events: vec![
+                        Event::PointerMoved(position),
+                        Event::PointerButton {
+                            pos: position,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: Modifiers::NONE,
+                        },
+                    ],
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| app.show_calculation_panel(ui));
+                },
+            );
+        }
+        assert_eq!(app.mode, WorkspaceMode::TextEditor);
+        assert_eq!(app.code_buffer, if dirty { "draft\n" } else { "new\n" });
+        assert_eq!(app.code_buffer_dirty, dirty);
+        assert_eq!(app.status, "Codeで A1 のraw CSV値を確認できます");
+        assert_eq!(
+            std::fs::read_to_string(directory.path().join("table.csv")).expect("CSV fixture"),
+            "old\n"
+        );
+    }
+}
+
+// {
 //   責務: [select_workspace_with_alt: 登録された画面切替のAlt経路を入力する。],
 //   処理: [Altの単独押下後にVと指定したleafを送り、選択文字の消費を確認する。],
 //   引数: [app: 切替対象のGUI。 ctx: 継続する入力状態。 leaf: V階層の画面選択キー。],

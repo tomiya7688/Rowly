@@ -45,7 +45,7 @@ impl RowlyApp {
         let mut remove_requested = false;
         let mut show_raw_csv_requested = false;
         // 描画中は計算式を編集するため、先にRegistryから表示情報と有効条件を取得する。
-        let (bind_button, recalculate_button, remove_button) = {
+        let (raw_csv_button, bind_button, recalculate_button, remove_button) = {
             let button_info = |command| {
                 self.command_registry.as_ref().ok().and_then(|registry| {
                     registry
@@ -65,6 +65,7 @@ impl RowlyApp {
                 })
             };
             (
+                button_info(CoreCommand::ShowTextEditor),
                 button_info(CoreCommand::BindCalculation),
                 button_info(CoreCommand::Recalculate),
                 button_info(CoreCommand::RemoveCalculationBinding),
@@ -78,7 +79,11 @@ impl RowlyApp {
         ui.group(|ui| {
             ui.label(format!("Calculation for {selected_range}"));
             ui.label(format!("CSV raw value ({expression_target}): {raw_csv_value}"));
-            if ui.button("Open raw CSV in Code").clicked() {
+            if let Some((_, description, enabled, _)) = &raw_csv_button
+                && ui.add_enabled(*enabled, egui::Button::new("Open raw CSV in Code"))
+                    .on_hover_text(*description)
+                    .clicked()
+            {
                 show_raw_csv_requested = true;
             }
             ui.horizontal(|ui| {
@@ -174,11 +179,12 @@ impl RowlyApp {
             self.dispatch_core_command(ui.ctx(), CoreCommand::RemoveCalculationBinding);
         }
         if show_raw_csv_requested {
-            if !self.code_buffer_dirty {
-                self.refresh_code_buffer();
+            let previous_mode = self.mode;
+            self.dispatch_core_command(ui.ctx(), CoreCommand::ShowTextEditor);
+            if previous_mode != WorkspaceMode::TextEditor && self.mode == WorkspaceMode::TextEditor
+            {
+                self.status = format!("Codeで {expression_target} のraw CSV値を確認できます");
             }
-            self.mode = WorkspaceMode::TextEditor;
-            self.status = format!("Codeで {expression_target} のraw CSV値を確認できます");
         }
     }
 

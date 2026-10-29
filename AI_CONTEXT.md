@@ -158,7 +158,7 @@ Not implemented yet:
 - visual grouping
 
 Partially implemented (Issue #140 remains open):
-- Calculation Binding DSL / GUI / project persistence for single cells and ranges. Alt KeyTips paths for its GUI commands are not implemented; they depend on Issues #109 and #113. See `PROJECT_CONTEXT.md` for current scope and limits.
+- Calculation Binding DSL / GUI / project persistence for single cells and ranges. PR #209 is reviewing Alt KeyTips paths for calculation show, recalculate, bind and unbind; other GUI coverage remains incomplete under Issues #109 and #113. See `PROJECT_CONTEXT.md` for current scope and limits.
 
 ## Context Priority
 - P0: current task and invariants

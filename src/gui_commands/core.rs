@@ -3,8 +3,8 @@ use eframe::egui::{Key, KeyboardShortcut, Modifiers};
 use super::{CommandDefinition, CommandFocus, CommandMode, CommandScope};
 
 // {
-//   責務: [CoreCommand: Registryの最初のadapter接続対象となる既存GUI操作を識別する。],
-//   フィールド: [Open: path欄のCSVを開く, Save: CSVを保存, Undo/Redo: CSV編集履歴の移動。]
+//   責務: [CoreCommand: 共通Registryを通して実行するGUIの基本操作を識別する。],
+//   フィールド: [Open: path欄のCSVまたはprojectを開く。 Save: CSVとprojectの生成設定を保存する。 Undo/Redo: CSV編集履歴を移動する。 ApplyCsvText: 編集用テキストをCSVへ適用する。 ShowTableEditor/ShowTextEditor/ShowViewer: 指定した作業画面を表示する。 ShowCalculationEditor: 計算欄を表示する。 Recalculate: 開いているCSVの計算結果を更新する。 BindCalculation: 選択範囲へ計算規則を登録する。 RemoveCalculationBinding: 選択範囲の計算規則を削除する。]
 // }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CoreCommand {
@@ -12,9 +12,26 @@ pub enum CoreCommand {
     Save,
     Undo,
     Redo,
+    ApplyCsvText,
+    ShowTableEditor,
+    ShowTextEditor,
+    ShowViewer,
+    ShowCalculationEditor,
+    Recalculate,
+    BindCalculation,
+    RemoveCalculationBinding,
 }
 
 impl CoreCommand {
+    // {
+    //   責務: [WORKSPACE_SWITCHES: menuとtoolbarで提供する画面切替操作を表示順に定義する。]
+    // }
+    pub const WORKSPACE_SWITCHES: [Self; 3] = [
+        Self::ShowTableEditor,
+        Self::ShowTextEditor,
+        Self::ShowViewer,
+    ];
+
     // {
     //   責務: [id: 基本GUI操作のstable IDを返す。],
     //   処理: [操作variantを固定文字列へ対応付ける。],
@@ -27,19 +44,27 @@ impl CoreCommand {
             Self::Save => "file.save",
             Self::Undo => "edit.undo",
             Self::Redo => "edit.redo",
+            Self::ApplyCsvText => "edit.apply_csv_text",
+            Self::ShowTableEditor => "view.table_editor",
+            Self::ShowTextEditor => "view.text_editor",
+            Self::ShowViewer => "view.viewer",
+            Self::ShowCalculationEditor => "calculation.show",
+            Self::Recalculate => "calculation.recalculate",
+            Self::BindCalculation => "calculation.bind",
+            Self::RemoveCalculationBinding => "calculation.unbind",
         }
     }
 }
 
 // {
-//   責務: [core_command_definitions: Open/Save/Undo/Redoの共通metadataを作る。],
+//   責務: [core_command_definitions: ファイル・履歴・テキスト適用・画面切替・計算操作の共通metadataを作る。],
 //   処理: [scope・動的enabled条件・shortcut・Alt階層を各操作へ設定する。],
 //   引数: [],
-//   戻り値: [Vec<CommandDefinition<CoreCommand>>: Registryへ登録する4定義。],
-//   補足: [実GUIへ接続する前の契約。text widgetのUndo/RedoはCSV履歴へ渡さない。]
+//   戻り値: [Vec<CommandDefinition<CoreCommand>>: Registryへ登録する基本操作の定義。],
+//   補足: [GUI adapterは同じ定義を表示と実行に使う。text widgetのUndo/RedoはCSV履歴へ渡さない。]
 // }
 pub fn core_command_definitions() -> Vec<CommandDefinition<CoreCommand>> {
-    let file_scope = CommandScope {
+    let non_modal_scope = CommandScope {
         modes: CommandScope::ALL.modes,
         focuses: &[CommandFocus::Workspace, CommandFocus::TextInput],
     };
@@ -50,10 +75,10 @@ pub fn core_command_definitions() -> Vec<CommandDefinition<CoreCommand>> {
     vec![
         CommandDefinition {
             id: CoreCommand::Open.id(),
-            name: "CSVを開く",
-            description: "path欄に指定したCSVを開きます。",
+            name: "ファイルを開く",
+            description: "path欄に指定したCSVまたはprojectを開きます。",
             category: "ファイル",
-            scope: file_scope,
+            scope: non_modal_scope,
             enabled: |_| true,
             shortcuts: vec![KeyboardShortcut::new(Modifiers::COMMAND, Key::O)],
             keytips_path: &["F", "O"],
@@ -61,10 +86,10 @@ pub fn core_command_definitions() -> Vec<CommandDefinition<CoreCommand>> {
         },
         CommandDefinition {
             id: CoreCommand::Save.id(),
-            name: "CSVを保存",
-            description: "開いているCSVを保存します。未適用のCSV text変更がある場合は無効です。",
+            name: "変更を保存",
+            description: "開いているCSVを保存し、project利用時は計算規則も保存します。未適用のCSV text変更がある場合は無効です。",
             category: "ファイル",
-            scope: file_scope,
+            scope: non_modal_scope,
             enabled: |context| context.has_document && !context.has_unapplied_csv_text,
             shortcuts: vec![KeyboardShortcut::new(Modifiers::COMMAND, Key::S)],
             keytips_path: &["F", "S"],
@@ -100,6 +125,123 @@ pub fn core_command_definitions() -> Vec<CommandDefinition<CoreCommand>> {
             ],
             keytips_path: &["E", "R"],
             action: CoreCommand::Redo,
+        },
+        CommandDefinition {
+            id: CoreCommand::ApplyCsvText.id(),
+            name: "CSVテキストを適用",
+            description: "Text EditorのCSVテキストを検証して表へ適用します。ファイルへ保存するには、適用後に［変更を保存］を実行してください。",
+            category: "編集",
+            scope: CommandScope {
+                modes: &[CommandMode::TextEditor],
+                focuses: non_modal_scope.focuses,
+            },
+            enabled: |context| context.has_document,
+            shortcuts: vec![],
+            keytips_path: &["E", "A"],
+            action: CoreCommand::ApplyCsvText,
+        },
+        CommandDefinition {
+            id: CoreCommand::ShowTableEditor.id(),
+            name: "Table Editor",
+            description: "セルと行列を編集する表画面を表示します。",
+            category: "表示",
+            scope: non_modal_scope,
+            enabled: |_| true,
+            shortcuts: vec![],
+            keytips_path: &["V", "E"],
+            action: CoreCommand::ShowTableEditor,
+        },
+        CommandDefinition {
+            id: CoreCommand::ShowTextEditor.id(),
+            name: "Text Editor",
+            description: "CSVテキストの編集画面を表示します。未適用のテキストは保持します。",
+            category: "表示",
+            scope: non_modal_scope,
+            enabled: |_| true,
+            shortcuts: vec![],
+            keytips_path: &["V", "C"],
+            action: CoreCommand::ShowTextEditor,
+        },
+        CommandDefinition {
+            id: CoreCommand::ShowViewer.id(),
+            name: "Viewer",
+            description: "CSVの値を変更せず、表の閲覧画面を表示します。",
+            category: "表示",
+            scope: non_modal_scope,
+            enabled: |_| true,
+            shortcuts: vec![],
+            keytips_path: &["V", "V"],
+            action: CoreCommand::ShowViewer,
+        },
+        CommandDefinition {
+            id: CoreCommand::ShowCalculationEditor.id(),
+            name: "計算エディターを表示",
+            description: "開いているCSVの計算式を編集できるTable EditorのCalculation欄を表示します。未適用のCSVテキストは保持します。",
+            category: "計算",
+            scope: non_modal_scope,
+            enabled: |context| context.has_document,
+            shortcuts: vec![KeyboardShortcut::new(
+                Modifiers {
+                    shift: true,
+                    ..Modifiers::COMMAND
+                },
+                Key::F,
+            )],
+            keytips_path: &["C", "S"],
+            action: CoreCommand::ShowCalculationEditor,
+        },
+        CommandDefinition {
+            id: CoreCommand::Recalculate.id(),
+            name: "計算結果を更新",
+            description: "開いているCSVの計算規則を再評価します。未適用のテキストやセル編集は反映しません。",
+            category: "計算",
+            scope: non_modal_scope,
+            enabled: |context| context.has_document,
+            shortcuts: vec![KeyboardShortcut::new(Modifiers::NONE, Key::F9)],
+            keytips_path: &["C", "R"],
+            action: CoreCommand::Recalculate,
+        },
+        CommandDefinition {
+            id: CoreCommand::BindCalculation.id(),
+            name: "計算規則を登録",
+            description: "Table Editorの選択セルまたは範囲に入力した計算式を登録します。CSVの値は変更しません。",
+            category: "計算",
+            scope: CommandScope {
+                modes: &[CommandMode::TableEditor],
+                focuses: non_modal_scope.focuses,
+            },
+            enabled: |context| {
+                context.has_document
+                    && (context.focus == CommandFocus::Workspace
+                        || context.calculation_expression_focused)
+            },
+            shortcuts: vec![KeyboardShortcut::new(Modifiers::COMMAND, Key::Enter)],
+            keytips_path: &["C", "B"],
+            action: CoreCommand::BindCalculation,
+        },
+        CommandDefinition {
+            id: CoreCommand::RemoveCalculationBinding.id(),
+            name: "計算規則を削除",
+            description: "Table Editorの選択セルまたは範囲の計算規則を削除します。CSVの値は変更しません。",
+            category: "計算",
+            scope: CommandScope {
+                modes: &[CommandMode::TableEditor],
+                focuses: non_modal_scope.focuses,
+            },
+            enabled: |context| {
+                context.has_document
+                    && (context.focus == CommandFocus::Workspace
+                        || context.calculation_expression_focused)
+            },
+            shortcuts: vec![KeyboardShortcut::new(
+                Modifiers {
+                    shift: true,
+                    ..Modifiers::COMMAND
+                },
+                Key::K,
+            )],
+            keytips_path: &["C", "U"],
+            action: CoreCommand::RemoveCalculationBinding,
         },
     ]
 }

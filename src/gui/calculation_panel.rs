@@ -1,4 +1,10 @@
+use crate::gui_commands::CoreCommand;
 use eframe::egui;
+
+// {
+//   責務: [CALCULATION_EXPRESSION_WIDGET_ID: 計算式入力欄のfocusをGUI操作の条件から識別する。]
+// }
+pub(super) const CALCULATION_EXPRESSION_WIDGET_ID: &str = "calculation-expression-input";
 
 use crate::{
     gui::{CalculationCommand, RowlyApp, WorkspaceMode},
@@ -38,6 +44,33 @@ impl RowlyApp {
         let mut recalculate_requested = false;
         let mut remove_requested = false;
         let mut show_raw_csv_requested = false;
+        // 描画中は計算式を編集するため、先にRegistryから表示情報と有効条件を取得する。
+        let (raw_csv_button, bind_button, recalculate_button, remove_button) = {
+            let button_info = |command| {
+                self.command_registry.as_ref().ok().and_then(|registry| {
+                    registry
+                        .commands()
+                        .find(|entry| entry.action == command)
+                        .map(|entry| {
+                            (
+                                entry.name,
+                                entry.description,
+                                entry.is_enabled(&self.command_context(ui.ctx())),
+                                entry
+                                    .shortcuts
+                                    .first()
+                                    .map(|shortcut| ui.ctx().format_shortcut(shortcut)),
+                            )
+                        })
+                })
+            };
+            (
+                button_info(CoreCommand::ShowTextEditor),
+                button_info(CoreCommand::BindCalculation),
+                button_info(CoreCommand::Recalculate),
+                button_info(CoreCommand::RemoveCalculationBinding),
+            )
+        };
         let raw_csv_value = self
             .document
             .as_ref()
@@ -46,40 +79,25 @@ impl RowlyApp {
         ui.group(|ui| {
             ui.label(format!("Calculation for {selected_range}"));
             ui.label(format!("CSV raw value ({expression_target}): {raw_csv_value}"));
-            if ui.button("Open raw CSV in Code").clicked() {
+            if let Some((_, description, enabled, _)) = &raw_csv_button
+                && ui.add_enabled(*enabled, egui::Button::new("Open raw CSV in Code"))
+                    .on_hover_text(*description)
+                    .clicked()
+            {
                 show_raw_csv_requested = true;
             }
             ui.horizontal(|ui| {
                 ui.label("Expression");
                 let expression_response = ui.add(
                     egui::TextEdit::singleline(&mut self.calculation_expression)
+                        .id(egui::Id::new(CALCULATION_EXPRESSION_WIDGET_ID))
                         .hint_text("CellValue(\"A1\") * Integer(2)")
                         .desired_width(300.0),
                 );
-                let (apply_shortcut, recalculate_shortcut, remove_shortcut) =
-                    ui.input(|input| {
-                        let command = input.modifiers.command;
-                        (
-                            command && input.key_pressed(egui::Key::Enter),
-                            input.key_pressed(egui::Key::F9),
-                            command
-                                && input.modifiers.shift
-                                && input.key_pressed(egui::Key::K),
-                        )
-                    });
-                if expression_response.has_focus() && apply_shortcut {
-                    apply_requested = true;
-                }
                 if expression_response.lost_focus()
-                    && ui.input(|input| input.key_pressed(egui::Key::Enter))
+                    && ui.input(|input| !input.modifiers.command && input.key_pressed(egui::Key::Enter))
                 {
                     apply_requested = true;
-                }
-                if expression_response.has_focus() && recalculate_shortcut {
-                    recalculate_requested = true;
-                }
-                if expression_response.has_focus() && remove_shortcut {
-                    remove_requested = true;
                 }
                 egui::ComboBox::from_id_salt("calculation_trigger")
                     .selected_text(match self.calculation_trigger {
@@ -98,14 +116,26 @@ impl RowlyApp {
                             "Manual",
                         );
                     });
-                if ui.button("Apply").clicked() {
-                    apply_requested = true;
+                if let Some((name, description, enabled, shortcut)) = &bind_button {
+                    let mut button = egui::Button::new(*name);
+                    if let Some(shortcut) = shortcut { button = button.shortcut_text(shortcut); }
+                    if ui.add_enabled(*enabled, button).on_hover_text(*description).clicked() {
+                        apply_requested = true;
+                    }
                 }
-                if ui.button("Recalculate").clicked() {
-                    recalculate_requested = true;
+                if let Some((name, description, enabled, shortcut)) = &recalculate_button {
+                    let mut button = egui::Button::new(*name);
+                    if let Some(shortcut) = shortcut { button = button.shortcut_text(shortcut); }
+                    if ui.add_enabled(*enabled, button).on_hover_text(*description).clicked() {
+                        recalculate_requested = true;
+                    }
                 }
-                if ui.button("Remove").clicked() {
-                    remove_requested = true;
+                if let Some((name, description, enabled, shortcut)) = &remove_button {
+                    let mut button = egui::Button::new(*name);
+                    if let Some(shortcut) = shortcut { button = button.shortcut_text(shortcut); }
+                    if ui.add_enabled(*enabled, button).on_hover_text(*description).clicked() {
+                        remove_requested = true;
+                    }
                 }
             });
             let binding_id = CalculationBindingId::new(format!("dsl:{expression_target}")).ok();
@@ -140,20 +170,25 @@ impl RowlyApp {
             ui.weak("Shortcuts: Ctrl+Enter bind · F9 recalculate · Ctrl+Shift+K unbind · Ctrl+Shift+F show editor");
         });
         if apply_requested {
-            self.dispatch_calculation_command(CalculationCommand::Bind);
+            self.dispatch_core_command(ui.ctx(), CoreCommand::BindCalculation);
         }
         if recalculate_requested {
-            self.dispatch_calculation_command(CalculationCommand::Recalculate);
+            self.dispatch_core_command(ui.ctx(), CoreCommand::Recalculate);
         }
         if remove_requested {
-            self.dispatch_calculation_command(CalculationCommand::Unbind);
+            self.dispatch_core_command(ui.ctx(), CoreCommand::RemoveCalculationBinding);
         }
         if show_raw_csv_requested {
-            if !self.code_buffer_dirty {
-                self.refresh_code_buffer();
+            let previous_mode = self.mode;
+            self.dispatch_core_command(ui.ctx(), CoreCommand::ShowTextEditor);
+            if previous_mode != WorkspaceMode::TextEditor && self.mode == WorkspaceMode::TextEditor
+            {
+                self.status = if self.code_buffer_dirty {
+                    "Text Editorに未適用のCSVテキストを表示しています".to_owned()
+                } else {
+                    format!("Codeで {expression_target} のraw CSV値を確認できます")
+                };
             }
-            self.mode = WorkspaceMode::TextEditor;
-            self.status = format!("Codeで {expression_target} のraw CSV値を確認できます");
         }
     }
 
@@ -173,7 +208,7 @@ impl RowlyApp {
             CalculationCommand::Recalculate => self.recalculate_calculations(),
             CalculationCommand::Show => {
                 self.mode = WorkspaceMode::TableEditor;
-                self.status = "選択cellのCalculation Editorを表示しました".to_owned();
+                self.status = "Table EditorのCalculation欄を表示しました".to_owned();
             }
         }
     }
@@ -188,35 +223,6 @@ impl RowlyApp {
             self.dispatch_calculation_command(command);
         } else {
             self.status = format!("Unknown command: {command_id}");
-        }
-    }
-
-    // {
-    //   責務: [handle_calculation_shortcuts: Table Editor用のcalculation keyboard shortcutを処理する。]
-    //   引数: [self: GUI操作対象。 ctx: shortcutとkeyboard focusの参照元。]
-    //   戻り値: [(): shortcutに対応するstable commandをdispatchする。]
-    // }
-    pub(super) fn handle_calculation_shortcuts(&mut self, ctx: &egui::Context) {
-        if self.mode != WorkspaceMode::TableEditor || ctx.wants_keyboard_input() {
-            return;
-        }
-        let (bind, unbind, recalculate, show) = ctx.input(|input| {
-            let command = input.modifiers.command;
-            (
-                command && input.key_pressed(egui::Key::Enter),
-                command && input.modifiers.shift && input.key_pressed(egui::Key::K),
-                input.key_pressed(egui::Key::F9),
-                command && input.modifiers.shift && input.key_pressed(egui::Key::F),
-            )
-        });
-        if bind {
-            self.dispatch_calculation_command(CalculationCommand::Bind);
-        } else if unbind {
-            self.dispatch_calculation_command(CalculationCommand::Unbind);
-        } else if recalculate {
-            self.dispatch_calculation_command(CalculationCommand::Recalculate);
-        } else if show {
-            self.dispatch_calculation_command(CalculationCommand::Show);
         }
     }
 

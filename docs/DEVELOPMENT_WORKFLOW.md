@@ -79,6 +79,18 @@ base SHA: <コードを取得したcommit>
 
 ## 検証・レビュー・完了
 
+### Rustの整形
+
+repoルートの `rust-toolchain.toml` はRust 1.98.1と同梱のrustfmt・Clippyを指定しています。開発環境にはrustupを導入してください。repo内でCargoを実行すると、rustupが指定toolchainを選択します。CIも同じRustバージョンを使用します。
+
+実装後、repoルートから `python tools/format_rust.py <変更したRustファイルのpath...>` を実行してください。整形ツールは各ファイルの内容を固定stableの `rustfmt --emit stdout` の標準入力へ渡し、整形結果を指定ファイルだけへ保存します。未指定の子moduleへ再帰しない動作は、Windows・Ubuntu CIで親・子moduleのbyte列を比較して検証します。`skip_children` のような不安定な設定には依存しません。repo直下のrustfmt設定を読み、改行設定がAutoの場合は入力のLF／CRLFを維持します。明示した改行設定がある場合は、その設定を優先します。[rustfmt公式READMEの標準入力による実行](https://github.com/rust-lang/rustfmt#running-rustfmt-directly)も参照してください。
+
+対象はrepo内の `src/`・`tests/`・`examples/`・`benches/` 配下のRustファイル、またはrootの `build.rs` です。`target/`・`vendor/`・`generated/`・Git管理情報・別worktreeは拒否します。他者のdirty変更や原文保持が必要なサンプルは引数へ含めないでください。全対象の変換成功と元byte列の一致を確認してから書き込みます。解析失敗・timeout・変換中の外部編集は、書き込み前にエラーとします。保存中のI/O失敗では、一部ファイルの整形だけが完了する可能性があります。
+
+指定ファイルだけを確認する場合は `python tools/format_rust.py --check <path...>` を実行してください。未整形なら終了コード1を返し、ファイルは書き換えません。整形後は `cargo fmt --all -- --check` でCIと同じ全体検査も実行してください。指摘を修正した場合も、変更ファイルを再整形してから関連テストとレビューを行ってください。
+
+整形ツールの開発では、開発用Python環境へ `python -m pip install -r python/dev-requirements.txt` でBlack 24.10.0を導入してください。変更したPythonファイルだけを `python -m black tools/format_rust.py tools/test_format_rust.py` で整形し、同じコマンドの `--check` で確認してください。`python tools/test_format_rust.py` は親だけの整形、check時の非書換え、解析失敗時の保持、範囲外や生成物の拒否、LF／CRLFの保持、repo設定と明示した改行設定の優先を検証します。Windowsのローカル環境では、`ROWLY_FORMAT_TEST_ROOT` に `E:/program_files/soft/claude/tmp/rowly-formatter-tests` を指定してください。Ubuntuでは環境変数を省略するとrepoの `target/formatter-tests` を使います。CIも環境変数を省略し、同じ既定pathを使います。
+
 機能変更では最小の関連テストから始め、CIで必要なformat、Clippy、build、testを確認してください。具体的なコマンドと配布物検証は [`CI.md`](CI.md) と [CI定義](../.github/workflows/ci.yml) を参照してください。文書だけの変更ではリンク、参照先、テンプレートの必須項目、文章と事実の一致を確認してください。
 
 レビュー担当は、実装担当の説明に加えて差分と根拠を確認してください。別のAIを使ったことだけで独立レビューの合格証拠にしないでください。懸念・指摘がない場合も、確認した範囲と未確認の境界を残してください。

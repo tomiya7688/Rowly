@@ -313,8 +313,8 @@ impl RowlyApp {
     }
 
     // {
-    //   責務: [handle_grid_keys: grid操作中のkeyboard shortcutをselection・edit・undo/redoへ適用する。]
-    //   処理: [text inputへfocus中・grid外・inline edit中を除外し、navigationとcommand keyをdispatchする。]
+    //   責務: [handle_grid_keys: 表の移動・編集開始・コピー・貼付のキーを処理する。]
+    //   処理: [text入力・inline編集を除外して表操作へ渡す。CSV履歴のshortcutは共通Registryで先に処理する。]
     //   引数: [self: mode・selection・document・editing状態。 ctx: key inputとfocus状態を読むegui context。]
     //   戻り値: [(): keyboard inputに応じた画面操作を実行する。]
     // }
@@ -326,7 +326,7 @@ impl RowlyApp {
             return;
         }
 
-        let (undo, redo, edit, cancel, direction, extend, copy, paste_text) = ctx.input(|input| {
+        let (edit, cancel, direction, extend, copy, paste_text) = ctx.input(|input| {
             let command = input.modifiers.command;
             let direction = if input.key_pressed(egui::Key::ArrowUp) {
                 Some((0isize, -1isize))
@@ -340,10 +340,6 @@ impl RowlyApp {
                 None
             };
             (
-                command && input.key_pressed(egui::Key::Z) && !input.modifiers.shift,
-                command
-                    && (input.key_pressed(egui::Key::Y)
-                        || input.modifiers.shift && input.key_pressed(egui::Key::Z)),
                 input.key_pressed(egui::Key::F2) || input.key_pressed(egui::Key::Enter),
                 input.key_pressed(egui::Key::Escape),
                 direction,
@@ -360,10 +356,6 @@ impl RowlyApp {
             self.copy_selected_csv_values(ctx);
         } else if let Some(text) = paste_text {
             self.paste_csv_values(&text);
-        } else if undo {
-            self.undo();
-        } else if redo {
-            self.redo();
         } else if cancel {
             self.editing = false;
         } else if let Some((dx, dy)) = direction {

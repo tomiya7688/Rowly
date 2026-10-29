@@ -7,6 +7,34 @@ use crate::{
 };
 use eframe::egui;
 
+use crate::gui_commands::{
+    CommandRegistry, CommandRegistryError, CoreCommand, core_command_definitions,
+};
+
+#[cfg(test)]
+#[path = "gui/calculation_bind_tests.rs"]
+mod calculation_bind_tests;
+#[cfg(test)]
+#[path = "gui/calculation_command_tests.rs"]
+mod calculation_command_tests;
+
+#[cfg(test)]
+#[path = "gui/calculation_unbind_tests.rs"]
+mod calculation_unbind_tests;
+#[path = "gui/command_dispatch.rs"]
+mod command_dispatch;
+#[cfg(test)]
+#[path = "gui/command_tests.rs"]
+mod command_tests;
+#[path = "gui/keytips.rs"]
+mod keytips;
+#[cfg(test)]
+#[path = "gui/text_command_tests.rs"]
+mod text_command_tests;
+#[cfg(test)]
+#[path = "gui/workspace_command_tests.rs"]
+mod workspace_command_tests;
+
 #[path = "gui/calculation_panel.rs"]
 mod calculation_panel;
 #[path = "gui/clipboard.rs"]
@@ -105,7 +133,7 @@ enum WorkspaceMode {
 
 // {
 //   責務: [RowlyApp: CSV documentとGUI各画面の状態を保持し、ユーザー操作をprocess APIへ仲介する。]
-//   フィールド: [mode/help_return_mode: 現在画面とhelpからの復帰先。 path_input/reference_input: pathとcell address入力。 code_buffer/code_buffer_dirty: CSV text編集値と未適用状態。 document/file_watcher: 開いたCSVと外部変更監視。 status/zoom: 表示messageと拡大率。 selection/selection_anchor: 選択cellと範囲起点。 editing/edit_value: inline edit状態と入力text。 validation_candidates_open/validation_candidate_index: 入力候補popup状態。 help: help viewer。]
+//   フィールド: [mode/help_return_mode: 現在画面とhelpからの復帰先。 path_input/reference_input: pathとcell address入力。 code_buffer/code_buffer_dirty: CSV text編集値と未適用状態。 document/file_watcher: 開いたCSVと外部変更監視。 status/zoom: 表示messageと拡大率。 selection/selection_anchor: 選択cellと範囲起点。 editing/edit_value: inline edit状態と入力text。 validation_candidates_open/validation_candidate_index: 入力候補popup状態。 help: help viewer, command_registry: 共通操作定義または登録失敗。]
 // }
 pub struct RowlyApp {
     mode: WorkspaceMode,
@@ -132,6 +160,8 @@ pub struct RowlyApp {
     validation_candidates_open: bool,
     validation_candidate_index: usize,
     help: help::HelpViewer,
+    command_registry: Result<CommandRegistry<CoreCommand>, CommandRegistryError>,
+    keytips: keytips::KeyTipsState,
 }
 
 impl Default for RowlyApp {
@@ -142,6 +172,12 @@ impl Default for RowlyApp {
     //   戻り値: [RowlyApp: CSV未読込の初期GUI状態。]
     // }
     fn default() -> Self {
+        // 登録不整合がある場合は操作を開始せず、起動時のstatusに理由を残す。
+        let command_registry = CommandRegistry::new(core_command_definitions());
+        let status = command_registry.as_ref().map_or_else(
+            |error| format!("GUI操作の登録に失敗しました: {error}"),
+            |_| "CSV ファイルを開いてください".to_owned(),
+        );
         Self {
             mode: WorkspaceMode::TableEditor,
             help_return_mode: WorkspaceMode::TableEditor,
@@ -158,7 +194,7 @@ impl Default for RowlyApp {
             calculation_trigger: CalculationTrigger::DependencyChange,
             calculation_editor_target: None,
             file_watcher: None,
-            status: "CSV ファイルを開いてください".to_owned(),
+            status,
             zoom: 100.0,
             selection: CellRef::new(0, 0),
             selection_anchor: CellRef::new(0, 0),
@@ -167,6 +203,8 @@ impl Default for RowlyApp {
             validation_candidates_open: false,
             validation_candidate_index: 0,
             help: help::HelpViewer::default(),
+            command_registry,
+            keytips: keytips::KeyTipsState::default(),
         }
     }
 }
@@ -348,19 +386,21 @@ impl RowlyApp {
 impl eframe::App for RowlyApp {
     // {
     //   責務: [update: egui frameごとに外部変更とGUI操作を処理し各panelを描画する。]
-    //   処理: [change polling・grid keyboard・menu・toolbar・conflict・status・workspaceの順に実行する。]
+    //   処理: [外部変更、Alt階層、Registry shortcut、表操作、各panelとKeyTips表示を順に更新する。]
     //   引数: [self: frame間で保持するRowlyApp状態。 ctx: 現在のegui context。 _frame: eframe frame handle。]
     //   戻り値: [(): 1 frame分のGUIを更新する。]
     // }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll_external_changes();
+        self.dispatch_keytips(ctx);
+        self.dispatch_core_shortcuts(ctx);
         self.handle_grid_keys(ctx);
-        self.handle_calculation_shortcuts(ctx);
         self.show_menu(ctx);
         self.show_toolbar(ctx);
         self.show_external_conflicts(ctx);
         self.show_status(ctx);
         self.show_workspace(ctx);
+        self.show_keytips(ctx);
     }
 }
 
@@ -451,5 +491,3 @@ fn update_selection(
     *reference_input = reference.to_string();
     *editing = false;
 }
-
-impl RowlyApp {}

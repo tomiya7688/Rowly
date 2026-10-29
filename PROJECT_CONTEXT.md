@@ -12,7 +12,7 @@
 - GUIはTable Editor、Text Editor、Viewerを提供します。GUIの実装入口は `src/gui_main.rs` と `src/gui.rs` です。
 - Rowly DSLとLuauはRustのapplication/process境界を通じてCSVを操作します。Python/openpyxlはXLSXとの受け渡しに使います。
 - CSVにはraw cell textを保存します。計算規則、derived result、表示設定はCSV本文へ書き込みません。
-- Calculation Bindingのcell/range対応とproject保存はPR #206でレビュー中です。mainへの統合は未完了です。Issue #140は、Alt KeyTipsからの到達性などの残件があるためopenです。#140の受け入れ条件を満たしたものとして扱わないでください。Alt KeyTipsは #109 と #113 に依存し、まだ実装されていません。
+- Calculation Bindingのcell/range対応とproject保存はPR #206でmainへ統合されています（2026-10-22確認）。Issue #140は、Alt KeyTipsからの到達性などの残件があるためopenです。#140の受け入れ条件を満たしたものとして扱わないでください。ファイル・履歴・テキスト適用・画面切替・計算欄表示・再計算・計算規則の登録と削除のAlt経路はPR #209でレビュー中です。
 - Calculation Bindingの直接engine APIはsingle-cell targetです。DSLとGUIはrangeを各cellへ展開します。column-relative target、Materialize、View groupingは未実装です。
 - bare CSVではproject設定を作らず、Calculation Bindingはsession-onlyです。project内ではGUI生成規則を `generated.rly` に保存し、手書き規則を `user.rly` から読み込みます。
 - ProjectSessionが更新したgenerated init/configはsession内へstagingし、`ProjectSession::save()`がmanifestと設定の保存（packageではarchive repackも）に成功した場合だけ確定します。session内のsource再openはstaged設定を反映し、保存失敗時は元fileを復元してstagingを保持します。

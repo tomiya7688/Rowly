@@ -19,10 +19,15 @@ mod document_actions;
 mod document_editor;
 #[path = "gui/external_changes.rs"]
 mod external_changes;
+#[path = "gui/fonts.rs"]
+mod fonts;
+
+pub use fonts::install_japanese_font;
 #[path = "gui_help.rs"]
 mod help;
 #[path = "gui/table_editor.rs"]
 mod table_editor;
+pub use fonts::install_japanese_font;
 pub use help::{HelpDocument, HelpTarget};
 
 // {

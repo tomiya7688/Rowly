@@ -54,7 +54,19 @@ fn calculation_raw_csv_button_switches_via_registry() {
         assert_eq!(app.mode, WorkspaceMode::TextEditor);
         assert_eq!(app.code_buffer, if dirty { "draft\n" } else { "new\n" });
         assert_eq!(app.code_buffer_dirty, dirty);
-        assert_eq!(app.status, "Codeで A1 のraw CSV値を確認できます");
+        let displayed = ctx.run(egui::RawInput::default(), |ctx| app.show_workspace(ctx));
+        let expected_text = if dirty { "draft\n" } else { "new\n" };
+        assert!(displayed.shapes.iter().any(|shape| {
+            matches!(&shape.shape, egui::Shape::Text(text) if text.galley.job.text == expected_text)
+        }));
+        assert_eq!(
+            app.status,
+            if dirty {
+                "Text Editorに未適用のCSVテキストを表示しています"
+            } else {
+                "Codeで A1 のraw CSV値を確認できます"
+            }
+        );
         assert_eq!(
             std::fs::read_to_string(directory.path().join("table.csv")).expect("CSV fixture"),
             "old\n"

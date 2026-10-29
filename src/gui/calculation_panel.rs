@@ -183,7 +183,11 @@ impl RowlyApp {
             self.dispatch_core_command(ui.ctx(), CoreCommand::ShowTextEditor);
             if previous_mode != WorkspaceMode::TextEditor && self.mode == WorkspaceMode::TextEditor
             {
-                self.status = format!("Codeで {expression_target} のraw CSV値を確認できます");
+                self.status = if self.code_buffer_dirty {
+                    "Text Editorに未適用のCSVテキストを表示しています".to_owned()
+                } else {
+                    format!("Codeで {expression_target} のraw CSV値を確認できます")
+                };
             }
         }
     }

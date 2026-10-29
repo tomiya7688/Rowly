@@ -12,7 +12,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_PYTHON = (3, 12, 10)
-BRIDGE_NAME = "rowly-excel-bridge.exe" if sys.platform == "win32" else "rowly-excel-bridge"
+BRIDGE_NAME = (
+    "rowly-excel-bridge.exe" if sys.platform == "win32" else "rowly-excel-bridge"
+)
 ROWLY_NAME = "rowly.exe" if sys.platform == "win32" else "rowly"
 
 
@@ -36,7 +38,11 @@ def run(*args: str) -> None:
 def copy_distribution_licenses(output: Path) -> list[str]:
     licenses = output / "licenses"
     licenses.mkdir(parents=True, exist_ok=True)
-    copied: list[str] = []
+    font_license = licenses / "NotoSansCJKJP-OFL.txt"
+    shutil.copy2(ROOT / "assets" / "fonts" / "OFL.txt", font_license)
+    font_copyright = licenses / "NotoSansCJKJP-COPYRIGHT.txt"
+    shutil.copy2(ROOT / "assets" / "fonts" / "COPYRIGHT.txt", font_copyright)
+    copied: list[str] = [font_license.name, font_copyright.name]
 
     for package in ("openpyxl", "et-xmlfile", "pyinstaller"):
         distribution = metadata.distribution(package)
@@ -84,12 +90,14 @@ def write_notices(output: Path, copied_licenses: list[str]) -> None:
 Excel backend はユーザー環境の Python に依存しないよう、PyInstaller で Python runtime と
 openpyxl を自己完結 executable にしています。
 
+- Noto Sans CJK JP Regular — SIL Open Font License 1.1 (GUI font)
 - Python {versions["python"]} — Python Software Foundation License
 - openpyxl {versions["openpyxl"]} — MIT License
 - et-xmlfile {versions["et-xmlfile"]} — MIT License
 - PyInstaller {versions["pyinstaller"]} — GPL-2.0-or-later with the PyInstaller bootloader exception
 
 ライセンス本文としてビルド環境から取得できたファイルは `licenses/` に同梱しています。
+Noto Sans CJK JP: https://github.com/notofonts/noto-cjk/tree/main/Sans/OTF/Japanese
 Python: https://www.python.org/psf/license/
 openpyxl: https://foss.heptapod.net/openpyxl/openpyxl
 et-xmlfile: https://foss.heptapod.net/openpyxl/et_xmlfile

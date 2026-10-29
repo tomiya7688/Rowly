@@ -125,3 +125,7 @@ branch / base SHA / 現在HEAD:
 - [OpenAI: AGENTS.mdとoverrideの探索](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
 - [Anthropic: CLAUDE.mdのimport](https://code.claude.com/docs/en/memory)
 - [GitHub: Copilotのrepository instructions](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/add-custom-instructions/add-repository-instructions)
+
+## Python 配布スクリプトの整形
+
+開発者は `python -m pip install -r python/dev-requirements.txt` で固定バージョンの Ruff を準備してください。`python -m ruff format tools/build_distribution.py` で整形し、`python -m ruff format --check tools/build_distribution.py` で確認します。CI も同じ対象を確認します。

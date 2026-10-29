@@ -27,3 +27,8 @@ Rowly の Apache-2.0 は第三者ソフトウェアのライセンスを上書�
 ## 商標
 
 Apache-2.0 は Rowly の名称・ロゴ等の商標利用を包括的に許可するものではありません。商標ポリシーはこの Issue の対象外です。
+
+## GUI の日本語フォント
+
+Rowly GUI は Noto Sans CJK JP Regular を組み込みます。フォントは SIL Open Font License 1.1 で提供されます。出典は `assets/fonts/README.md`、ライセンス本文は `assets/fonts/OFL.txt`、著作権表示は `assets/fonts/COPYRIGHT.txt` に記録しています。配布ビルドは `licenses/NotoSansCJKJP-OFL.txt` と `licenses/NotoSansCJKJP-COPYRIGHT.txt` を作成します。GUI 実行ファイルを別途配布する場合は、この二つのファイルを実行ファイルと同じ配布物に同梱してください。
+現在の配布ビルドは CLI と Excel バックエンドを収録し、GUI 実行ファイルを生成しません。GUI 実行ファイルにはフォント本体が埋め込まれています。GUI またはフォントを別途配布する場合は、フォント本体を含む実行ファイルまたはフォントファイルと、上記のライセンス本文と著作権表示を一緒に配布してください。

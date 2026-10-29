@@ -63,7 +63,9 @@ rowly excel import input.xlsx output.csv [sheet-name]
 rowly excel export input.csv output.xlsx [sheet-name]
 ```
 
-Calculation BindingのRust core、Rowly DSL登録、ProjectSessionによる`generated.rly`への保存・復元が実装済みです。ProjectSessionで更新したgenerated configはsession内にstagingし、`ProjectSession::save()`成功時だけdiskへ確定します。DSLとGUIは単一cellと矩形rangeへ式を割り当てられます。rangeでは左上cellの式を各targetへ展開し、cell参照を行・列方向へ相対移動します。GUIのTable Editorでは選択cell/rangeの式とtriggerを設定し、計算状態と依存cellを確認できます。Viewerは計算済みのderived resultを表示し、Codeはcanonical CSVのraw textだけを表示・編集します。GUIではproject内のfile sourceを切り替えられます。process APIの呼び出し元は `CalculationEngine::set_binding` で規則を登録し、`recalculate_for_changes` または `recalculate_all` で結果を更新できます。結果は `CalculationEngine::result` から取得し、CSVのraw valueとdirty stateは変わりません。column-relative target、Materialize、View groupingは未実装です。利用者向け操作では、規則の登録と表示を分け、必要な場合だけMaterializeを実行します。
+Calculation BindingのRust core、Rowly DSL登録、ProjectSessionによる`generated.rly`への保存・復元が実装済みです。ProjectSessionで更新したgenerated configはsession内にstagingし、`ProjectSession::save()`成功時だけdiskへ確定します。DSLとGUIは単一cellと矩形rangeへ式を割り当てられます。rangeでは左上cellの式を各targetへ展開し、cell参照を行・列方向へ相対移動します。GUIのTable Editorでは選択cell/rangeの式とtriggerを設定し、計算状態と依存cellを確認できます。Viewerは計算済みのderived resultを表示し、Codeはcanonical CSVのraw textだけを表示・編集します。GUIではproject内のfile sourceを切り替えられます。process APIの呼び出し元は `CalculationEngine::set_binding` で規則を登録し、`recalculate_for_changes` または `recalculate_all` で結果を更新できます。結果は `CalculationEngine::result` から取得し、CSVのraw valueとdirty stateは変わりません。column-relative target、GUIからのMaterialize、View groupingは未実装です。利用者向け操作では、規則の登録と表示を分け、必要な場合だけMaterializeを実行します。
+
+`CalculationEngine::materialize` は、依存値が現在の CSV と一致する計算済みの単一セル結果を、呼び出し元が明示的に指定したときだけ CSV に反映します。反映には `CsvDocument` の編集を使うため、既存の入力検証、Undo / Redo、未保存状態と外部変更の確認が適用されます。通常の Materialize は計算規則を残します。`materialize_and_unbind` は反映後に対象の計算規則を削除します。Undo / Redo は CSV の編集を対象とし、削除した計算規則は復元しません。トランザクションのロールバックでも計算規則を復元できないため、トランザクション中の `materialize_and_unbind` は拒否します。GUI からの Materialize 操作と範囲単位の一括反映は未実装です。
 
 ## 採用判断
 

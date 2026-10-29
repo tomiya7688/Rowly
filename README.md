@@ -7,6 +7,8 @@ Rowly は、**CSVを正本にしたままExcelを不要にすることを目指�
 
 Excel互換クローンではありません。数式・表示・自動化・プロジェクト状態をCSV値そのものへ混ぜず、普通のCSVとして回収・編集できる状態を守ります。
 
+**なぜこの設計なのか:** [何故Rowly？](docs/WHY_ROWLY.md)
+
 ## 3つのモード
 
 ```text
@@ -73,6 +75,7 @@ CLI 1.0では対話shell・JSON出力・Rowly DSL one-shot実行も整備しま�
 
 | 内容 | 文書 |
 | --- | --- |
+| 何故Rowly？ | [docs/WHY_ROWLY.md](docs/WHY_ROWLY.md) |
 | アーキテクチャ | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | CSV・計算・表示の設計原則 | [docs/DATA_MODEL_PRINCIPLES.md](docs/DATA_MODEL_PRINCIPLES.md) |
 | Rowly DSL 文法 | [docs/DSL_REFERENCE.md](docs/DSL_REFERENCE.md) |
@@ -87,6 +90,8 @@ CLI 1.0では対話shell・JSON出力・Rowly DSL one-shot実行も整備しま�
 | ライセンス詳細 | [docs/LICENSING.md](docs/LICENSING.md) |
 
 詳細な未実装仕様・設計判断・実装タスクはGitHub Issuesで管理します。
+
+開発に参加する場合は、[共同開発の入口](CONTRIBUTING.md)からIssueの選び方、AI共通ルール、検証・引継ぎ手順を確認してください。
 
 ## ライセンス
 

@@ -7,7 +7,7 @@ use super::{
     CalculationMaterializationError, CalculationOperator, CalculationStatus, CalculationTarget,
     CalculationTrigger, CalculationValue,
 };
-use crate::process::{CellRef, CsvDocument, ValidationRule, ValidationTarget};
+use crate::process::{CellRef, CsvDocument, DocumentError, ValidationRule, ValidationTarget};
 
 // {
 // 責務: [document: Materialize検証用の一時CSVを作成する]
@@ -357,4 +357,37 @@ fn unbind_preflight_failure_does_not_write_csv() {
     ));
     assert_eq!(document.cell_ref(cell("B2")), Some("raw-first"));
     assert!(engine.binding(&first).is_some());
+}
+
+#[test]
+// ```text
+// 責務: [materialize_and_unbind_rejects_active_transaction: rollback できない binding 削除を防ぐ]
+// 戻り値: [(): 拒否後も CSV と binding が保持されれば成功]
+// ```
+fn materialize_and_unbind_rejects_active_transaction() {
+    let (_directory, mut document) = document(&[&["input", "output"], &["2", "keep"]]);
+    let mut engine = CalculationEngine::default();
+    let output = id("output");
+    engine
+        .set_binding(
+            &document,
+            output.clone(),
+            CalculationTarget::Cell(cell("B2")),
+            CalculationExpression::Literal(CalculationValue::Integer(7)),
+            CalculationTrigger::DependencyChange,
+        )
+        .unwrap();
+    engine.recalculate_all(&document).unwrap();
+    document.begin_transaction().unwrap();
+    assert!(matches!(
+        engine.materialize_and_unbind(&mut document, &output),
+        Err(CalculationMaterializationError::Document(
+            DocumentError::Transaction(_)
+        ))
+    ));
+    assert_eq!(document.cell_ref(cell("B2")), Some("keep"));
+    assert!(engine.binding(&output).is_some());
+    document.rollback_transaction().unwrap();
+    assert_eq!(document.cell_ref(cell("B2")), Some("keep"));
+    assert!(engine.binding(&output).is_some());
 }

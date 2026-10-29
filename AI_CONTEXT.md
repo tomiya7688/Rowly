@@ -7,10 +7,14 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Purpose: CSV-first table viewer/editor. CSV remains the canonical data source.
 - Main language/runtime: Rust.
 - Adapters: Rowly DSL and Luau scripting are implemented in Rust; Python/openpyxl is implemented for Excel I/O.
+- Stable project facts, active limits, validation routes, and decision references: `PROJECT_CONTEXT.md`.
 
 ## Source of Truth
+- Product rationale / Why Rowly: `docs/WHY_ROWLY.md` (Japanese canonical)
 - Product invariants: `README.md`
+- Stable project facts and links to rationale: `PROJECT_CONTEXT.md`
 - Architecture and dependency rules: `docs/ARCHITECTURE.md`
+- Data and calculation decisions: `docs/DATA_MODEL_PRINCIPLES.md`
 - DSL declarations and assignment: `docs/DSL_BINDINGS.md` (Japanese canonical specification)
 - Implementation truth: `src/` and matching tests
 - Task intent: the current issue/conversation takes priority over speculative future work
@@ -22,10 +26,12 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - READMEには「Rowlyとは何か / 基本原則 / 主な機能 / 起動 / 文書への導線」だけを置く。
 
 ## Read First
+Shared development instructions: `AGENTS.md`. Issue selection and handoff: `docs/DEVELOPMENT_WORKFLOW.md`. Writing quality: `AI_WRITING_RULES.md`.
+
 1. Current task / issue
-2. `README.md`
-3. `docs/ARCHITECTURE.md`
-4. Only the target source module and its tests
+2. A task-local `CONTEXT_PACK.md`, if the task provides one
+3. `README.md` and `PROJECT_CONTEXT.md` when product facts or constraints affect the task
+4. `docs/ARCHITECTURE.md` and only the target source module and its tests
 
 ## Ignore Normally
 - `target/`
@@ -39,6 +45,13 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Prefer target source -> matching tests -> detailed docs.
 - Do not mix unrelated refactors into the current change.
 - Summaries are routing aids, not substitutes for source/tests.
+
+## Decision Rationale
+- Read only the design-decision reference relevant to the current change; `PROJECT_CONTEXT.md` lists the document and heading.
+- Keep current behavior, the reason for choosing it, the evidence for that reason, and its status/date distinct.
+- Do not infer historical intent, approval, or a decision date from code. If a missing reason affects the change, report it as unverified and ask before relying on it.
+- Put long-lived rationale in the existing design document. Keep task-only reasoning in the request or task-local Context Pack; do not copy the same rationale into both.
+- Treat proposals and unverified or possibly stale reasons as undecided until the user confirms them.
 
 ## Commenting Convention
 - Rowlyの保守対象コードは `tomiya7688/Json-like-comment-outs` の日本語canonical仕様をコメント規約として使用する。
@@ -55,6 +68,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - レビューで必須項目への違反、CI / E2Eの失敗、または安全性・正しさの未解決懸念を確認した場合は承認しない。対象外の項目は対象外とし、未確認の項目を合格扱いにしない。
 
 ## Important Constraints
+- Every GUI Command must be reachable through an Alt KeyTips path. Dedicated shortcuts and Command Palette entries are additional entry points, never substitutes for Alt reachability. Shortcut-only, palette-only, and mouse-only GUI commands are forbidden.
 - CSV is the source of truth; Rowly-only metadata must never be required to recover table data.
 - Never mutate CSV structure merely for presentation.
 - No merged cells in the data model.
@@ -65,6 +79,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Excel export must preserve canonical CSV cells as strings instead of applying implicit numeric/type inference.
 - Calculation recalculation updates derived state only. Single-cell Materialize is explicit and may write only a fresh Evaluated result through CsvDocument so validation/history/dirty/external-save rules remain in force; ordinary Materialize keeps the binding, while explicit Materialize+Unbind removes it.
 - Official Rowly distributions must bundle the Excel Python runtime/openpyxl backend. Release Excel I/O must not depend on system Python; ROWLY_PYTHON is a development/debug override.
+- ProjectSession-generated init/config edits are staged in memory until ProjectSession::save succeeds. Session reads must see staged config, while save failures must preserve the previous manifest/generated files, keep dirty state, and allow retry.
 - A1/range addressing is process-layer behavior; the canonical data layer remains zero-based textual rows/cells.
 - Multi-cell edits must validate before mutation so a failed edit cannot partially modify the CSV table.
 - Structural edits are explicit data edits. Ragged rows must not be silently rectangularized merely to simplify column operations.
@@ -142,9 +157,11 @@ Implemented:
 - headless CLI Excel import/export commands plus the existing CSV smoke entry point
 
 Not implemented yet:
-- GUI
 - broader type inference
 - visual grouping
+
+Partially implemented (Issue #140 remains open):
+- Calculation Binding DSL / GUI / project persistence for single cells and ranges. Alt KeyTips paths for its GUI commands are not implemented; they depend on Issues #109 and #113. See `PROJECT_CONTEXT.md` for current scope and limits.
 
 ## Context Priority
 - P0: current task and invariants

@@ -75,7 +75,7 @@ impl CalculationEngine {
     /// 処理: [engine cloneでunbindを事前完了させ、CSV edit成功後にclone済みengineへ置換する]
     /// 引数: [document: canonical CSV document, id: materializeと削除の対象binding ID]
     /// 戻り値: [CalculationMaterialization: 書込結果とbinding削除済みフラグ]
-    /// エラー: [CalculationMaterializationError: freshness、unbind準備、validation、document edit失敗]
+    /// エラー: [CalculationMaterializationError: transaction中、freshness、unbind準備、validation、document edit失敗]
     /// 補足: [document edit失敗時は元engineを保持し、unbind準備失敗時はCSVを書き換えない]
     /// ```
     pub fn materialize_and_unbind(
@@ -83,6 +83,13 @@ impl CalculationEngine {
         document: &mut CsvDocument,
         id: &CalculationBindingId,
     ) -> Result<CalculationMaterialization, CalculationMaterializationError> {
+        // CSV の rollback では binding 削除を戻せないため、transaction 中は両方を変更しない。
+        if document.transaction_active() {
+            return Err(DocumentError::Transaction(
+                "cannot materialize and unbind while a transaction is active".into(),
+            )
+            .into());
+        }
         let (target, value) = self.materializable_value(document, id)?;
 
         let mut updated_engine = self.clone();

@@ -63,11 +63,9 @@ rowly excel import input.xlsx output.csv [sheet-name]
 rowly excel export input.csv output.xlsx [sheet-name]
 ```
 
-Calculation BindingのRust coreとsingle-cell Materialize process APIは実装済みですが、利用者向けGUI操作、DSLによる規則の永続化、Viewへの結果表示はまだ接続されていません。現時点で利用者がGUIやCLIからBindingを割り当てる手順はありません。process APIの呼び出し元は `CalculationEngine::set_binding` で規則を登録し、`recalculate_for_changes` または `recalculate_all` で結果を更新できます。結果は `CalculationEngine::result` から取得し、通常の再計算だけではCSVのraw valueとdirty stateは変わりません。
+Calculation BindingのRust core、Rowly DSL登録、ProjectSessionによる`generated.rly`への保存・復元が実装済みです。ProjectSessionで更新したgenerated configはsession内にstagingし、`ProjectSession::save()`成功時だけdiskへ確定します。DSLとGUIは単一cellと矩形rangeへ式を割り当てられます。rangeでは左上cellの式を各targetへ展開し、cell参照を行・列方向へ相対移動します。GUIのTable Editorでは選択cell/rangeの式とtriggerを設定し、計算状態と依存cellを確認できます。Viewerは計算済みのderived resultを表示し、Codeはcanonical CSVのraw textだけを表示・編集します。GUIではproject内のfile sourceを切り替えられます。process APIの呼び出し元は `CalculationEngine::set_binding` で規則を登録し、`recalculate_for_changes` または `recalculate_all` で結果を更新できます。結果は `CalculationEngine::result` から取得し、CSVのraw valueとdirty stateは変わりません。column-relative target、GUIからのMaterialize、View groupingは未実装です。利用者向け操作では、規則の登録と表示を分け、必要な場合だけMaterializeを実行します。
 
-freshな `Evaluated` resultだけは `CalculationEngine::materialize` で通常の `CsvDocument` 編集として明示反映できます。この経路は既存validation、Undo / Redo、dirty state、保存時の外部変更処理を迂回しません。dependency snapshotが現在値と一致しない古いresult、stale/error/pending resultは反映しません。`materialize` はbindingを残し、`materialize_and_unbind` だけが明示的にbindingを削除します。
-
-範囲・列相対targetの評価/Materialize、Command Registry、GUIからのMaterialize、View groupingは未実装です。利用者向けの操作を追加するときは、規則を明示して結果をViewで確認し、必要な場合だけMaterializeを実行する流れを提供します。Codeは常にcanonical CSVのraw textを表示・編集します。
+`CalculationEngine::materialize` は、依存値が現在の CSV と一致する計算済みの単一セル結果を、呼び出し元が明示的に指定したときだけ CSV に反映します。反映には `CsvDocument` の編集を使うため、既存の入力検証、Undo / Redo、未保存状態と外部変更の確認が適用されます。通常の Materialize は計算規則を残します。`materialize_and_unbind` は反映後に対象の計算規則を削除します。Undo / Redo は CSV の編集を対象とし、削除した計算規則は復元しません。トランザクションのロールバックでも計算規則を復元できないため、トランザクション中の `materialize_and_unbind` は拒否します。GUI からの Materialize 操作と範囲単位の一括反映は未実装です。
 
 ## 採用判断
 

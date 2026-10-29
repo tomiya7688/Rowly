@@ -8,6 +8,7 @@ mod expression;
 mod graph;
 mod indexes;
 mod materialize;
+mod recalculation;
 mod types;
 
 pub use engine::CalculationEngine;
@@ -20,6 +21,7 @@ pub use types::{
 };
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod tests_materialize;
+
+#[cfg(test)]
+mod tests;

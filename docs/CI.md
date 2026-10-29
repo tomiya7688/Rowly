@@ -29,6 +29,27 @@ packaged Rowly だけで実 XLSX fixture を import / export
 
 ワークフローの権限は `contents: read` に限定し、checkout 後の Git 設定に認証情報を保持しない。
 
+## Alt KeyTips 全到達性ゲート
+
+Rowlyでは、**GUIから実行可能な全Commandが最低でもAlt KeyTipsから到達できること**をUIの絶対条件とする。
+
+この条件は #200 でcoverage validator / testを実装し、#201 でWindows / Ubuntu CIの専用gateとして組み込む。
+
+CIでは通常の `cargo test --all-targets --all-features` に含まれていることだけに依存せず、KeyTips coverageを独立したstepとして実行する。
+
+次のいずれかを検出した場合、CIを失敗させる。
+
+- GUI CommandにAlt KeyTips pathが無い
+- KeyTips path途中に到達不能nodeがある
+- 同一階層でaccess keyが衝突する
+- mode / contextで有効なCommandへ、そのcontextからAltで到達できない
+- dialog / secondary UI内にkeyboard-onlyで完了できない主要actionがある
+- shortcut-only / Command Palette-only / mouse-onlyのGUI Commandが存在する
+
+このgateは `windows-latest` / `ubuntu-latest` の両方で実行し、どちらか一方でも失敗した場合は集約required check `rust` を失敗させる。
+
+**専用shortcutの有無は合否条件ではない。Alt KeyTipsから全GUI Commandへ到達できることが最低条件である。**
+
 ## Python と文字コード
 
 CI の Rust テストには、`actions/setup-python` の `python-path` 出力を `ROWLY_PYTHON` として渡す。openpyxl を導入した Python と、Rust が起動する Python を一致させる。

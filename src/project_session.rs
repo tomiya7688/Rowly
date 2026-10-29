@@ -1,16 +1,21 @@
 //! Editable sessions for directory projects and `.rowlyx` packages.
 
 use std::{
-    io,
+    fs, io,
     path::{Path, PathBuf},
 };
+
+#[path = "project_session/configuration.rs"]
+mod configuration;
+#[cfg(test)]
+#[path = "project_session/tests_staging.rs"]
+mod tests_staging;
 
 use tempfile::TempDir;
 use thiserror::Error;
 
 use crate::{
-    process::CsvDocument,
-    project::{ProjectError, RowlyProject, SourceKind, resolve_project_reference},
+    project::{ProjectError, RowlyProject, write_project_file_atomic},
     project_init::{self, ProjectInitError},
     rowlyx::{RowlyxArchive, RowlyxError, pack_project},
 };
@@ -34,6 +39,52 @@ enum ProjectBacking {
         manifest_path: PathBuf,
         workspace: TempDir,
     },
+}
+
+#[derive(Debug)]
+// {
+//   責務: [ProjectFileSnapshot: save前のmanifest bytesを保持し、後続処理失敗時の復元に使う]
+//   フィールド: [path: manifest path, bytes: save前bytes。manifestが未作成ならNone。]
+// }
+struct ProjectFileSnapshot {
+    path: PathBuf,
+    bytes: Option<Vec<u8>>,
+}
+
+impl ProjectFileSnapshot {
+    fn capture(path: &Path) -> Result<Self, ProjectSessionError> {
+        let bytes = match fs::read(path) {
+            Ok(bytes) => Some(bytes),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(ProjectSessionError::Snapshot {
+                    path: path.display().to_string(),
+                    message: error.to_string(),
+                });
+            }
+        };
+        Ok(Self {
+            path: path.to_path_buf(),
+            bytes,
+        })
+    }
+
+    fn restore(&self) -> Result<(), ProjectSessionError> {
+        match &self.bytes {
+            Some(bytes) => write_project_file_atomic(&self.path, bytes)?,
+            None => match fs::remove_file(&self.path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(ProjectSessionError::Rollback {
+                        primary: "manifest snapshot restore".to_owned(),
+                        rollback: error.to_string(),
+                    });
+                }
+            },
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,12 +166,13 @@ impl ProjectDirtyState {
 /// ProjectSession: directoryまたはpackageをbackingとしてproject modelと未保存状態を管理する
 /// ]
 /// 補足: [.rowlyxはsession中managed temporary workspaceへ展開し、save時にarchiveへ再packする]
-/// フィールド: [project: 編集対象manifest model, backing: 保存元形式とpath, dirty: 保存カテゴリごとの状態]
+/// フィールド: [project: 編集対象manifest model, backing: 保存元形式とpath, dirty: 保存カテゴリごとの状態, staged_init: save前のgenerated init config]
 /// ```
 pub struct ProjectSession {
     project: RowlyProject,
     backing: ProjectBacking,
     dirty: ProjectDirtyState,
+    staged_init: Option<project_init::StagedProjectInit>,
 }
 
 impl ProjectSession {
@@ -155,6 +207,7 @@ impl ProjectSession {
                     workspace,
                 },
                 dirty: ProjectDirtyState::default(),
+                staged_init: None,
             })
         } else if extension.is_some_and(|value| value.eq_ignore_ascii_case("rwprj")) {
             let project = RowlyProject::load(&path)?;
@@ -164,6 +217,7 @@ impl ProjectSession {
                     manifest_path: path,
                 },
                 dirty: ProjectDirtyState::default(),
+                staged_init: None,
             })
         } else {
             Err(ProjectSessionError::UnsupportedBacking(
@@ -180,111 +234,6 @@ impl ProjectSession {
     /// ```
     pub fn project(&self) -> &RowlyProject {
         &self.project
-    }
-
-    /// ```text
-    /// 責務: [save_generated_column_types: source documentのcolumn type設定をgenerated init scriptへ保存する]
-    /// 処理: [source idを確認し、project initのgenerated設定を更新する]
-    /// 引数: [source_id: project source id, document: type宣言を抽出するCSV document]
-    /// 戻り値: [(): generated config保存成功時に値を返さない]
-    /// 副作用: [必要ならinit.rlyとuser.rlyを作成し、generated init fileを更新してstructure / config dirtyを立てる]
-    /// エラー: [ProjectSessionError: source id、設定検証・既存script読込、init / user / generated fileの作成・writeの失敗]
-    /// ```
-    pub fn save_generated_column_types(
-        &mut self,
-        source_id: &str,
-        document: &CsvDocument,
-    ) -> Result<(), ProjectSessionError> {
-        if !self
-            .project
-            .sources
-            .iter()
-            .any(|source| source.id == source_id)
-        {
-            return Err(ProjectSessionError::SourceNotFound(source_id.to_owned()));
-        }
-        project_init::save_generated_column_types(
-            &self.project,
-            self.manifest_path(),
-            source_id,
-            document,
-        )?;
-        self.mark_structure_or_config_dirty();
-        Ok(())
-    }
-
-    /// ```text
-    /// 責務: [save_generated_validation_rules: sourceのvalidation ruleをgenerated init DSLへ保存する]
-    /// 処理: [source idを確認し、project initのgenerated設定を更新する]
-    /// 引数: [source_id: project source id, document: validation ruleを抽出するCSV document]
-    /// 戻り値: [(): generated config保存成功時に値を返さない]
-    /// 副作用: [必要ならinit.rlyとuser.rlyを作成し、generated init fileを更新してstructure / config dirtyを立てる]
-    /// エラー: [ProjectSessionError: source id、設定検証・既存script読込、init / user / generated fileの作成・writeの失敗]
-    /// ```
-    pub fn save_generated_validation_rules(
-        &mut self,
-        source_id: &str,
-        document: &CsvDocument,
-    ) -> Result<(), ProjectSessionError> {
-        if !self
-            .project
-            .sources
-            .iter()
-            .any(|source| source.id == source_id)
-        {
-            return Err(ProjectSessionError::SourceNotFound(source_id.to_owned()));
-        }
-        project_init::save_generated_validation_rules(
-            &self.project,
-            self.manifest_path(),
-            source_id,
-            document,
-        )?;
-        self.mark_structure_or_config_dirty();
-        Ok(())
-    }
-
-    /// ```text
-    /// 責務: [open_source_document: 宣言済みfile sourceを開きsafe init configを適用する]
-    /// 処理: [source idと種別を確認し、sidecar metadataを読まずにresolved CSVを開いてconfig-only initを適用する]
-    /// 引数: [source_id: 開くfile sourceのstable id]
-    /// 戻り値: [CsvDocument: safe init適用後のCSV document]
-    /// エラー: [ProjectSessionError: source不明 / directory指定、CSV open、またはsafe initの失敗]
-    /// ```
-    pub fn open_source_document(
-        &self,
-        source_id: &str,
-    ) -> Result<CsvDocument, ProjectSessionError> {
-        let source = self
-            .project
-            .sources
-            .iter()
-            .find(|source| source.id == source_id)
-            .ok_or_else(|| ProjectSessionError::SourceNotFound(source_id.to_owned()))?;
-        if source.kind != SourceKind::File {
-            return Err(ProjectSessionError::DirectorySource(source_id.to_owned()));
-        }
-        let path = resolve_project_reference(self.manifest_path(), &source.path);
-        let mut document = CsvDocument::open_without_metadata(path)?;
-        self.apply_safe_init(source_id, &mut document)?;
-        Ok(document)
-    }
-
-    /// ```text
-    /// 責務: [apply_safe_init: 対象documentへsupported project configを適用する]
-    /// 処理: [config-only project init interpreterを使い、user macroや一般DSL statementは実行しない]
-    /// 引数: [source_id: 設定を選ぶsource id, document: 設定を適用するmutable CSV document]
-    /// 戻り値: [(): config適用成功時に値を返さない]
-    /// 副作用: [supported configに基づきdocument metadata等を更新する]
-    /// エラー: [ProjectSessionError: sourceまたはinit configの検証・適用失敗]
-    /// ```
-    pub fn apply_safe_init(
-        &self,
-        source_id: &str,
-        document: &mut CsvDocument,
-    ) -> Result<(), ProjectSessionError> {
-        project_init::apply_safe_init(&self.project, self.manifest_path(), source_id, document)?;
-        Ok(())
     }
 
     /// ```text
@@ -423,27 +372,73 @@ impl ProjectSession {
     }
 
     /// ```text
-    /// 責務: [save: manifestを保存し、package sessionではworkspaceを元archiveへ再packする]
+    /// 責務: [save: manifestとstaged configを保存し、package sessionではworkspaceを元archiveへ再packする]
     /// 処理: [
-    /// 1: current manifestを保存する
-    /// 2: package backingならworkspaceからarchiveを作り、validation後に元archiveを置換する
-    /// 3: 成功後にconfig dirtyを解除し、未保存data状態を維持する
+    /// 1: manifestの保存前snapshotを取得する
+    /// 2: manifestを保存し、staged init configを確定する
+    /// 3: package backingならworkspaceからarchiveを作り、validation後に元archiveを置換する
+    /// 4: 失敗時は保存前manifestと確定済みconfigを復元し、成功時だけstagingを破棄する
     /// ]
     /// 引数: []
-    /// 戻り値: [(): backing保存成功時に値を返さない]
-    /// 副作用: [manifestを更新し、packageならoriginal archiveをatomic replacementする]
-    /// エラー: [ProjectSessionError: manifest save、pack、validation、またはarchive replacementの失敗。session dirtyは保持する]
+    /// 戻り値: [Result<(), ProjectSessionError>: backing保存成功、または保存・復元error]
+    /// 副作用: [manifestとgenerated configを更新し、packageならoriginal archiveをatomic replacementする]
+    /// エラー: [ProjectSessionError: manifest/config save、pack、validation、archive replacement、またはrollbackの失敗。stagingとdirty stateを保持する]
     /// ```
     pub fn save(&mut self) -> Result<(), ProjectSessionError> {
-        self.project.save(self.manifest_path())?;
-        if let ProjectBacking::Package {
+        let manifest_path = self.manifest_path().to_path_buf();
+        if let Some(staged_init) = &self.staged_init {
+            staged_init.validate_for_project(&self.project, &manifest_path)?;
+        }
+        let manifest_snapshot = ProjectFileSnapshot::capture(&manifest_path)?;
+        self.project.save(&manifest_path)?;
+
+        let init_snapshot = match &self.staged_init {
+            Some(staged_init) => match staged_init.commit() {
+                Ok(snapshot) => Some(snapshot),
+                Err(error) => {
+                    if let Err(rollback) = manifest_snapshot.restore() {
+                        return Err(ProjectSessionError::Rollback {
+                            primary: error.to_string(),
+                            rollback: rollback.to_string(),
+                        });
+                    }
+                    return Err(error.into());
+                }
+            },
+            None => None,
+        };
+
+        let package_result = if let ProjectBacking::Package {
             archive_path,
             manifest_path,
             ..
         } = &self.backing
         {
-            pack_project(manifest_path, archive_path)?;
+            pack_project(manifest_path, archive_path).map_err(ProjectSessionError::from)
+        } else {
+            Ok(())
+        };
+
+        if let Err(error) = package_result {
+            let mut rollback_errors = Vec::new();
+            if let Some(snapshot) = &init_snapshot
+                && let Err(rollback) = snapshot.restore()
+            {
+                rollback_errors.push(rollback.to_string());
+            }
+            if let Err(rollback) = manifest_snapshot.restore() {
+                rollback_errors.push(rollback.to_string());
+            }
+            if !rollback_errors.is_empty() {
+                return Err(ProjectSessionError::Rollback {
+                    primary: error.to_string(),
+                    rollback: rollback_errors.join("; "),
+                });
+            }
+            return Err(error);
         }
+
+        self.staged_init = None;
         let data_dirty = self.dirty.data;
         self.dirty = ProjectDirtyState {
             data: data_dirty,
@@ -475,6 +470,10 @@ pub enum ProjectSessionError {
     UnsupportedBacking(String),
     #[error("failed to create a managed project workspace: {0}")]
     TemporaryWorkspace(io::Error),
+    #[error("failed to snapshot project file `{path}`: {message}")]
+    Snapshot { path: String, message: String },
+    #[error("project save failed: {primary}; rollback also failed: {rollback}")]
+    Rollback { primary: String, rollback: String },
     #[error(transparent)]
     Project(#[from] ProjectError),
     #[error(transparent)]
@@ -483,6 +482,8 @@ pub enum ProjectSessionError {
     Rowlyx(#[from] RowlyxError),
     #[error(transparent)]
     Document(#[from] crate::process::DocumentError),
+    #[error(transparent)]
+    Calculation(#[from] crate::process::calculation::CalculationError),
     #[error("project source `{0}` does not exist")]
     SourceNotFound(String),
     #[error("project source `{0}` is a directory; open a file source instead")]

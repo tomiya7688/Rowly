@@ -175,6 +175,28 @@ struct PersistentDirtyState {
 }
 ~~~
 
+実際のTransition Guardでは、さらに次を独立categoryとして扱います。
+
+~~~text
+SessionWorkSummary
+├─ Pending Drafts
+├─ Persistent Dirty
+├─ Unresolved Conflicts
+└─ Session-only / Not Persistable
+~~~
+
+### Unresolved Conflicts
+
+external mergeやCode Applyで退避したLocal conflictは、canonical CSVがcleanでも未解決作業です。
+
+conflict draftが残っている状態を「全部保存済み」と表示してはなりません。
+
+### Session-only / Not Persistable
+
+bare CSVのCalculation Bindingなど、現在のbackingへ保存できない状態です。
+
+通常Saveで消えないため、Open / Close / Quit時はProject化・Discard・Cancel等の明示的なresolutionが必要です。
+
 ### CodeDraftStatus
 
 最低限:
@@ -232,6 +254,7 @@ struct DocumentChangeSet {
     scope: ChangeScope,
     conflicts: Vec<MergeConflict>,
     disk_baseline_changed: bool,
+    history_effect: HistoryEffect,
 }
 
 enum ChangeScope {
@@ -251,6 +274,12 @@ enum ChangeOrigin {
     Luau,
     Import,
     Materialize,
+}
+
+enum HistoryEffect {
+    None,
+    Recorded,
+    ResetToDisk,
 }
 ~~~
 
@@ -397,6 +426,32 @@ merge前にLocalを破棄してから競合判定してはいけません。
 
 競合はDisk/currentを現在値にし、Localをconflict draftへ退避する既存方針を維持します。
 
+### Draft baseline
+
+CodeDraftとInlineCellDraftは、作業開始時のbaseを持ちます。
+
+CodeDraft:
+
+~~~text
+base revision
+base table snapshot
+current text
+draft status
+~~~
+
+InlineCellDraft:
+
+~~~text
+target cell
+base revision
+base raw value
+current edit value
+~~~
+
+canonical CSVが別経路で変わってもdraft text/valueは上書きしません。
+
+Inline cellのtarget自体がBaseから変化した場合は、commit時に競合として扱います。
+
 ### Code Apply
 
 Codeはユーザーが明示的にApplyする一つの編集単位です。
@@ -448,6 +503,23 @@ bare CSVではCalculation Binding等を自動sidecar保存しません。
 
 Open / Close / Quitごとに別の確認ロジックを作りません。
 
+### Transitionは二段階でcommitする
+
+Open / source switchは、現在sessionを先に破棄しません。
+
+~~~text
+1. Guard
+2. User resolution
+3. Prepare next session
+4. Validate next session
+5. Commit swap
+6. Dispose old session
+~~~
+
+新しいCSV / Projectのopen、Code text生成、Calculation Binding復元、watcher準備の途中で失敗した場合は、現在sessionをそのまま維持します。
+
+「古いsessionを消してから新しいsessionをopenする」順序は禁止します。
+
 ---
 
 ## Save Coordinator
@@ -477,6 +549,8 @@ enum SavePart {
 - invalid inline editがあればSaveを止める
 - dirty Codeは勝手にApplyしない
 - dirty Codeがあれば PendingDraft(Code) として拒否する
+- unresolved conflictがあれば「すべて保存済み」扱いにしない
+- session-only stateがある場合は通常Saveで永続化できるか判定する
 - external fingerprintを確認する
 
 ### Save中
@@ -489,7 +563,9 @@ save内部だけを再計算・invalidationsの例外にしません。
 
 ### Save後
 
-全対象が成功したときだけ全体成功表示にします。
+全対象が成功し、Pending Draft / Unresolved Conflict / Not Persistable stateが残っていないときだけ「すべて保存済み」と表示します。
+
+CSV file自体が最新diskと一致していてもLocal conflict draftが残っていれば、session全体は未解決です。
 
 部分失敗は部分失敗として表示し、失敗したcategoryのdirty stateを維持します。
 

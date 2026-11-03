@@ -458,12 +458,18 @@ Codeはユーザーが明示的にApplyする一つの編集単位です。
 
 - base revisionとcurrent revisionが同じなら通常Apply
 - divergedなら3-way merge
-- conflictがある場合はCode bufferを消さない
-- 競合解決前に「全件Apply成功」と表示しない
+- conflictが1件でもあれば、Code由来の変更は**一件もcanonicalへ適用しない**
+- Code bufferをそのまま保持する
+- conflict情報を表示し、解決後に再Applyする
+- 競合解決前に「Apply成功」と表示しない
 
-non-conflict部分を先に適用するか、全体をatomicに止めるかは実装Issue #215で固定します。
+External Syncは非競合部分を自動mergeしてよい一方、Code Applyはatomicに扱います。
 
-ただし、どちらを選んでもLocal Codeを失うことは禁止します。
+理由は、Apply Codeが利用者の明示した1つの編集transactionだからです。
+
+部分適用して「どこまで入ったか」を別状態にするより、全件成功か全件未適用かを維持します。
+
+将来、明示的な「非競合部分だけ適用」を追加する場合は別Commandとして扱います。
 
 ---
 
@@ -546,7 +552,8 @@ enum SavePart {
 
 ### Save前
 
-- invalid inline editがあればSaveを止める
+- active inline editがある場合は、通常のcell validationを通してcommitを試みる
+- inline editのcommitに失敗した場合はSaveを止め、入力値を保持する
 - dirty Codeは勝手にApplyしない
 - dirty Codeがあれば PendingDraft(Code) として拒否する
 - unresolved conflictがあれば「すべて保存済み」扱いにしない

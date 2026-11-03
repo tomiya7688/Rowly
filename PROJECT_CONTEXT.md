@@ -28,6 +28,7 @@
 - 製品の原則と利用者向け入口: [`README.md`](README.md)
 - 構成と依存方向: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - CSV・計算・表示の正本: [`docs/DATA_MODEL_PRINCIPLES.md`](docs/DATA_MODEL_PRINCIPLES.md)
+- Interactive sessionのdraft・dirty・ChangeSet・保存契約: [`docs/SESSION_STATE_TRANSITIONS.md`](docs/SESSION_STATE_TRANSITIONS.md)
 - DSLの構文とBinding: [`docs/DSL_REFERENCE.md`](docs/DSL_REFERENCE.md)、[`docs/DSL_BINDINGS.md`](docs/DSL_BINDINGS.md)
 - 現在の動作: `src/` と対応するテスト。文書の説明だけで実装済みとは判断しないでください。
 
@@ -35,5 +36,6 @@
 
 - CSVを正本にする理由と計算・表示を分離する現在の方針: [`docs/DATA_MODEL_PRINCIPLES.md`](docs/DATA_MODEL_PRINCIPLES.md) の「背景と目的」「基本モデル」「採用判断」。状態: 文書とコードで確認できる現行方針。確認日: 2026-10-09。過去の承認者と決定日は記録されていません。履歴上の理由や承認を推測しないでください。
 - 計算機能の実装境界: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) の「Calculation Binding core」。状態: 現行構成の説明。確認日: 2026-10-09。特定の実装選択を採用した過去の理由は別途確認してください。
+- 外部同期・Code draft・Save・Openで状態契約を共通化する理由: [`docs/SESSION_STATE_TRANSITIONS.md`](docs/SESSION_STATE_TRANSITIONS.md) の「絶対条件」「変更適用パイプライン」「Transition Guard」「Save Coordinator」。状態: 2026-11-03のGensparkレビューで複数入口の状態同期不一致が確認されたため採用した現行設計。個別実装は #214〜#236 で段階導入する。
 
 今回だけの判断や根拠は、作業依頼または作業メモに残してください。長く有効な理由を設計文書へ記録するときは、理由・根拠・状態・確認日を明記し、内容を利用者が確認してください。提案・未確認・現在の適用要確認を確定済みの仕様として扱わないでください。

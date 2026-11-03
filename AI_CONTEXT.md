@@ -15,6 +15,7 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Stable project facts and links to rationale: `PROJECT_CONTEXT.md`
 - Architecture and dependency rules: `docs/ARCHITECTURE.md`
 - Data and calculation decisions: `docs/DATA_MODEL_PRINCIPLES.md`
+- Interactive session / drafts / ChangeSet / save contract: `docs/SESSION_STATE_TRANSITIONS.md` (Japanese canonical specification)
 - DSL declarations and assignment: `docs/DSL_BINDINGS.md` (Japanese canonical specification)
 - Implementation truth: `src/` and matching tests
 - Task intent: the current issue/conversation takes priority over speculative future work

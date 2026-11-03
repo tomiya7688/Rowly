@@ -91,6 +91,18 @@ UI / Rowly DSL / Luau / Python adapters
 
 処理が大きくなった場合は、小さな processing module へ分割します。オーケストレータは調停に集中し、実装詳細を抱え込まないようにします。
 
+### Interactive Session / 状態遷移
+
+GUIや対話shellのように、canonical CSV、未適用draft、Calculation rules、derived result、Project保存状態を同時に扱うinteractive clientは、handlerごとにdirty判定・再計算・保存messageを実装しません。
+
+状態は Canonical / Draft / Rule / Derived / Backing に分け、canonical mutationは共通の DocumentChangeSet を発行し、Session Reconcileを通してdraft関係、Calculation freshness、View cache、selectionを更新します。
+
+Open / Project source switch / Close / Quitは同じTransition Guardを使い、CSV dirtyだけでなくCode draft、inline edit、rule/config/package dirtyを含めて判定します。
+
+Saveは単純なboolではなくCSV / project config / package / pending draftを区別する構造化結果として扱います。Calculation resultの Evaluated はcurrent dependency snapshotとの一致を確認できる場合だけ有効とします。
+
+日本語正本は [セッション状態・変更適用・保存の設計契約](SESSION_STATE_TRANSITIONS.md) を参照してください。
+
 ### Process transaction
 
 `CsvDocument` の transaction はメモリ上の編集履歴をまとめるための process API です。ネストは許可しません。transaction 中の編集は即座に正本テーブルへ反映されますが、commit 時に1つの履歴コマンドへ集約され、1回の undo/redo で全体を戻す／進めることができます。rollback は transaction 内の編集を逆順に戻し、履歴には残しません。

@@ -6,6 +6,8 @@ CSV値、計算、表示の境界は [`DATA_MODEL_PRINCIPLES.md`](DATA_MODEL_PRI
 
 Viewの非破壊Filter / Sort / layoutは [`VIEW_MODEL.md`](VIEW_MODEL.md)、意味ベースの操作記録は [`COMMAND_RECORDING.md`](COMMAND_RECORDING.md)、検索・置換は [`SEARCH_REPLACE.md`](SEARCH_REPLACE.md)、Codeモード編集器は [`CODE_EDITOR.md`](CODE_EDITOR.md)、差分表示は [`DIFF_INSPECTOR.md`](DIFF_INSPECTOR.md)、データプロファイルは [`DATA_PROFILE.md`](DATA_PROFILE.md) を正本とします。
 
+表計算機能全体の網羅性は [`SPREADSHEET_CAPABILITY_MAP.md`](SPREADSHEET_CAPABILITY_MAP.md)、Fill / Seriesは [`EDIT_OPERATIONS.md`](EDIT_OPERATIONS.md)、表示書式は [`DISPLAY_FORMATTING.md`](DISPLAY_FORMATTING.md)、Calculation関数は [`CALCULATION_LIBRARY.md`](CALCULATION_LIBRARY.md)、参照モデルは [`CALCULATION_REFERENCES.md`](CALCULATION_REFERENCES.md)、Group By / Pivotは [`AGGREGATION_PIVOT.md`](AGGREGATION_PIVOT.md)、Chartは [`CHARTS.md`](CHARTS.md)、印刷/PDFは [`PRINT_OUTPUT.md`](PRINT_OUTPUT.md)、明示データ変換は [`DATA_TRANSFORMATIONS.md`](DATA_TRANSFORMATIONS.md)、workspace navigationは [`WORKSPACE_NAVIGATION.md`](WORKSPACE_NAVIGATION.md)、Edit入力バーは [`EDIT_INPUT_BAR.md`](EDIT_INPUT_BAR.md)、New / Save Asは [`FILE_LIFECYCLE.md`](FILE_LIFECYCLE.md) を正本とします。
+
 ## 目的
 
 Rowly は CSV-first のエディタです。表示、スクリプト、外部連携のコードが第二の正本を作らない構造を維持します。

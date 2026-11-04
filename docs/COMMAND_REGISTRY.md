@@ -4,7 +4,11 @@
 
 menu、toolbar、shortcut、Command Palette、Alt KeyTipsが別々の操作定義を持つと、有効条件や実行処理が食い違います。Issue #109では、GUI操作の登録情報と実行直前の検査を一箇所へ集めます。Issue #113のKeyTipsも同じ登録情報を参照するため、専用shortcutとAlt経路を別のmetadataとして保持します。
 
-共有契約の実装入口は `src/gui_commands.rs` です。`CommandRegistry` は画面やCSVを所有せず、検査に成功したactionをadapterのhandlerへ渡します。実際のCSV操作はGUI adapterから既存のprocess APIへ接続してください。
+共有契約の実装入口は `src/gui_commands.rs` です。`CommandRegistry` は画面やCSVを所有せず、GUI入口のmetadata・KeyTips・shortcut・availabilityを管理します。
+
+**CommandRegistryをapplication commandの実装本体にはしません。**
+
+GUI、DSL、CLI、Luauで意味が同じ操作は、最終的に共通のApplication Commandへ収束させます。
 
 この共有契約だけでは既存GUIの操作は変わりません。menu・toolbarへの配線、Command Palette、Alt表示と階層操作は未接続です。KeyTips metadataの登録成功は、実GUIでAltから到達できることの証拠にはなりません。これらの接続と操作確認は #109 / #113で続けます。
 
@@ -41,9 +45,143 @@ menu、toolbar、shortcut、Command Palette、Alt KeyTipsが別々の操作定�
 
 modeまたはfocusが交わらない定義は、同じshortcutとAlt経路を再利用できます。動的enabled predicateの相互排他は、登録時の衝突回避の根拠にしません。
 
+## GUI RegistryとApplication Commandを分ける
+
+GUI Registryのstable IDは、可能な限りApplication Command IDと1対1に対応させます。
+
+~~~text
+GUI Button ─┐
+Shortcut ───┤
+Alt KeyTips ┤
+Palette ────┘
+      ↓
+GUI Command Registry
+      ↓
+Application Command Request
+      ↓
+InteractiveSession / Coordinator
+      ↓
+process
+~~~
+
+DSL / CLI / Luauで同じ意味の操作を公開する場合は、GUI handlerを呼ぶのではなく同じApplication Commandへrequestを送ります。
+
+### Application Command Request
+
+概念:
+
+~~~rust
+struct CommandRequest {
+    id: CommandId,
+    arguments: CommandArguments,
+    actor: CommandActor,
+    interaction: InteractionMode,
+    capabilities: CapabilityContext,
+    state_stamp: Option<StateStamp>,
+}
+~~~
+
+actor例:
+
+~~~text
+GUI
+CLI
+RowlyDsl
+Luau
+Internal
+~~~
+
+入口が違ってもCommand semanticsは変えません。
+
+ただしsecurity capabilityとinteraction policyはactor/contextごとに異なってよいです。
+
+### InteractionMode
+
+~~~text
+Interactive
+NonInteractive
+~~~
+
+Interactiveでは、必要に応じてSave/Discard/Cancelやoverwrite確認等のInteractionRequestを返せます。
+
+NonInteractiveではpromptを出しません。
+
+確認が必要なら安定した `INTERACTION_REQUIRED` 相当errorを返します。
+
+CLI `--no-input`、自動化、CIはNonInteractiveです。
+
+### Preflight
+
+commandはmutation前にpureなPreflightを行います。
+
+~~~text
+CommandRequest
+  ↓
+Preflight
+  ├─ Ready(CommandPlan)
+  ├─ Disabled(reason)
+  ├─ NeedsInteraction(request)
+  ├─ CapabilityDenied
+  └─ InvalidArguments
+~~~
+
+UIのenabled表示と実dispatchは、同じCommandSpec / preflight contractから導出します。
+
+ただしUIのenabled表示はhintにすぎません。
+dispatch時に必ず再preflightします。
+
+### State Stamp
+
+dialogやfile chooserを跨ぐCommandPlanは、SESSION_STATE_TRANSITIONS.mdのState Stampを持ちます。
+
+commit直前にstampが変わっていれば、古いplanを実行せず再preflightします。
+
+### Command Outcome
+
+GUIのstatus文字列をhandlerが直接成功状態として作りません。
+
+概念:
+
+~~~rust
+struct CommandOutcome {
+    command_id: CommandId,
+    result: CommandResult,
+    diagnostics: Vec<Diagnostic>,
+}
+~~~
+
+CommandResult例:
+
+~~~text
+NoChange
+Changed(SessionChangeSet)
+Saved(SaveReport)
+Transitioned(...)
+Blocked(...)
+~~~
+
+GUIはOutcomeを表示へ変換します。
+CLI `--json` は同じOutcomeを機械可読形式へ変換できます。
+
+### Security
+
+共通Application Commandだからといって全actorへ同じ権限を与えません。
+
+~~~text
+same command semantics
+        +
+actor-specific capability
+        +
+interaction policy
+~~~
+
+で実行可否を決めます。
+
+Luau sandbox、DSL capability、CLI path scopeはこの境界で迂回できません。
+
 ## 共通dispatch
 
-IDによる入口は `dispatch` を使います。shortcutによる入口は `dispatch_shortcut` を使い、同じIDのdispatchへ合流します。無効なscope・状態の場合、Registryはhandlerを呼びません。handlerが操作失敗の `Result` を返した場合、Registryはその結果を変更せず返します。
+IDによるGUI入口は `dispatch` を使います。shortcutによる入口は `dispatch_shortcut` を使い、同じIDのdispatchへ合流します。無効なscope・状態の場合、Registryはhandlerを呼びません。handlerが操作失敗の `Result` を返した場合、Registryはその結果を変更せず返します。
 
 `dispatch_shortcut` へは、eguiが正規化した押下modifierとlogical keyを渡してください。eguiの `matches_exact` を使い、Shift/Altの過不足を許可しません。たとえばCtrl+Shift+ZをCtrl+Zとして先に消費しません。一致する定義がなければ `None`、定義が見つかって動的に無効なら `Some(Err(DisabledCommand))` を返します。
 
@@ -71,7 +209,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-実GUIへ接続するときは、同じhandlerからOpen/Save/Undo/Redoを呼び、menu・toolbar・shortcutごとの独立した操作実装を作らないでください。text widgetへfocusしている間のUndo/Redoは、CSV履歴へ渡さないでください。
+実GUIへ接続するときは、menu・toolbar・shortcut・KeyTipsから同じApplication Command Requestを作り、入口ごとの独立した操作実装を作らないでください。
+
+GUI adapterはOpen/Save/Undo/Redoの意味を実装せず、引数収集とOutcome表示に集中します。
+
+text widgetへfocusしている間のUndo/Redoは、CSV履歴commandへrequestを送らないようCommand scope / focusで区別します。
 
 ## 最初の基本定義
 

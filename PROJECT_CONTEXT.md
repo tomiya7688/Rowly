@@ -26,6 +26,8 @@
 ## 詳細資料
 
 - 製品の原則と利用者向け入口: [`README.md`](README.md)
+- 全設計書の索引（Issue番号から設計書を引く）: [`docs/DESIGN_INDEX.md`](docs/DESIGN_INDEX.md)
+- 実装前の確認（手戻り防止）: [`docs/READY_CHECKLIST.md`](docs/READY_CHECKLIST.md)
 - 構成と依存方向: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - CSV・計算・表示の正本: [`docs/DATA_MODEL_PRINCIPLES.md`](docs/DATA_MODEL_PRINCIPLES.md)
 - 対話セッションの未適用編集・未保存状態・変更通知・遷移契約: [`docs/SESSION_STATE_TRANSITIONS.md`](docs/SESSION_STATE_TRANSITIONS.md)

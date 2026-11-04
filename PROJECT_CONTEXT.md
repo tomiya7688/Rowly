@@ -32,6 +32,12 @@
 - 外部同期 / Code適用の3-way merge契約: [`docs/MERGE_CONTRACT.md`](docs/MERGE_CONTRACT.md)
 - 保存 / 名前を付けて保存 / Pack / Exportの永続化契約: [`docs/PERSISTENCE_CONTRACT.md`](docs/PERSISTENCE_CONTRACT.md)
 - GUIコマンド登録 / アプリケーションコマンド契約: [`docs/COMMAND_REGISTRY.md`](docs/COMMAND_REGISTRY.md)
+- 非破壊View・Filter・Sort・名前付きView: [`docs/VIEW_MODEL.md`](docs/VIEW_MODEL.md)
+- 意味ベースの操作記録・Rowly DSLマクロ生成: [`docs/COMMAND_RECORDING.md`](docs/COMMAND_RECORDING.md)
+- 検索・置換: [`docs/SEARCH_REPLACE.md`](docs/SEARCH_REPLACE.md)
+- CodeモードCSV編集器: [`docs/CODE_EDITOR.md`](docs/CODE_EDITOR.md)
+- 差分・競合インスペクタ: [`docs/DIFF_INSPECTOR.md`](docs/DIFF_INSPECTOR.md)
+- データプロファイル・品質確認: [`docs/DATA_PROFILE.md`](docs/DATA_PROFILE.md)
 - DSLの構文とBinding: [`docs/DSL_REFERENCE.md`](docs/DSL_REFERENCE.md)、[`docs/DSL_BINDINGS.md`](docs/DSL_BINDINGS.md)
 - 現在の動作: `src/` と対応するテスト。文書の説明だけで実装済みとは判断しないでください。
 

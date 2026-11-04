@@ -46,6 +46,37 @@ canonical table modelにmerged cellを作りません。連続する同じnon-em
 
 ## 形式変換
 
+### Lossless-or-error
+
+RowlyのImport / Export / Pack / Save境界では、**黙ってデータを落とさない**ことを絶対条件とします。
+
+target formatやlibraryの制約でcanonical dataをそのまま表現できない場合、既定動作は次のどちらかです。
+
+1. losslessに表現する
+2. mutation / output確定前に明示errorにする
+
+無警告のtruncate、drop、型変換、値の書き換えを成功扱いしません。
+
+例:
+
+- XLSXのcell文字数上限を超える文字列
+- target formatで表現できない文字・型
+- merged cell importで失われる下位cell値
+- export先が入力sourceとaliasして元データを破壊する場合
+
+errorには可能な限り、対象cell / row / source path / format limitを含めます。
+
+将来lossy modeを提供する場合は、通常のExportとは別の**明示的な操作**にします。
+「警告を出したから通常Exportで黙って変換してよい」という設計にはしません。
+
+### Output alias safety
+
+Import / Export / Packの出力先は、入力source集合とcanonical pathで照合します。
+
+明示的なSave operationを除き、outputがinput自身またはdirectory source配下の収録対象fileとaliasする場合は、書き込み開始前に拒否します。
+
+symlink / junction / reparse point等、platform依存のaliasも安全側へ倒します。
+
 XLSXはImport / Exportの交換形式です。書式、Excelの型、merged cell、計算式をRowlyのcanonical modelへ暗黙に取り込みません。
 
 XLSXの式セルを取り込む機能を拡張するときは、計算済みの値をCSVの文字列として取り込みます。式をCalculation Bindingへ変換する場合は、変換可能な規則だけを利用者が明示して取り込めるようにします。変換できない式は警告し、式を実行可能な計算として黙って登録しません。

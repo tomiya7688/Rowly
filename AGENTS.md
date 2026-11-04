@@ -8,7 +8,7 @@ Claude、ChatGPT、Copilot、Codex と人間の開発者は、このファイル
 2. GUI・CLI・DSL・スクリプトは、同じapplication/process境界とCommand Registryを通します。
 3. 全てのGUI操作は、Alt KeyTipsから到達できるCommandとして登録します。
 4. 利用者に環境構築を求めません。実行時依存は配布物へ同梱します。
-5. 設計が決まる前に実装しません。設計とIssueが食い違ったら、実装を止めて設計を先に直します。
+5. 設計が決まる前に実装しません。設計とIssueが食い違ったら、実装を止めて設計書を更新するPRを先に出します（手順は `docs/READY_CHECKLIST.md`）。
 
 原則の詳細と、作業開始・設計・終え方・検証の規則本文は [`docs/CONTRIBUTION_RULES.md`](docs/CONTRIBUTION_RULES.md) にあります。
 
@@ -36,7 +36,7 @@ Claude、ChatGPT、Copilot、Codex と人間の開発者は、このファイル
 | 保存・Export・外部同期・状態遷移を変える | [`docs/PERSISTENCE_CONTRACT.md`](docs/PERSISTENCE_CONTRACT.md)、[`docs/MERGE_CONTRACT.md`](docs/MERGE_CONTRACT.md)、[`docs/SESSION_STATE_TRANSITIONS.md`](docs/SESSION_STATE_TRANSITIONS.md) |
 | Excel・配布・CIに触れる | [`docs/EXCEL.md`](docs/EXCEL.md)、[`docs/CI.md`](docs/CI.md)、[`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) |
 | Issueを選ぶ・優先度を付ける・引き継ぐ | [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md)、[`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md)、[`docs/ISSUE_PRIORITIES.md`](docs/ISSUE_PRIORITIES.md) |
-| 設計を変える・新しい設計書を書く | [`docs/READY_CHECKLIST.md`](docs/READY_CHECKLIST.md) |
+| 設計を変える・新しい設計書を書く | 変更対象の設計書と影響する契約（[`docs/DESIGN_INDEX.md`](docs/DESIGN_INDEX.md) で引く）、[`docs/READY_CHECKLIST.md`](docs/READY_CHECKLIST.md) |
 
 ## 迷ったとき
 

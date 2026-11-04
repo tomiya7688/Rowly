@@ -319,6 +319,13 @@ physical CSV sourceごとのsession-local identityです。
 - Save Asだけなら同じsource instanceのbacking locator変更として扱える
 - project内source moveはstable source_idを維持し、同じsource instanceのlocator変更として扱える
 
+SourceInstanceIdはpathから生成しません。
+pathはlocatorであり、rename / Save As / case / symlink解決で変わり得るためです。
+
+session内の単調増加ID等、衝突しないopaque identityとして発行し、diskへ永続化しません。
+
+Project sourceでは診断用にstable source_idも併記できますが、session object同一性はSourceInstanceIdで判定します。
+
 CodeDraft / physical source用ConflictDraftは、対象SourceInstanceIdが一致しなければ利用しません。
 
 #### WorkspaceRevision
@@ -394,6 +401,7 @@ mutation後にrevision更新だけ失敗する順序は禁止します。
 | selection / mode / popup | GUI | UI state |
 | command availability | Session snapshotから導出 | enabled/disabled |
 | status text | SessionOutcomeから導出 | message |
+| session health | InteractiveSession | Healthy / Degraded / Uncertain |
 
 例えば code_buffer_dirty と別の「Code未適用」flagを持ちません。
 CodeDraftStatusを正本にし、UI表示はそこから導出します。
@@ -444,6 +452,7 @@ struct DocumentChangeSet {
 }
 
 struct SessionChangeSet {
+    operation_id: OperationId,
     origin: ChangeOrigin,
     before_workspace_revision: WorkspaceRevision,
     after_workspace_revision: WorkspaceRevision,
@@ -493,6 +502,55 @@ BackingSyncReport
 ~~~
 
 上位層は SessionChangeSet を受けてderived stateやDraftを更新します。
+
+### OperationId / Change Group
+
+1つのApplication Commandが複数physical sourceを変更しても、利用者から見れば1操作です。
+
+そのためSessionChangeSetはsession-localなOperationIdを持ちます。
+
+~~~text
+row move command
+  OperationId = 42
+  ├─ source A: delete row
+  └─ source B: insert row
+~~~
+
+両sourceのDocumentChangeSetを別のユーザー操作として扱いません。
+
+OperationIdはpersistent history node IDではありません。
+現在session内で変更を束ねるためのidentityです。
+
+---
+
+## Application-level Undo Group
+
+single-source編集は従来のCsvDocument historyで実装できます。
+
+ただしmulti-source commandでは、application layerがOperationId単位のundo groupを管理します。
+
+### multi-source Undo
+
+row move等のUndoは:
+
+~~~text
+OperationId 42 Undo
+  ├─ source Bからinserted rowを削除
+  └─ source Aへremoved rowを復元
+~~~
+
+を一つのatomic application transactionとして行います。
+
+片方だけUndoして途中状態を露出しません。
+
+### process historyとの関係
+
+各CsvDocument内部のhistoryはphysical sourceの編集証拠を保持できます。
+
+application-level undo groupは、それらを跨ぐ調停を担当します。
+
+将来の #70 persistent Git-like historyではOperationIdそのものを永続IDとして使う必要はありません。
+persistent historyは別のimmutable node identityを持ち、session operation groupから履歴nodeを生成します。
 
 ---
 
@@ -567,10 +625,13 @@ multi-source MutationPlan
 ↓
 A / Bを一つのapplication transactionとしてcommit
 ↓
-SessionChangeSet(documents = [A, B])
+SessionChangeSet(operation_id, documents = [A, B])
 ~~~
 
 とし、Aだけ削除してBへの追加に失敗した状態を利用者へ露出しません。
+
+commit中に後半sourceが失敗した場合は、前半sourceをtransaction内でrollbackしてからerrorを返します。
+rollback自体に失敗した場合は通常errorへ丸めずSession HealthをUncertainへ上げる設計を取ります。
 
 #### Derived failure
 
@@ -585,6 +646,31 @@ dirtyを消さず、SaveReportで失敗を返します。
 #### Transition preparation failure
 
 現在sessionを維持し、新sessionへswapしません。
+
+### Session Health
+
+通常は Healthy です。
+
+~~~text
+SessionHealth
+├─ Healthy
+├─ Degraded
+└─ Uncertain
+~~~
+
+#### Degraded
+
+一部derived機能やwatcherが使えないが、canonical stateとbacking stateの関係は把握できている状態です。
+
+例: watcher開始失敗。Save前fingerprint検証は可能。
+
+#### Uncertain
+
+rollback失敗、replace結果の確認不能等により、in-memoryとbackingの関係をRowlyが証明できない状態です。
+
+Uncertainでは通常Saveや破壊的transitionを継続せず、再読込比較 / Save As / recovery手順を要求します。
+
+**分からないのにClean/Savedと推測しません。**
 
 ---
 

@@ -15,6 +15,18 @@ RowlyではPRを「あとでまとめて片付けるバックログ」にしま�
 
 「Draftだから放置」「CI成功だから未レビューでmerge」「古いbaseのまま新規開発を進める」は禁止します。
 
+### Merged表示とmain統合を区別する
+
+GitHub上でPRが `Merged` でも、base branchが `main` 以外ならmain統合の証拠にはなりません。
+
+stacked / feature branchへmergeされたPRは、次のいずれかを確認して初めてmain統合済みと扱います。
+
+- carry PRがmainへmergeされている
+- PR headが現在mainのancestorである
+- 同等差分がmainへ明示的に移植され、対応するmain SHAと検証が記録されている
+
+確認できない場合はIssueを完了扱いせず、branch-only / historical PRとして記録します。
+
 新しい実装を始める前に、関連するPRだけでなくrepository全体のOpen PR一覧を確認してください。merge可能なPRがあれば新規開発より先に処理します。既存PRが新しい設計に合わない場合は、無理に延命せずcloseし、有効な差分のbranch / HEAD / 移植先Issueを記録します。
 
 ## 優先度と着手状態

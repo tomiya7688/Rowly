@@ -143,13 +143,16 @@ Rowly 1.0で『表計算ツールとして成立』する最低ラインを次�
 
 ### 編集
 
+- New CSV / Save As / Save Copy
 - cell / range
 - row / column
-- Copy / Paste
+- Copy / Paste / Paste Special
 - Fill / Series
 - Search / Replace
 - validation
 - Edit / View / Code
+- Value Bar / Calculation Bar
+- Trim / Split / Combine / Remove Duplicates等の基本変換
 
 ### 表示
 
@@ -159,27 +162,39 @@ Rowly 1.0で『表計算ツールとして成立』する最低ラインを次�
 - freeze
 - display formatting
 - conditional formatting
+- physical source / logical table / named Viewのtab navigation
+- 名前付きView
 
 ### 計算
 
 - Calculation Binding
-- relative reference
+- relative / absolute / mixed reference
 - range binding
-- SUM / COUNT / AVERAGE / MIN / MAX
+- SUM / COUNT / COUNTA / AVERAGE / MIN / MAX
+- IF / AND / OR / NOT
+- SUMIF / COUNTIF
+- exact lookup
+- 基本数値 / 文字列 / 日付関数
 - dependency recalc / stale handling
 - Materialize
 
 ### 分析
 
 - group by / aggregate view
+- basic Pivot
 - data profile
+- diff / conflict inspector
+
+### 可視化
+
+- basic Chart: line / bar / column / area / scatter / pie
 
 ### 出力
 
 - CSV
 - XLSX Import / Export
 - View export
-- clipboard
+- raw / displayed clipboard
 - print / PDF
 
 ### 操作性
@@ -197,6 +212,35 @@ Rowly 1.0で『表計算ツールとして成立』する最低ラインを次�
 - conflict inspector
 - no silent data loss
 - save correctness
+
+
+## 実装トラッカー
+
+| 領域 | 設計 / 主Issue |
+| --- | --- |
+| Grid / selection | #57 / #110 |
+| New / Save As | #331〜#333 |
+| Workspace tab | #317〜#320 |
+| Value / Calculation Bar | #321〜#324 |
+| Fill / Series / Paste Special | #278〜#282 |
+| Search / Replace | #256〜#259 |
+| Code editor | #260 / #261 / #265〜#267 |
+| View / Filter / Sort | #245〜#248 / #262〜#264 |
+| Display / Conditional Formatting | #283〜#288 |
+| Calculation references | #325〜#327 |
+| Calculation function library | #289〜#295 / #328〜#330 |
+| Group By / Pivot | #296〜#300 |
+| Chart | #301〜#305 |
+| Data Profile | #272〜#274 |
+| Diff / Conflict Inspector | #268〜#271 |
+| Data Transformations | #311〜#316 |
+| View Export / Copy | #275 / #276 |
+| Print / PDF | #306〜#310 |
+| Macro Recording | #249〜#255 |
+| Session / Save safety | #214〜#244 |
+| Persistent History | #70 / #71 / #243 |
+
+上記の設計・実装は #277 で表計算機能全体として追跡します。
 
 ## 1.0後でもよい機能
 

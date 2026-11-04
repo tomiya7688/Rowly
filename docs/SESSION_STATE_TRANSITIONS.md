@@ -86,11 +86,25 @@ Interactive Session
 
 ### Canonical Data
 
-CsvDocument が保持する、現在確定済みのCSV表です。
+物理CSVごとの CsvDocument が、現在確定済みのCSV表を保持します。
+
+bare CSVでは通常1つ、Project / logical tableでは複数のphysical sourceが同時にcanonical dataへ参加できます。
+
+~~~text
+Canonical Data Context
+├─ source A -> CsvDocument
+├─ source B -> CsvDocument
+└─ source C -> CsvDocument
+       ↓
+Logical Table / View
+~~~
 
 Edit / Code Apply / DSL / Luau / Undo / Redo / External Sync等で変更されます。
 
 ここへ入った変更は通常のhistory / validation / dirty contractに従います。
+
+**logical tableはcanonical sourceを置き換える正本ではありません。**
+表示rowにはprovenanceがあり、実際のwriteは元physical sourceへ帰ります。
 
 ### Drafts
 
@@ -168,12 +182,21 @@ struct PendingWorkState {
 }
 
 struct PersistentDirtyState {
-    csv: bool,
-    calculation_rules: bool,
-    project_config: bool,
-    package: bool,
+    dirty_artifacts: BTreeSet<PersistenceArtifactId>,
 }
 ~~~
+
+dirty_artifactsには、たとえば次を個別に記録します。
+
+~~~text
+CsvSource(source_id / bare instance)
+CalculationRules(source scope)
+ProjectManifest
+GeneratedConfig
+PackageArchive
+~~~
+
+Project内でsource Aだけdirty、source Bはcleanという状態を一つのboolへ潰しません。
 
 実際のTransition Guardでは、さらに次を独立categoryとして扱います。
 
@@ -258,9 +281,14 @@ revision番号だけでは別documentを区別できないため、DraftやDeriv
 
 ~~~text
 SessionId
-  └─ DocumentInstanceId
-       ├─ DocumentRevision
-       └─ BackingGeneration
+  └─ DataContextId
+       ├─ SourceInstanceId A
+       │    ├─ DocumentRevision
+       │    └─ BackingGeneration
+       ├─ SourceInstanceId B
+       │    ├─ DocumentRevision
+       │    └─ BackingGeneration
+       └─ WorkspaceRevision
 
 RuleSet
   └─ RuleRevision
@@ -275,16 +303,33 @@ InteractiveSessionそのもののidentityです。
 
 Open / Switchで新しいdocumentへ入れ替えてもsession自体を維持する場合があります。
 
-#### DocumentInstanceId
+#### DataContextId
 
-現在sessionで開いているcanonical document instanceのidentityです。
+現在sessionで開いているbare CSVまたはProject data context全体のidentityです。
 
-- 同じpathを開き直しても新しいinstance
-- project source切替でも新しいinstance
-- Save Asだけなら同じinstanceのbacking locator変更として扱える
-- project内source moveはstable source_idを維持し、同じinstanceのlocator変更として扱える
+別Project / 別bare CSVへOpenした場合は新しいDataContextIdになります。
 
-CodeDraft / InlineCellDraft / ConflictDraft / Calculation effective resultは、対象DocumentInstanceIdが一致しなければ利用しません。
+#### SourceInstanceId
+
+physical CSV sourceごとのsession-local identityです。
+
+- bare CSVを開き直せば新しいinstance
+- project sourceはstable source_idとは別にsession-local SourceInstanceIdを持つ
+- sourceを一度closeして再openした場合は新しいinstance
+- Save Asだけなら同じsource instanceのbacking locator変更として扱える
+- project内source moveはstable source_idを維持し、同じsource instanceのlocator変更として扱える
+
+CodeDraft / physical source用ConflictDraftは、対象SourceInstanceIdが一致しなければ利用しません。
+
+#### WorkspaceRevision
+
+active logical data context全体の世代です。
+
+参加sourceのどれかがcanonical mutationした場合に進みます。
+
+single-source sessionでもWorkspaceRevisionを持ってよいですが、Source DocumentRevisionと同じ値である必要はありません。
+
+logical tableのView/cacheはWorkspaceRevisionで粗くinvalid化でき、source固有CalculationはSource DocumentRevisionで細かくfreshness判定できます。
 
 #### BackingGeneration
 
@@ -308,9 +353,11 @@ CSV内容が同じでもruleが変わればderived stateは更新対象です。
 
 ~~~text
 StateStamp
-├─ DocumentInstanceId
-├─ DocumentRevision
-├─ BackingGeneration
+├─ DataContextId
+├─ relevant SourceInstanceId(s)
+├─ relevant DocumentRevision(s)
+├─ WorkspaceRevision
+├─ BackingGeneration(s)
 └─ RuleRevision
 ~~~
 
@@ -388,13 +435,19 @@ canonical mutationは共通のreceiptを返します。
 
 ~~~rust
 struct DocumentChangeSet {
-    origin: ChangeOrigin,
+    source: SourceInstanceId,
     before_revision: DocumentRevision,
     after_revision: DocumentRevision,
     scope: ChangeScope,
     conflicts: Vec<MergeConflict>,
-    disk_baseline_changed: bool,
     history_effect: HistoryEffect,
+}
+
+struct SessionChangeSet {
+    origin: ChangeOrigin,
+    before_workspace_revision: WorkspaceRevision,
+    after_workspace_revision: WorkspaceRevision,
+    documents: Vec<DocumentChangeSet>,
 }
 
 enum ChangeScope {
@@ -427,7 +480,19 @@ enum HistoryEffect {
 
 **分からないから通知しない、は禁止です。**
 
-上位層は ChangeSet を受けてderived stateやDraftを更新します。
+disk fingerprint / encoding / baselineだけが変わりcanonical tableが変わらない場合はDocumentChangeSetを偽造しません。
+
+その場合はBackingSyncReportとして別に報告します。
+
+~~~text
+BackingSyncReport
+├─ source
+├─ old backing generation
+├─ new backing generation
+└─ canonical_change: Option<DocumentChangeSet>
+~~~
+
+上位層は SessionChangeSet を受けてderived stateやDraftを更新します。
 
 ---
 
@@ -490,6 +555,22 @@ canonical stateを一切変更しません。
 
 一つの明示操作としてatomicに扱います。
 途中成功を残しません。
+
+複数physical sourceを変更するCommandも同じです。
+
+例: logical table内のrow moveでsource Aから削除しsource Bへ追加する場合、
+
+~~~text
+preflight A + B
+↓
+multi-source MutationPlan
+↓
+A / Bを一つのapplication transactionとしてcommit
+↓
+SessionChangeSet(documents = [A, B])
+~~~
+
+とし、Aだけ削除してBへの追加に失敗した状態を利用者へ露出しません。
 
 #### Derived failure
 
@@ -568,10 +649,10 @@ Materializeも FreshEvaluated だけを受け付けます。
 
 effective resultは次の順序で判定します。
 
-1. DocumentInstanceIdが一致する
+1. DataContextId / SourceInstanceIdが一致する
 2. bindingが存在し、binding revisionが一致する
 3. targetが現在documentに存在する
-4. evaluation時DocumentRevisionが現在revisionと同じならfast-pathでfresh
+4. evaluation時Source DocumentRevisionが現在revisionと同じならfast-pathでfresh
 5. revisionが違う場合、dependency snapshotを現在値と比較する
 6. upstream derived dependencyがある場合、そのeffective freshnessも確認する
 7. すべて一致した場合だけfreshを維持する
@@ -641,7 +722,7 @@ ConflictDraftは一時messageではなく、未解決Local workです。
 
 ~~~text
 ConflictDraft
-├─ owner DocumentInstanceId
+├─ owner DataContextId / SourceInstanceId
 ├─ origin
 ├─ Base snapshot / scope
 ├─ Local snapshot / changes
@@ -686,7 +767,8 @@ CodeDraftとInlineCellDraftは、作業開始時のbaseを持ちます。
 CodeDraft:
 
 ~~~text
-base revision
+owner SourceInstanceId
+base DocumentRevision
 base table snapshot
 current text
 draft status
@@ -695,8 +777,9 @@ draft status
 InlineCellDraft:
 
 ~~~text
-target cell
-base revision
+owner DataContextId
+target logical identity / physical provenance
+base WorkspaceRevision
 base raw value
 current edit value
 ~~~
@@ -844,10 +927,14 @@ status barの単語「Saved」は曖昧なので、最終的にはこの区別�
 
 ~~~rust
 struct SaveReport {
-    csv: SavePart,
-    project_config: SavePart,
-    package: SavePart,
+    artifacts: Vec<ArtifactSaveReport>,
     pending: Vec<PendingWork>,
+    conflicts: Vec<UnresolvedConflictId>,
+}
+
+struct ArtifactSaveReport {
+    artifact: PersistenceArtifactId,
+    result: SavePart,
 }
 
 enum SavePart {
@@ -893,7 +980,8 @@ Saveは無制限に自動retryしません。
 
 - CSV単体write: temporary + atomic replace
 - .rowlyx final archive: temporary package + atomic replace
-- .rwprj directory projectの複数file: **artifact単位ではatomicだが、複数file全体のcrash-atomicityは保証しない**
+- .rwprj directory projectの複数CSV/config: **artifact単位ではatomicだが、複数artifact全体のcrash-atomicityは保証しない**
+- logical tableの複数source Save: sourceごとにArtifactSaveReportを返し、全source成功を一つのboolへ潰さない
 
 複数artifact Saveで一部だけ成功した場合はSaveReportで必ず部分成功として示します。
 
@@ -1055,7 +1143,7 @@ bare CSVの隣へ勝手なrecovery sidecarを作ることはしません。
 5. Save対象なら、SaveReportのどのcategoryか。
 6. external changeと同時に起きた場合、Localをどう保持するか。
 7. そのstateのownerは誰か。別moduleにshadow flagを作っていないか。
-8. identityはDocumentInstanceIdまで含むか。revisionだけで別documentを誤認しないか。
+8. identityはDataContextId / SourceInstanceIdまで含むか。revisionだけで別sourceを誤認しないか。
 9. failure時のatomicity domainはどこか。
 10. command availabilityとdispatchが同じpreflightを使うか。
 

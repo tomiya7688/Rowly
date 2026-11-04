@@ -238,6 +238,120 @@ disk saveだけで内容が変わらない場合はrevisionを増やしません
 
 DocumentRevision は「保存されたか」ではなく、「session内のcanonical contentが変化したか」を表します。
 
+Revisionは内容のhashではありません。
+Undo / Redoで過去と同じbytesへ戻ってもrevisionを巻き戻しません。
+
+~~~text
+A (rev 10)
+→ B (rev 11)
+→ Undo
+→ A (rev 12)
+~~~
+
+これにより、一度別状態を経由したことを見失うABA問題を避けます。
+
+### IdentityとRevisionを分離する
+
+revision番号だけでは別documentを区別できないため、DraftやDerived Stateはrevision単体へ紐付けません。
+
+概念:
+
+~~~text
+SessionId
+  └─ DocumentInstanceId
+       ├─ DocumentRevision
+       └─ BackingGeneration
+
+RuleSet
+  └─ RuleRevision
+
+Derived
+  └─ DerivedRevision
+~~~
+
+#### SessionId
+
+InteractiveSessionそのもののidentityです。
+
+Open / Switchで新しいdocumentへ入れ替えてもsession自体を維持する場合があります。
+
+#### DocumentInstanceId
+
+現在sessionで開いているcanonical document instanceのidentityです。
+
+- 同じpathを開き直しても新しいinstance
+- project source切替でも新しいinstance
+- Save Asだけなら同じinstanceのbacking locator変更として扱える
+- project内source moveはstable source_idを維持し、同じinstanceのlocator変更として扱える
+
+CodeDraft / InlineCellDraft / ConflictDraft / Calculation effective resultは、対象DocumentInstanceIdが一致しなければ利用しません。
+
+#### BackingGeneration
+
+disk fingerprintやproject/packageの保存世代です。
+
+canonical content revisionとは別です。
+
+改行・encoding・disk baselineだけが変わりcanonical tableが同じ場合、DocumentRevisionは増やさずBackingGenerationだけを更新できます。
+
+#### RuleRevision
+
+Calculation Binding / Validation / View rule等、CSV外ruleの世代です。
+
+CSV内容が同じでもruleが変わればderived stateは更新対象です。
+
+### Revision overflow
+
+revisionはchecked incrementとし、overflow時はmutation前に失敗します。
+
+mutation後にrevision更新だけ失敗する順序は禁止します。
+
+---
+
+## 所有権を一箇所にする
+
+同じ状態を複数箇所のboolで二重管理しません。
+
+| 状態 | owner | 派生表示 |
+| --- | --- | --- |
+| canonical CSV / history / disk baseline | CsvDocument | document dirty |
+| Code draft / inline draft | InteractiveSession | pending work |
+| Calculation rules / results | CalculationEngine | rule dirty / effective result |
+| project config staging / package state | ProjectSession | project dirty |
+| selection / mode / popup | GUI | UI state |
+| command availability | Session snapshotから導出 | enabled/disabled |
+| status text | SessionOutcomeから導出 | message |
+
+例えば code_buffer_dirty と別の「Code未適用」flagを持ちません。
+CodeDraftStatusを正本にし、UI表示はそこから導出します。
+
+calculation_bindings_dirtyも、最終的にはRule/Project dirty stateの正本から導出し、GUI固有boolとして増殖させません。
+
+---
+
+## 全mutationを直列化する
+
+Rowlyのinteractive stateはsingle-writerとします。
+
+background watcher、将来のasync task、filesystem通知はInteractiveSessionを直接変更しません。
+
+~~~text
+background / watcher
+       ↓
+    Event / Hint
+       ↓
+Session Event Queue
+       ↓
+Transition Coordinator
+       ↓
+single mutation at a time
+~~~
+
+これにより、Save途中にwatcher threadがdocumentを書き換えるようなreentrant mutationを禁止します。
+
+filesystem watcherは従来どおり早期通知用hintです。
+正しさはSave前のfingerprint / compare-and-swap検証で担保します。
+
 ---
 
 ## DocumentChangeSet
@@ -315,6 +429,55 @@ Session Reconcile
 GUI handlerが直接、document変更・calculation再計算・buffer更新・status設定を個別に並べてはいけません。
 
 後処理を忘れる入口が必ず生まれるためです。
+
+### Preflight / Plan / Commitを分ける
+
+破壊的・複数stepの操作は、可能な限りmutation前にplanを完成させます。
+
+~~~text
+Preflight
+  ↓
+MutationPlan
+  ↓
+Commit canonical mutation
+  ↓
+Receipt / ChangeSet
+  ↓
+Reconcile
+~~~
+
+特に3-way mergeはpure functionとしてMergePlanを作り、競合判定が終わる前にcanonical tableを書き始めません。
+
+validation、path collision、target存在確認、revision/capability条件など、mutation前に確認できるものは先に確認します。
+
+### Failure class
+
+失敗を同じrollback規則で扱いません。
+
+#### Pre-mutation failure
+
+例: validation error / parse error / conflict / path collision。
+
+canonical stateを一切変更しません。
+
+#### Canonical mutation failure
+
+一つの明示操作としてatomicに扱います。
+途中成功を残しません。
+
+#### Derived failure
+
+canonical editは成功したままです。
+CalculationはError/Staleへ落とし、canonical dataをrollbackしません。
+
+#### Persistence failure
+
+in-memory local editは維持します。
+dirtyを消さず、SaveReportで失敗を返します。
+
+#### Transition preparation failure
+
+現在sessionを維持し、新sessionへswapしません。
 
 ---
 
@@ -509,6 +672,35 @@ bare CSVではCalculation Binding等を自動sidecar保存しません。
 
 Open / Close / Quitごとに別の確認ロジックを作りません。
 
+### Guardはboolではなく解決要求を返す
+
+未保存状態があるかだけでなく、**何をすればtransition可能になるか**を返します。
+
+概念:
+
+~~~text
+TransitionGuardResult
+├─ Ready
+└─ Blocked
+    ├─ WorkSummary
+    └─ ResolutionActions
+~~~
+
+ResolutionActionsの例:
+
+- SavePersistable
+- CommitInlineEdit
+- ReviewOrApplyCode
+- ResolveConflict
+- ConvertToProject
+- DiscardSelectedWork
+- DiscardAllLocalWork
+- Cancel
+
+CodeDraftやConflictは通常Saveだけでは解決しないため、単純なSave / Discard / Cancel三択へ押し込めません。
+
+UIはこのresolution modelを表示するだけで、Open / Quitごとの独自判断を持ちません。
+
 ### Transitionは二段階でcommitする
 
 Open / source switchは、現在sessionを先に破棄しません。
@@ -531,6 +723,22 @@ Open / source switchは、現在sessionを先に破棄しません。
 ## Save Coordinator
 
 Saveを単一のbool結果にしません。
+
+### 「Saved」の定義
+
+次の2つを区別します。
+
+~~~text
+BackingClean
+SessionResolved
+~~~
+
+- BackingClean: 対象artifactへ現在のpersist対象stateが書き込まれている
+- SessionResolved: Pending Draft / Conflict / Not Persistable stateも残っていない
+
+CSVがdiskと一致していてもCodeDraftやConflictが残っていればBackingCleanではあってもSessionResolvedではありません。
+
+status barの単語「Saved」は曖昧なので、最終的にはこの区別を表示へ反映します。
 
 概念:
 
@@ -568,6 +776,29 @@ CsvDocument::save() がexternal mergeを行った場合、その変更を Docume
 
 save内部だけを再計算・invalidationsの例外にしません。
 
+### external changeとの競合
+
+Saveは無制限に自動retryしません。
+
+1. command開始時に最新diskを確認
+2. 必要ならmerge / reconcile
+3. expected fingerprint付きでwrite
+4. commit直前に再度変わっていたらConcurrentModificationとして失敗
+
+競合した場合は新しいdisk stateを次のsync対象として通知し、同じSave command内で無限にmerge/retryしません。
+
+### 複数artifactのatomicity
+
+1.0で「atomic」と呼ぶ範囲を明確にします。
+
+- CSV単体write: temporary + atomic replace
+- .rowlyx final archive: temporary package + atomic replace
+- .rwprj directory projectの複数file: **artifact単位ではatomicだが、複数file全体のcrash-atomicityは保証しない**
+
+複数artifact Saveで一部だけ成功した場合はSaveReportで必ず部分成功として示します。
+
+将来multi-artifact crash transactionを導入する場合も、CSVやproject形式を新しい正本へ置き換えず、ephemeral journal / stagingとして設計します。
+
 ### Save後
 
 全対象が成功し、Pending Draft / Unresolved Conflict / Not Persistable stateが残っていないときだけ「すべて保存済み」と表示します。
@@ -591,6 +822,23 @@ UI message
 ~~~
 
 これにより「実際にはCodeが未適用なのに保存しました」のような偽成功を防ぎます。
+
+### Command availabilityも同じPreflightから導出する
+
+menu / toolbar / shortcut / KeyTips / Command Paletteのenabled条件を別々に書きません。
+
+~~~text
+SessionSnapshot
+    ↓
+Command Preflight
+    ├─ Enabled / Disabled reason
+    └─ Dispatch時にも再検証
+~~~
+
+UIのdisabled表示はUX上のhintです。
+正しさはdispatch時の同じpreflight再検証で保証します。
+
+これにより「toolbarではSave disabledだがFile menuでは実行できる」のような入口差を構造的に禁止します。
 
 ---
 
@@ -673,6 +921,10 @@ DSL / LuauがInteractiveSession内で実行される場合も、実行前後のD
 4. derived stateへどのinvalidationsを起こすか。
 5. Save対象なら、SaveReportのどのcategoryか。
 6. external changeと同時に起きた場合、Localをどう保持するか。
+7. そのstateのownerは誰か。別moduleにshadow flagを作っていないか。
+8. identityはDocumentInstanceIdまで含むか。revisionだけで別documentを誤認しないか。
+9. failure時のatomicity domainはどこか。
+10. command availabilityとdispatchが同じpreflightを使うか。
 
 答えられない状態は、handlerへ直接追加しません。
 

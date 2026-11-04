@@ -2,24 +2,26 @@
 
 Claude、ChatGPT、Copilot、Codex と人間の開発者は、このファイルを入口にしてください。ここには規則本文を書かず、作業の種類ごとに読む資料への道案内だけを置きます。全ての資料を読む必要はありません。「作業の流れ」と「何をするときに何を読むか」の表から、必要な資料だけを開いてください。
 
-## 絶対に守る5つの原則
+## 絶対に守る6つの原則
 
 1. CSVのraw cell textが正本です。表示・計算規則・derived resultを暗黙にCSVへ書き込みません。
 2. GUI・CLI・DSL・スクリプトは、同じapplication/process境界とCommand Registryを通します。
 3. 全てのGUI操作は、Alt KeyTipsから到達できるCommandとして登録します。
 4. 利用者に環境構築を求めません。実行時依存は配布物へ同梱します。
 5. 設計が決まる前に実装しません。設計とIssueが食い違ったら、実装を止めて設計書を更新するPRを先に出します（手順は `docs/READY_CHECKLIST.md`）。
+6. **Open PRは毎回先に処理します。** 作業開始時・新しいIssue/PRを増やす前・作業終了時にOpen PRを確認し、merge可能ならmerge、不要・陳腐化ならclose、処理不能ならblockerと次の作業をPRへ記録します。merge可能なPRを放置したまま新規開発を優先しません。
 
 原則の詳細と、作業開始・設計・終え方・検証の規則本文は [`docs/CONTRIBUTION_RULES.md`](docs/CONTRIBUTION_RULES.md) にあります。
 
 ## 作業の流れ
 
-1. **Issueを読む。** 本文・追加決定コメント・関連PRを確認します。
-2. **設計書を引く。** [`docs/DESIGN_INDEX.md`](docs/DESIGN_INDEX.md) でIssue番号から設計書を探します。無ければ設計書を書くPRを先に出します。
-3. **着手前の確認を通す。** [`docs/READY_CHECKLIST.md`](docs/READY_CHECKLIST.md) の6項目を確認します。
-4. **着手記録を残す。** 書式は [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md) にあります。
-5. **実装する。** 現在の動作は `src/` とテストで確認します。コード規約は [`コーディング規約.md`](コーディング規約.md) です。
-6. **PRを出す。** CI・自己レビュー・merge条件は [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md) の「PR・自己レビュー・merge」に従います。
+1. **Open PRを処理する。** merge可能ならmergeし、不要・陳腐化したPRは理由付きでcloseし、処理不能なPRにはblockerと次の作業を残します。
+2. **Issueを読む。** 本文・追加決定コメント・関連PRを確認します。
+3. **設計書を引く。** [`docs/DESIGN_INDEX.md`](docs/DESIGN_INDEX.md) でIssue番号から設計書を探します。無ければ設計書を書くPRを先に出します。
+4. **着手前の確認を通す。** [`docs/READY_CHECKLIST.md`](docs/READY_CHECKLIST.md) の7項目を確認します。
+5. **着手記録を残す。** 書式は [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md) にあります。
+6. **実装する。** 現在の動作は `src/` とテストで確認します。コード規約は [`コーディング規約.md`](コーディング規約.md) です。
+7. **PRを出して処理する。** CI・自己レビュー・merge条件は [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md) の「PR・自己レビュー・merge」に従い、作業終了前にOpen PRをもう一度確認します。
 
 ## 何をするときに何を読むか
 

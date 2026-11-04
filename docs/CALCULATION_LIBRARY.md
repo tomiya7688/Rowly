@@ -1,0 +1,130 @@
+# Calculation Binding 標準集計関数の設計契約
+
+## 目的
+
+表計算に必要な基本集計を、CSVセルへ数式文字列を埋め込まずCalculation Bindingとして提供します。
+
+## 1.0必須関数
+
+### 集計
+
+- SUM
+- COUNT
+- COUNTA
+- AVERAGE
+- MIN
+- MAX
+
+### 条件
+
+- IF
+- AND
+- OR
+- NOT
+
+### 条件付き集計
+
+- SUMIF
+- COUNTIF
+
+### lookup
+
+- LOOKUP相当の単純exact lookup
+
+高度な関数互換は1.0必須にしません。
+
+## Range
+
+式はsingle cellだけでなくrange参照を値sourceとして扱えます。
+
+例:
+
+```text
+SUM(B2:B100)
+```
+
+range自体はCSVへ保存される値ではありません。
+
+## 型
+
+Calculationは型付きです。
+
+SUM/AVERAGE等はNumberへ明示変換可能な値だけを扱います。
+
+Textを暗黙に0へ変換しません。
+
+emptyの扱いも関数ごとに仕様化します。
+
+## Error
+
+例:
+
+- MissingCell
+- ExpectedNumber
+- DivisionByZero
+- EmptyAggregate
+- LookupNotFound
+- MultipleLookupMatches
+
+error時もCSV raw valueは保持します。
+
+## Freshness
+
+range依存もdependency snapshotへ反映します。
+
+range内の該当cellが変化したら結果をstale / recalculate対象にします。
+
+大量rangeでcell全件snapshotが重い場合、range revision / digest等へ最適化できますが意味を変えません。
+
+## IF
+
+IFは通常DSLの任意副作用を実行しません。
+
+pure Calculation AST内の条件分岐です。
+
+```text
+IF(A2 > 0, B2, C2)
+```
+
+## 条件付き集計
+
+SUMIF/COUNTIFの条件はpure predicateです。
+
+File I/Oやscript callを含めません。
+
+## lookup
+
+1.0ではexact matchを基本にします。
+
+重複match時に先頭を暗黙採用せず、規則で明示するかerrorにします。
+
+## 相対参照
+
+range binding / fill bindingで相対参照を移動できます。
+
+絶対参照を将来導入する場合は `$A$1` 等の表記をDSL/ASTで明示します。
+
+## GUI
+
+Calculation Editorで関数候補・引数help・参照rangeを選択できます。
+
+数式バーへセル内数式として埋め込むUIにはしません。
+
+## Materialize
+
+関数結果のMaterializeはfresh resultだけ可能です。
+
+Materialize後もbindingを残す/外すの既存契約に従います。
+
+## テスト
+
+- SUM/COUNT/AVERAGE/MIN/MAX
+- empty / text混在
+- IF
+- SUMIF/COUNTIF
+- exact lookup
+- duplicate lookup
+- range dependency freshness
+- fill時相対参照
+
+この日本語版をCalculation Binding標準集計関数の正本とします。

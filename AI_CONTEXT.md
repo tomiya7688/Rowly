@@ -22,6 +22,18 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Codeモード編集器: `docs/CODE_EDITOR.md`（日本語正本）
 - 差分・競合表示: `docs/DIFF_INSPECTOR.md`（日本語正本）
 - データプロファイル: `docs/DATA_PROFILE.md`（日本語正本）
+- 表計算機能網羅性: `docs/SPREADSHEET_CAPABILITY_MAP.md`（日本語正本）
+- Fill / Series / Paste Special: `docs/EDIT_OPERATIONS.md`（日本語正本）
+- 表示書式・条件付き書式: `docs/DISPLAY_FORMATTING.md`（日本語正本）
+- Calculation標準関数: `docs/CALCULATION_LIBRARY.md`（日本語正本）
+- Calculation参照モデル: `docs/CALCULATION_REFERENCES.md`（日本語正本）
+- Group By / Pivot: `docs/AGGREGATION_PIVOT.md`（日本語正本）
+- Chart: `docs/CHARTS.md`（日本語正本）
+- 印刷 / PDF: `docs/PRINT_OUTPUT.md`（日本語正本）
+- 明示データ変換: `docs/DATA_TRANSFORMATIONS.md`（日本語正本）
+- workspace navigation: `docs/WORKSPACE_NAVIGATION.md`（日本語正本）
+- Edit入力バー: `docs/EDIT_INPUT_BAR.md`（日本語正本）
+- New / Save As: `docs/FILE_LIFECYCLE.md`（日本語正本）
 - DSL declarations and assignment: `docs/DSL_BINDINGS.md` (Japanese canonical specification)
 - Implementation truth: `src/` and matching tests
 - Task intent: the current issue/conversation takes priority over speculative future work

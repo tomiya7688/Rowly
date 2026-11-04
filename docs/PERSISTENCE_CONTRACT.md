@@ -24,7 +24,7 @@ RowlyではCSVが正本です。
 保存対象をboolではなく成果物 identityで扱います。
 
 ~~~text
-Persistence成果物
+PersistenceArtifact
 ├─ CsvSource(source identity)
 ├─ ProjectManifest
 ├─ GeneratedConfig
@@ -68,7 +68,7 @@ SaveScope
 ├─ Session
 ├─ CurrentSource   (将来optional)
 ├─ Project
-└─ Explicit成果物s(...)
+└─ ExplicitArtifacts(...)
 ~~~
 
 1.0のGUI通常SaveはSession scopeを基本とします。
@@ -206,14 +206,14 @@ Session Saveは複数成果物を含み得ます。
 ~~~rust
 struct SaveReport {
     scope: SaveScope,
-    成果物s: Vec<成果物SaveReport>,
+    artifacts: Vec<ArtifactSaveReport>,
     pending: Vec<PendingWork>,
     conflicts: Vec<UnresolvedConflictId>,
     overall: SaveOverall,
 }
 
-struct 成果物SaveReport {
-    成果物: Persistence成果物Id,
+struct ArtifactSaveReport {
+    成果物: PersistenceArtifactId,
     result: SavePart,
 }
 
@@ -222,14 +222,14 @@ enum SavePart {
     Unchanged,
     Saved,
     Failed(String),
-    状態不明(String),
+    Indeterminate(String),
 }
 
 enum SaveOverall {
-    完了,
-    部分成功,
-    実行前停止,
-    状態不明,
+    Complete,
+    Partial,
+    Blocked,
+    Indeterminate,
 }
 ~~~
 

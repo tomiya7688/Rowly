@@ -300,6 +300,32 @@ Calculation Binding / Validation / View rule等、CSV外ruleの世代です。
 
 CSV内容が同じでもruleが変わればderived stateは更新対象です。
 
+### State Stamp
+
+長く開いたdialog、file chooser、将来のasync taskが古い前提でcommitしないよう、破壊的操作のplanはState Stampを持ちます。
+
+概念:
+
+~~~text
+StateStamp
+├─ DocumentInstanceId
+├─ DocumentRevision
+├─ BackingGeneration
+└─ RuleRevision
+~~~
+
+plan作成時とcommit直前で必要なstampを比較し、不一致ならplanを捨てて再preflightします。
+
+例:
+
+1. Open確認dialogを表示
+2. dialog表示中にexternal change hintが到着
+3. 利用者がSaveして続行を選ぶ
+4. commit前にdisk / session stampを再確認
+5. 古い前提なら再syncしてresolutionを再評価
+
+**確認dialogを一度出したから、その後の状態変化を無視してよい、とはしません。**
+
 ### Revision overflow
 
 revisionはchecked incrementとし、overflow時はmutation前に失敗します。
@@ -538,6 +564,24 @@ GUIは内部の CalculationResult.status を直接信用せず、current documen
 
 Materializeも FreshEvaluated だけを受け付けます。
 
+### Freshness判定順序
+
+effective resultは次の順序で判定します。
+
+1. DocumentInstanceIdが一致する
+2. bindingが存在し、binding revisionが一致する
+3. targetが現在documentに存在する
+4. evaluation時DocumentRevisionが現在revisionと同じならfast-pathでfresh
+5. revisionが違う場合、dependency snapshotを現在値と比較する
+6. upstream derived dependencyがある場合、そのeffective freshnessも確認する
+7. すべて一致した場合だけfreshを維持する
+
+unrelated cellだけが変わった場合はDocumentRevisionが進んでもdependency snapshotが同じなら、結果を再計算せずfreshと判定できます。
+
+一方、dependencyが変わった場合はstored statusがEvaluatedでもeffective resultはStaleです。
+
+以前のErrorも同様に、dependencyが変わったら「現在も同じError」とは断定しません。古いErrorはstaleな診断として扱い、再評価対象にします。
+
 これにより、handlerが再計算を忘れても古い値を正常結果として確定できません。
 
 ---
@@ -588,6 +632,52 @@ merge前にLocalを破棄してから競合判定してはいけません。
 非競合変更は自動mergeしてよい。
 
 競合はDisk/currentを現在値にし、Localをconflict draftへ退避する既存方針を維持します。
+
+### Conflict Draft lifecycle
+
+ConflictDraftは一時messageではなく、未解決Local workです。
+
+最低限次を保持します。
+
+~~~text
+ConflictDraft
+├─ owner DocumentInstanceId
+├─ origin
+├─ Base snapshot / scope
+├─ Local snapshot / changes
+├─ Other snapshot / changes
+├─ created DocumentRevision
+└─ resolution state
+~~~
+
+resolution state:
+
+~~~text
+Unresolved
+ResolvedByReapply
+ResolvedByKeepCurrent
+DiscardedExplicitly
+ObsoleteNeedsRebase
+~~~
+
+#### 自動削除禁止
+
+Save、external refresh、unrelated editを理由にUnresolved draftを自動削除しません。
+
+#### Reapply前の再検証
+
+draft作成後にcurrent canonicalが変わっている場合、作成時Other snapshotをそのまま前提に再適用しません。
+
+対象scopeのcurrent stateを比較し、安全に再適用できない場合は ObsoleteNeedsRebase として残します。
+
+#### 解決操作
+
+- Reapply Local: canonical mutation。history対象
+- Keep Current: Localを使わないことを利用者が明示してresolve
+- Discard: 明示破棄
+- Rebase / manual resolve: 将来拡張
+
+「Saveしたから競合解決済み」は禁止します。
 
 ### Draft baseline
 
@@ -717,6 +807,16 @@ Open / source switchは、現在sessionを先に破棄しません。
 新しいCSV / Projectのopen、Code text生成、Calculation Binding復元、watcher準備の途中で失敗した場合は、現在sessionをそのまま維持します。
 
 「古いsessionを消してから新しいsessionをopenする」順序は禁止します。
+
+### Transition中のevent
+
+確認dialogやfile chooserを開いている間もwatcher eventは失われないようqueueします。
+
+ただしbackground側からsessionへ直接適用しません。
+
+transition commit直前にqueueされたeventとState Stampを確認し、必要ならresolutionをやり直します。
+
+Cancel時はqueueを捨てず、通常sessionへ戻って処理します。
 
 ---
 
@@ -862,6 +962,25 @@ InteractiveSession はGUI widgetを知りません。
 
 GUIは描画・入力・確認dialogに集中します。
 
+### GUIとApplicationの境界
+
+GUIは次の情報をapplicationへ渡してよいです。
+
+- command id
+- user input value
+- selected target identity
+- dialogで選ばれたresolution action
+
+GUIが次を決定してはいけません。
+
+- dirtyかどうか
+- Save可能かどうか
+- conflictが解決済みか
+- calculation resultがfreshか
+- transitionして安全か
+
+これらはInteractiveSession / processの正本状態から導出します。
+
 DSL / LuauがInteractiveSession内で実行される場合も、実行前後のDocumentRevision / ChangeSetを通して同じReconcileを行います。
 
 ---
@@ -892,6 +1011,20 @@ DSL / LuauがInteractiveSession内で実行される場合も、実行前後のD
 - large CSV向けsnapshot / draft memory最適化
 
 性能のためにPhase 1の安全性を弱めません。
+
+---
+
+## 保証の境界
+
+この契約の「Local workを失わない」は、Rowlyが制御できる通常のcommand / transition / external sync / save failureに対する保証です。
+
+process crash、OS crash、電源断から未保存memory stateを復元するCrash Recovery Storeは別設計とします。
+
+bare CSVの隣へ勝手なrecovery sidecarを作ることはしません。
+
+将来crash recoveryを導入する場合は、OSのapplication data領域等を使うlocal recovery storeとして、security / privacy / cleanup / encryption要件を別途固定します。
+
+未実装のcrash recoveryを「Local work never disappears silently」の実装済み保証へ含めて説明してはいけません。
 
 ---
 

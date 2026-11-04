@@ -38,6 +38,18 @@
 - CodeモードCSV編集器: [`docs/CODE_EDITOR.md`](docs/CODE_EDITOR.md)
 - 差分・競合インスペクタ: [`docs/DIFF_INSPECTOR.md`](docs/DIFF_INSPECTOR.md)
 - データプロファイル・品質確認: [`docs/DATA_PROFILE.md`](docs/DATA_PROFILE.md)
+- 表計算機能マップ: [`docs/SPREADSHEET_CAPABILITY_MAP.md`](docs/SPREADSHEET_CAPABILITY_MAP.md)
+- Fill / Series / Paste Special: [`docs/EDIT_OPERATIONS.md`](docs/EDIT_OPERATIONS.md)
+- 表示書式・条件付き書式: [`docs/DISPLAY_FORMATTING.md`](docs/DISPLAY_FORMATTING.md)
+- Calculation標準関数: [`docs/CALCULATION_LIBRARY.md`](docs/CALCULATION_LIBRARY.md)
+- Calculation参照モデル: [`docs/CALCULATION_REFERENCES.md`](docs/CALCULATION_REFERENCES.md)
+- Group By / Pivot: [`docs/AGGREGATION_PIVOT.md`](docs/AGGREGATION_PIVOT.md)
+- Chart: [`docs/CHARTS.md`](docs/CHARTS.md)
+- 印刷 / PDF: [`docs/PRINT_OUTPUT.md`](docs/PRINT_OUTPUT.md)
+- 明示データ変換: [`docs/DATA_TRANSFORMATIONS.md`](docs/DATA_TRANSFORMATIONS.md)
+- workspace navigation: [`docs/WORKSPACE_NAVIGATION.md`](docs/WORKSPACE_NAVIGATION.md)
+- Edit入力バー: [`docs/EDIT_INPUT_BAR.md`](docs/EDIT_INPUT_BAR.md)
+- New / Save As: [`docs/FILE_LIFECYCLE.md`](docs/FILE_LIFECYCLE.md)
 - DSLの構文とBinding: [`docs/DSL_REFERENCE.md`](docs/DSL_REFERENCE.md)、[`docs/DSL_BINDINGS.md`](docs/DSL_BINDINGS.md)
 - 現在の動作: `src/` と対応するテスト。文書の説明だけで実装済みとは判断しないでください。
 

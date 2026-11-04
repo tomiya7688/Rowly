@@ -6,6 +6,34 @@
 
 ## 1.0必須関数
 
+### 数値
+
+- ABS
+- ROUND
+- FLOOR
+- CEIL
+- MOD
+
+### 文字列
+
+- LEN
+- CONCAT
+- LEFT
+- RIGHT
+- MID
+- TRIM
+- UPPER
+- LOWER
+
+### 日付
+
+- DATE
+- YEAR
+- MONTH
+- DAY
+
+日付は明示的なDate解釈と組み合わせます。
+
 ### 集計
 
 - SUM
@@ -32,6 +60,28 @@
 - LOOKUP相当の単純exact lookup
 
 高度な関数互換は1.0必須にしません。
+
+## volatile関数
+
+`TODAY()` / `NOW()` / random等は、同じ入力から同じ結果を得る再現性を壊します。
+
+1.0の通常Calculation関数には含めません。
+
+将来追加する場合は、暗黙のwall clockではなく明示的なVolatile Dependencyとして扱い、いつstaleになるか・履歴/再計算でどう扱うかを別仕様にします。
+
+## 別source参照
+
+Project内の別source / logical tableを参照する場合、表示tab名やpath文字列を恒久identityにしません。
+
+将来のcross-source expressionはstable source_id / logical identityを明示する構文にします。
+
+例（概念）:
+
+~~~text
+Source("sales").Cell("B2")
+~~~
+
+1.0でcross-source Calculationを実装しない場合も、ASTを現在source専用に固定して拡張不能にしません。
 
 ## Range
 

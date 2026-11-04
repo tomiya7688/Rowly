@@ -212,12 +212,34 @@ struct SaveReport {
     overall: SaveOverall,
 }
 
+struct ArtifactSaveReport {
+    artifact: PersistenceArtifactId,
+    result: SavePart,
+}
+
+enum SavePart {
+    NotApplicable,
+    Unchanged,
+    Saved,
+    Failed(String),
+    Indeterminate(String),
+}
+
 enum SaveOverall {
     Complete,
     Partial,
     Blocked,
+    Indeterminate,
 }
 ~~~
+
+### Indeterminate
+
+OS / filesystem errorやrollback failureにより、targetがbefore / afterのどちらかをRowlyが証明できない場合は Failed ではなく Indeterminate とします。
+
+Indeterminate artifactが1つでもある場合、SaveReport全体もIndeterminateです。
+
+InteractiveSessionは SessionHealth::Uncertain へ移行し、通常Saveや破壊的操作を続行しません。
 
 ### Complete
 
@@ -231,6 +253,9 @@ enum SaveOverall {
 一部artifactだけcommit済み。
 
 UIは成功artifactと失敗artifactを区別して表示します。
+
+Partialは「状態不明」ではありません。
+どのartifactがSavedで、どれがFailedかRowlyが把握できている状態です。
 
 ### Blocked
 
@@ -327,6 +352,8 @@ SaveReport=Partial。
 成功artifactを「失敗したこと」に戻して嘘をつきません。
 
 個別operationが安全なrollbackを実装している場合はrollbackしてよいですが、rollback自体の失敗を隠しません。
+
+rollback結果が確認できない場合は該当artifactをIndeterminateにします。
 
 ## Retry
 

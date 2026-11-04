@@ -219,7 +219,7 @@ Rowly 1.0で『表計算ツールとして成立』する最低ラインを次�
 | 領域 | 設計 / 主Issue |
 | --- | --- |
 | Grid / selection | #57 / #110 |
-| New / Save As | #331〜#333 |
+| New / Save As / New Project | #331〜#335 |
 | Workspace tab | #317〜#320 |
 | Value / Calculation Bar | #321〜#324 |
 | Fill / Series / Paste Special | #278〜#282 |

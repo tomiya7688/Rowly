@@ -2,6 +2,7 @@
 
 人間とAIの共通ルールは [`AGENTS.md`](AGENTS.md) です。作業前に共通ルールと対象Issueを確認してください。
 
+- 実装を始める前に、[設計書索引](docs/DESIGN_INDEX.md) で対象Issueの設計書を探し、[着手前の確認](docs/READY_CHECKLIST.md) を通してください。
 - Issueの選び方、着手記録、競合防止、レビュー、引継ぎは [共同開発手順](docs/DEVELOPMENT_WORKFLOW.md) を参照してください。
 - 初回の優先度整理は [Issue一覧](docs/ISSUE_PRIORITIES.md) を参照し、現在の優先度と依存はGitHub Issueで確認してください。
 - 文章は [共有文章品質ルール](AI_WRITING_RULES.md)、実装は [コーディング規約](コーディング規約.md) に従ってください。

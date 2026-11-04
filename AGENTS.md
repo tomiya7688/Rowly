@@ -1,42 +1,45 @@
-# Rowly 共同開発ルール
+# Rowly 共同開発ポータル
 
-Claude、ChatGPT、Copilot、Codex と人間の開発者は、この共有ルールに従ってください。ツール固有の入口にはルール本文を複製せず、このファイルを参照してください。
+Claude、ChatGPT、Copilot、Codex と人間の開発者は、このファイルを入口にしてください。ここには規則本文を書かず、作業の種類ごとに読む資料への道案内だけを置きます。全ての資料を読む必要はありません。「作業の流れ」と「何をするときに何を読むか」の表から、必要な資料だけを開いてください。
 
-## 作業前に読む資料
+## 絶対に守る5つの原則
 
-1. 対象Issueの本文・追加決定コメント・関連PRを確認してください。
-2. `AI_CONTEXT.md` で対象範囲を確認し、`PROJECT_CONTEXT.md` で機能・制限・詳細資料への案内を確認してください。現在の動作は対象コードとテストで確認してください。
-3. 文章を書く前に `AI_WRITING_RULES.md` を読み、単独読解チェックを適用してください。`AI_WRITING_RULES.local.md` が存在するcheckoutでは、ローカルの追加指示も確認してください。
-4. 実装・レビューでは `コーディング規約.md` に従ってください。宣言コメントは `AI_CONTEXT.md` が案内する JSON-like Comment Outs の日本語正本に従ってください。
-5. Issue選択・引継ぎ・完了判定は `docs/DEVELOPMENT_WORKFLOW.md` に従ってください。優先順位の初回整理は `docs/ISSUE_PRIORITIES.md` を参照し、着手時にはGitHubの最新状態を確認してください。
+1. CSVのraw cell textが正本です。表示・計算規則・derived resultを暗黙にCSVへ書き込みません。
+2. GUI・CLI・DSL・スクリプトは、同じapplication/process境界とCommand Registryを通します。
+3. 全てのGUI操作は、Alt KeyTipsから到達できるCommandとして登録します。
+4. 利用者に環境構築を求めません。実行時依存は配布物へ同梱します。
+5. 設計が決まる前に実装しません。設計とIssueが食い違ったら、実装を止めて設計書を更新するPRを先に出します（手順は `docs/READY_CHECKLIST.md`）。
 
-## 変更を始める条件
+原則の詳細と、作業開始・設計・終え方・検証の規則本文は [`docs/CONTRIBUTION_RULES.md`](docs/CONTRIBUTION_RULES.md) にあります。
 
-- 作業開始のたびに、Git root、branch、HEAD、dirty差分を確認し、`git fetch` で remote main と関連PRを更新してください。作業用branchがremoteより遅れている場合は `git pull --ff-only` で取り込んでください。他者のdirty差分を失う操作は行わず、fast-forwardできない場合は原因を報告してください。取得できなければ、remote鮮度は未確認と報告してください。
-- Issueに目的・対象範囲・対象外・依存・受け入れ条件・検証方法が揃ってから実装してください。不足する項目の調査は実装前に進めてください。
-- 着手記録に担当する人と使用ツール、branch、base SHA、編集範囲、次の作業を残してください。AIサービス名をGitHubユーザーのassigneeとして登録しないでください。
-- 他の担当者と編集ファイルが重なる場合は先に分担を調整してください。同一checkoutでbranchを切り替えたり、他者のdirty差分を上書き・削除・一括stageしたりしないでください。
-- 一つのPRは独立して確認できる一つの変更に絞ってください。親Issue全体や無関係なrefactorを同時に実装しないでください。
+## 作業の流れ
 
-## 設計と安全性
+1. **Issueを読む。** 本文・追加決定コメント・関連PRを確認します。
+2. **設計書を引く。** [`docs/DESIGN_INDEX.md`](docs/DESIGN_INDEX.md) でIssue番号から設計書を探します。無ければ設計書を書くPRを先に出します。
+3. **着手前の確認を通す。** [`docs/READY_CHECKLIST.md`](docs/READY_CHECKLIST.md) の6項目を確認します。
+4. **着手記録を残す。** 書式は [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md) にあります。
+5. **実装する。** 現在の動作は `src/` とテストで確認します。コード規約は [`コーディング規約.md`](コーディング規約.md) です。
+6. **PRを出す。** CI・自己レビュー・merge条件は [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md) の「PR・自己レビュー・merge」に従います。
 
-- CSVのraw cell textを正本に保ち、表示・計算規則・derived resultを暗黙にCSVへ書き込まないでください。
-- GUI・CLI・DSL・スクリプトは既存のapplication/process境界を通してください。CSV codecや独自の履歴モデルへ迂回しないでください。
-- 利用者に環境構築を求めないでください。Python、openpyxl、その他の実行時依存は、PyInstallerなどで配布物へ同梱し、`docs/EXCEL.md` と `docs/CI.md` の配布方針に従ってください。ソースcheckoutの開発用fallbackで必要な準備は、開発者向け文書にだけ書き、利用者向けの手順やエラー文へ出さないでください。
-- 仕様・保存形式・依存境界を変える場合は、`PROJECT_CONTEXT.md` が案内する関連文書の節を確認してください。現行仕様、採用理由、根拠、状態、確認日を分けて記録してください。
-- 過去の理由や承認をコードから推測しないでください。未記録の理由が今回の変更を左右する場合は未確認と報告して質問し、理由に依存しない調査を続けてください。
-- 今回限りの判断はIssueまたは作業用Context Packへ残してください。長期のProject Contextへ複製しないでください。
-- 対象範囲内で文章の曖昧さや事実との不一致を発見した場合は、根拠を確認して同じ作業で修正してください。
+## 何をするときに何を読むか
 
-## 作業の終え方
+| やること | 読む資料 |
+| --- | --- |
+| 最初に全体像を知る | [`README.md`](README.md)、[`PROJECT_CONTEXT.md`](PROJECT_CONTEXT.md) |
+| どの設計書を読むか決める | [`docs/DESIGN_INDEX.md`](docs/DESIGN_INDEX.md) |
+| 実装するコードの入口を探す | [`AI_CONTEXT.md`](AI_CONTEXT.md)、[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| コードを書く・レビューする | [`コーディング規約.md`](コーディング規約.md) |
+| 文書・コメント・エラー文を書く | [`AI_WRITING_RULES.md`](AI_WRITING_RULES.md) |
+| データの扱い（CSV・計算・表示）を変える | [`docs/DATA_MODEL_PRINCIPLES.md`](docs/DATA_MODEL_PRINCIPLES.md) |
+| GUI操作を追加する | [`docs/COMMAND_REGISTRY.md`](docs/COMMAND_REGISTRY.md)、[`docs/GUI_FOUNDATIONS.md`](docs/GUI_FOUNDATIONS.md) |
+| Rowly DSLを変える | [`docs/DSL_REFERENCE.md`](docs/DSL_REFERENCE.md)、[`docs/DSL_BINDINGS.md`](docs/DSL_BINDINGS.md) |
+| 保存・Export・外部同期・状態遷移を変える | [`docs/PERSISTENCE_CONTRACT.md`](docs/PERSISTENCE_CONTRACT.md)、[`docs/MERGE_CONTRACT.md`](docs/MERGE_CONTRACT.md)、[`docs/SESSION_STATE_TRANSITIONS.md`](docs/SESSION_STATE_TRANSITIONS.md) |
+| Excel・配布・CIに触れる | [`docs/EXCEL.md`](docs/EXCEL.md)、[`docs/CI.md`](docs/CI.md)、[`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md) |
+| Issueを選ぶ・優先度を付ける・引き継ぐ | [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md)、[`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md)、[`docs/ISSUE_PRIORITIES.md`](docs/ISSUE_PRIORITIES.md) |
+| 設計を変える・新しい設計書を書く | 変更対象の設計書と影響する契約（[`docs/DESIGN_INDEX.md`](docs/DESIGN_INDEX.md) で引く）、[`docs/READY_CHECKLIST.md`](docs/READY_CHECKLIST.md) |
 
-- 作業が一区切りしたら、独立して確認できる単位でPRを作成してください。PR作成の手順、CIの確認、自己レビュー、merge条件は `docs/DEVELOPMENT_WORKFLOW.md` の「PR・自己レビュー・merge」に従ってください。
-- 必須CIがすべて成功し、自己レビューで未解決の懸念がない場合に限り、PRをmergeしてください。条件を満たせない場合はmergeせず、理由と次の作業を報告してください。
+## 迷ったとき
 
-## 検証と引継ぎ
-
-- 機能変更は関連する成功・失敗・境界条件を検証し、`.github/workflows/ci.yml` の該当チェックを実行してください。
-- 静的検査、単体テスト、GUI実操作、Windows/Ubuntu CI、配布物検証、merge済みを区別して報告してください。未実行の検証を成功と記載しないでください。
-- 必須CI失敗、安全性・正しさの未解決懸念がある変更を承認しないでください。AIの自己評価や別AIの賛同だけで合格にしないでください。
-- 中断・担当交代時は、HEAD、未コミット差分、実行した検証と結果、未確認事項、次の一手をIssueへ残してください。ローカルファイルしか読めないAIは、投稿用の引継ぎ本文を成果物として返してください。
-- PRの一部実装やローカルテスト成功だけで親Issueを閉じないでください。全受け入れ条件と統合先の証拠を確認してから完了としてください。
+- 資料を読めない、またはIssueと設計書が食い違うときは、内容を推測せず「未確認」と報告して質問してください。
+- 他の担当者のdirty差分を、上書き・削除・一括stageしないでください。
+- 通常のClaude ChatやChatGPTを使う場合は、このファイル、対象Issue、base SHA、関連する設計書の節だけを会話へ渡してください。

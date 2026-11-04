@@ -668,9 +668,49 @@ SessionHealth
 
 rollback失敗、replace結果の確認不能等により、in-memoryとbackingの関係をRowlyが証明できない状態です。
 
-Uncertainでは通常Saveや破壊的transitionを継続せず、再読込比較 / Save As / recovery手順を要求します。
+Uncertainでは通常Saveや破壊的transitionを継続せず、再読込比較 / Recovery Copy / recovery手順を要求します。
 
 **分からないのにClean/Savedと推測しません。**
+
+### UncertainArtifact
+
+Uncertainはsession全体の曖昧なboolではなく、影響artifactを記録します。
+
+~~~text
+UncertainArtifact
+├─ artifact identity
+├─ last known backing generation
+├─ intended before state
+├─ intended after state
+├─ current in-memory state
+└─ failure diagnostic
+~~~
+
+### Uncertain時に許可する操作
+
+原則としてread-onlyとrecovery系だけです。
+
+- current in-memory内容の閲覧
+- backingの再読込・比較
+- conflict / recovery diff表示
+- Recovery Copyとして別pathへ保存
+- 明示的なReload / Keep Disk
+- 明示的なReapply Local / merge
+- Cancel / Quit resolution
+
+通常のSave、Pack、Source Move、構造編集等は状態確定まで拒否します。
+
+### Reconcile Uncertain
+
+~~~text
+1. affected backingを再読込
+2. last known before / intended after / current diskを比較
+3. 一意に状態を確定できればHealthを戻す
+4. LocalとDiskが分岐していれば3-way merge / Conflictへ移行
+5. どちらとも一致せず判断不能ならUncertainを維持
+~~~
+
+recoveryでLocalを採用する場合も、通常のcanonical mutation / history / ChangeSet契約を通します。
 
 ---
 

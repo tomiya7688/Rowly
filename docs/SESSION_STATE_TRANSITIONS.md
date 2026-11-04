@@ -88,7 +88,7 @@ canonical CSVを変更したすべての操作は、変更内容を共通の Doc
 
 物理CSVごとの CsvDocument が、現在確定済みのCSV表を保持します。
 
-bare CSVでは通常1つ、Project / logical tableでは複数のphysical sourceが同時にcanonical dataへ参加できます。
+bare CSVでは通常1つ、Project / logical tableでは複数の物理ソースが同時にcanonical dataへ参加できます。
 
 ~~~text
 正本データ Context
@@ -104,7 +104,7 @@ Edit / Code適用 / DSL / Luau / Undo / Redo / 外部同期等で変更されま
 ここへ入った変更は通常のhistory / validation / dirty contractに従います。
 
 **logical tableはcanonical sourceを置き換える正本ではありません。**
-表示rowにはprovenanceがあり、実際のwriteは元physical sourceへ帰ります。
+表示rowにはprovenanceがあり、実際のwriteは元物理ソースへ帰ります。
 
 ### 未適用編集
 
@@ -182,11 +182,11 @@ struct PendingWorkState {
 }
 
 struct PersistentDirtyState {
-    dirty_成果物s: BTreeSet<PersistenceArtifactId>,
+    dirty_artifacts: BTreeSet<PersistenceArtifactId>,
 }
 ~~~
 
-dirty_成果物sには、たとえば次を個別に記録します。
+dirty_artifactsには、たとえば次を個別に記録します。
 
 ~~~text
 CsvSource(source_id / bare instance)
@@ -198,10 +198,10 @@ PackageArchive
 
 Project内でsource Aだけdirty、source Bはcleanという状態を一つのboolへ潰しません。
 
-実際のTransition Guardでは、さらに次を独立categoryとして扱います。
+実際の遷移判定では、さらに次を独立categoryとして扱います。
 
 ~~~text
-Session作業状態の要約
+セッション作業状態
 ├─ Pending 未適用編集
 ├─ 未保存の永続化対象
 ├─ 未解決競合
@@ -210,7 +210,7 @@ Session作業状態の要約
 
 ### 未解決競合
 
-external mergeやCode適用で退避したLocal conflictは、canonical CSVがcleanでも未解決作業です。
+外部mergeやCode適用で退避したローカル競合は、canonical CSVがcleanでも未解決作業です。
 
 conflict draftが残っている状態を「全部保存済み」と表示してはなりません。
 
@@ -253,7 +253,7 @@ revisionはcanonical tableの意味が変わるたびに増えます。
 - Apply Code
 - Undo / Redo
 - external sync
-- save中に発生したexternal merge
+- save中に発生した外部merge
 - Materialize
 - DSL / Luauによるcanonical edit
 
@@ -311,7 +311,7 @@ Open / Switchで新しいdocumentへ入れ替えてもsession自体を維持す�
 
 #### SourceInstanceId
 
-physical CSV sourceごとのsession-local identityです。
+物理CSV sourceごとのsession-local identityです。
 
 - bare CSVを開き直せば新しいinstance
 - project sourceはstable source_idとは別にsession-local SourceInstanceIdを持つ
@@ -326,15 +326,15 @@ session内の単調増加ID等、衝突しないopaque identityとして発行�
 
 Project sourceでは診断用にstable source_idも併記できますが、session object同一性はSourceInstanceIdで判定します。
 
-CodeDraft / physical source用ConflictDraftは、対象SourceInstanceIdが一致しなければ利用しません。
+CodeDraft / 物理ソース用ConflictDraftは、対象SourceInstanceIdが一致しなければ利用しません。
 
 #### WorkspaceRevision
 
 active logical data context全体の世代です。
 
-参加sourceのどれかがcanonical mutationした場合に進みます。
+参加sourceのどれかが正本変更した場合に進みます。
 
-single-source sessionでもWorkspaceRevisionを持ってよいですが、Source DocumentRevisionと同じ値である必要はありません。
+単一ソース sessionでもWorkspaceRevisionを持ってよいですが、Source DocumentRevisionと同じ値である必要はありません。
 
 logical tableのView/cacheはWorkspaceRevisionで粗くinvalid化でき、source固有CalculationはSource DocumentRevisionで細かくfreshness判定できます。
 
@@ -354,7 +354,7 @@ CSV内容が同じでもruleが変わればderived stateは更新対象です。
 
 ### 状態印（`StateStamp`）
 
-長く開いたdialog、file chooser、将来のasync taskが古い前提でcommitしないよう、破壊的操作のplanはState Stampを持ちます。
+長く開いたdialog、file chooser、将来のasync taskが古い前提でcommitしないよう、破壊的操作のplanはStateStampを持ちます。
 
 概念:
 
@@ -399,7 +399,7 @@ mutation後にrevision更新だけ失敗する順序は禁止します。
 | Calculation rules / results | CalculationEngine | rule dirty / 実効結果 |
 | project config staging / package state | ProjectSession | project dirty |
 | selection / mode / popup | GUI | UI state |
-| command availability | Session snapshotから導出 | enabled/disabled |
+| command availability | セッション状態から導出 | enabled/disabled |
 | status text | SessionOutcomeから導出 | message |
 | session health | InteractiveSession | 正常 / 縮退 / 状態不明 |
 
@@ -431,13 +431,13 @@ background / watcher
 これにより、Save途中にwatcher threadがdocumentを書き換えるようなreentrant mutationを禁止します。
 
 filesystem watcherは従来どおり早期通知用hintです。
-正しさは保存前のfingerprint / compare-and-swap検証で担保します。
+正しさは保存前のfingerprint / 比較交換検証で担保します。
 
 ---
 
 ## 変更通知（`DocumentChangeSet` / `SessionChangeSet`）
 
-canonical mutationは共通のreceiptを返します。
+正本変更は共通のreceiptを返します。
 
 概念:
 
@@ -505,7 +505,7 @@ BackingSyncReport
 
 ### 操作IDと変更グループ
 
-1つのアプリケーションコマンドが複数physical sourceを変更しても、利用者から見れば1操作です。
+1つのアプリケーションコマンドが複数物理ソースを変更しても、利用者から見れば1操作です。
 
 そのためSessionChangeSetはsession-localなOperationIdを持ちます。
 
@@ -518,16 +518,16 @@ row move command
 
 両sourceのDocumentChangeSetを別のユーザー操作として扱いません。
 
-OperationIdはpersistent history node IDではありません。
+OperationIdは永続履歴 node IDではありません。
 現在session内で変更を束ねるためのidentityです。
 
 ---
 
 ## アプリケーション層のUndoグループ
 
-single-source編集は従来のCsvDocument historyで実装できます。
+単一ソース編集は従来のCsvDocument historyで実装できます。
 
-ただし複数ソース commandでは、application layerがOperationId単位のundo groupを管理します。
+ただし複数ソース commandでは、アプリケーション層がOperationId単位のundo groupを管理します。
 
 ### 複数ソース Undo
 
@@ -539,18 +539,18 @@ OperationId 42 Undo
   └─ source Aへremoved rowを復元
 ~~~
 
-を一つのatomic application transactionとして行います。
+を一つのatomic アプリケーションtransactionとして行います。
 
 片方だけUndoして途中状態を露出しません。
 
 ### process historyとの関係
 
-各CsvDocument内部のhistoryはphysical sourceの編集証拠を保持できます。
+各CsvDocument内部のhistoryは物理ソースの編集証拠を保持できます。
 
 application-level undo groupは、それらを跨ぐ調停を担当します。
 
 将来の #70 persistent Git-like historyではOperationIdそのものを永続IDとして使う必要はありません。
-persistent historyは別のimmutable node identityを持ち、session operation groupから履歴nodeを生成します。
+永続履歴は別のimmutable node identityを持ち、session operation groupから履歴nodeを生成します。
 
 ---
 
@@ -572,7 +572,7 @@ DocumentChangeSet
   ├─ Calculation invalidate / recalculate
   ├─ View/cache invalidate
   ├─ selection/bounds reconcile
-  └─ status/result construction
+  └─ 状態表示 / 実行結果の構築
 ~~~
 
 GUI handlerが直接、document変更・calculation再計算・buffer更新・status設定を個別に並べてはいけません。
@@ -595,7 +595,7 @@ GUI handlerが直接、document変更・calculation再計算・buffer更新・st
 Reconcile
 ~~~
 
-特に3-way mergeはpure functionとしてMergePlanを作り、競合判定が終わる前にcanonical tableを書き始めません。
+特に3-way mergeは副作用のない関数としてMergePlanを作り、競合判定が終わる前にcanonical tableを書き始めません。
 
 validation、path collision、target存在確認、revision/capability条件など、mutation前に確認できるものは先に確認します。
 
@@ -614,7 +614,7 @@ canonical stateを一切変更しません。
 一つの明示操作としてatomicに扱います。
 途中成功を残しません。
 
-複数physical sourceを変更するCommandも同じです。
+複数物理ソースを変更するCommandも同じです。
 
 例: logical table内のrow moveでsource Aから削除しsource Bへ追加する場合、
 
@@ -623,7 +623,7 @@ preflight A + B
 ↓
 複数ソース 変更計画
 ↓
-A / Bを一つのapplication transactionとしてcommit
+A / Bを一つのアプリケーションtransactionとしてcommit
 ↓
 SessionChangeSet(operation_id, documents = [A, B])
 ~~~
@@ -710,7 +710,7 @@ rollback失敗、replace結果の確認不能等により、in-memoryとbacking�
 5. どちらとも一致せず判断不能なら状態不明を維持
 ~~~
 
-recoveryでLocalを採用する場合も、通常のcanonical mutation / history / ChangeSet契約を通します。
+recoveryでLocalを採用する場合も、通常の正本変更 / history / ChangeSet契約を通します。
 
 ---
 
@@ -879,7 +879,7 @@ draft作成後にcurrent canonicalが変わっている場合、作成時Other s
 
 #### 解決操作
 
-- ローカルを再適用: canonical mutation。history対象
+- ローカルを再適用: 正本変更。history対象
 - 現在値を維持: Localを使わないことを利用者が明示してresolve
 - 破棄: 明示破棄
 - 再基準化 / 手動解決: 将来拡張
@@ -1066,7 +1066,7 @@ Open / source switchは、現在sessionを先に破棄しません。
 
 ただしbackground側からsessionへ直接適用しません。
 
-transition commit直前にqueueされたeventとState Stampを確認し、必要ならresolutionをやり直します。
+transition commit直前にqueueされたeventとStateStampを確認し、必要ならresolutionをやり直します。
 
 Cancel時はqueueを捨てず、通常sessionへ戻って処理します。
 
@@ -1126,7 +1126,7 @@ enum SavePart {
 
 ### 保存中
 
-CsvDocument::save() がexternal mergeを行った場合、その変更を DocumentChangeSet(origin=SaveSync) として返します。
+CsvDocument::save() が外部mergeを行った場合、その変更を DocumentChangeSet(origin=SaveSync) として返します。
 
 そのChangeSetも通常のセッション整合化へ通します。
 
@@ -1160,7 +1160,7 @@ Saveは無制限に自動retryしません。
 
 全対象が成功し、Pending Draft / 未解決 Conflict / Not Persistable stateが残っていないときだけ「すべて保存済み」と表示します。
 
-CSV file自体が最新diskと一致していてもLocal conflict draftが残っていれば、session全体は未解決です。
+CSV file自体が最新diskと一致していてもローカル競合 draftが残っていれば、session全体は未解決です。
 
 部分失敗は部分失敗として表示し、失敗したcategoryのdirty stateを維持します。
 
@@ -1248,7 +1248,7 @@ DSL / LuauがInteractiveSession内で実行される場合も、実行前後のD
 
 - DocumentRevision
 - DocumentChangeSet
-- Transition Guard
+- 遷移判定
 - Calculation effective freshness
 - P0 merge / Code / Open bugs修正
 
@@ -1256,7 +1256,7 @@ DSL / LuauがInteractiveSession内で実行される場合も、実行前後のD
 
 ### 第2段階: 共通経路へ収束させる
 
-- external merge / Code merge core統一
+- 外部merge / Code merge core統一
 - 保存調停
 - structured SessionOutcome
 - GUI handlerの個別dirty/recalculate/status処理を削減
@@ -1291,7 +1291,7 @@ bare CSVの隣へ勝手なrecovery sidecarを作ることはしません。
 | --- | --- |
 | 同一cell競合でLocal消失 | shared 3-way merge / ローカル変更を失わない |
 | Code適用で外部変更を巻き戻す | Code未適用編集の基準 + revision + 3-way merge |
-| Openで未保存変更を破棄 | Transition Guard |
+| Openで未保存変更を破棄 | 遷移判定 |
 | Save sync後も古い計算結果 | DocumentChangeSet + effective freshness |
 | ragged CSV writer不一致 | data I/O contract。別Issue #207 |
 | XLSX長文字truncate | adapter 無損失かエラー contract |
@@ -1306,7 +1306,7 @@ bare CSVの隣へ勝手なrecovery sidecarを作ることはしません。
 今後、新しい状態をRowlyへ追加するときは次を答えられなければなりません。
 
 1. これはCanonical / Draft / Rule / Derived / Backingのどれか。
-2. 失われる可能性があるなら、Transition Guardにどう現れるか。
+2. 失われる可能性があるなら、遷移判定にどう現れるか。
 3. canonicalを変えるなら、どのChangeSetを出すか。
 4. derived stateへどのinvalidationsを起こすか。
 5. Save対象なら、SaveReportのどのcategoryか。

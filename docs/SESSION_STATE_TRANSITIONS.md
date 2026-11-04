@@ -778,15 +778,58 @@ InlineCellDraft:
 
 ~~~text
 owner DataContextId
-target logical identity / physical provenance
+target CellAnchor
 base WorkspaceRevision
+base source DocumentRevision
 base raw value
 current edit value
+draft status
+~~~
+
+### CellAnchor
+
+selectionのdisplay row/columnをそのまま永続targetにしません。
+
+概念:
+
+~~~text
+CellAnchor
+├─ source identity / SourceInstanceId
+├─ base physical coordinate
+├─ column identity
+├─ row provenance when available
+└─ base raw value
+~~~
+
+logical table上ではdisplay row numberではなくprovenanceを優先します。
+
+external structural change後に同じtargetを一意に再解決できない場合、古いdisplay coordinateへ書き込みません。
+
+### Inline draft status
+
+~~~text
+Editing
+Diverged
+Conflict
+Invalid
 ~~~
 
 canonical CSVが別経路で変わってもdraft text/valueは上書きしません。
 
-Inline cellのtarget自体がBaseから変化した場合は、commit時に競合として扱います。
+- targetと無関係な変更だけならEditingを継続できる
+- target raw valueがBaseから変わったらConflict
+- row/column構造変更後にtargetを一意に再解決できなければConflict
+- validation違反ならInvalidとして入力値を保持
+
+External Syncを理由に `editing=false` としてdraftを破棄する実装は禁止します。
+
+### Commit
+
+commit直前にCellAnchorをcurrent stateへ再解決します。
+
+安全に同一targetと証明できた場合だけ通常のcell editとして適用します。
+
+conflict時はcurrent canonicalを勝手に上書きせず、利用者のedit valueをDraftとして保持します。
 
 ### Code Apply
 

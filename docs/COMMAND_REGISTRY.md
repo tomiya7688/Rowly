@@ -20,9 +20,9 @@ GUI、DSL、CLI、Luauで意味が同じ操作は、最終的に共通のアプ�
 | --- | --- |
 | `id` | 複数のGUI入口が共有する安定ID。登録後は変更しません。 |
 | `name` / `description` / `category` | 表示・検索・ショートカット一覧に使う名前、説明、分類。 |
-| `適用範囲` | commandを提供するworkspace modeとfocusの組。 |
+| `scope` | commandを提供するworkspace modeとfocusの組。 |
 | `enabled` | CSVや履歴など、実行直前の動的状態を調べる判定条件。 |
-| `ショートカットs` | 専用ショートカットと別名binding。専用ショートカットなしの定義も許可します。 |
+| `shortcuts` | 専用ショートカットと別名binding。専用ショートカットなしの定義も許可します。 |
 | `keytips_path` | Altから辿るlabelの階層。全定義で必須です。 |
 | `action` | 検査に成功したときadapterへ渡す操作識別子。 |
 
@@ -47,7 +47,7 @@ modeまたはfocusが交わらない定義は、同じショートカットとAl
 
 ## GUIコマンド登録とアプリケーションコマンドを分ける
 
-GUI Registryの安定IDは、可能な限りアプリケーションコマンド IDと1対1に対応させます。
+GUIコマンド登録の安定IDは、可能な限りアプリケーションコマンド IDと1対1に対応させます。
 
 ~~~text
 GUI Button ─┐
@@ -57,16 +57,16 @@ Palette ────┘
       ↓
 GUI Command Registry
       ↓
-アプリケーションコマンド Request
+アプリケーションコマンド要求
       ↓
-対話ありSession / Coordinator
+InteractiveSession / Coordinator
       ↓
 process
 ~~~
 
-DSL / CLI / Luauで同じ意味の操作を公開する場合は、GUI 処理部を呼ぶのではなく同じアプリケーションコマンドへrequestを送ります。
+DSL / CLI / Luauで同じ意味の操作を公開する場合は、GUI処理部を呼ぶのではなく同じアプリケーションコマンドへ要求を送ります。
 
-### アプリケーションコマンド Request
+### アプリケーションコマンド要求
 
 概念:
 
@@ -75,7 +75,7 @@ struct CommandRequest {
     id: CommandId,
     arguments: CommandArguments,
     actor: CommandActor,
-    interaction: 対話方式,
+    interaction: InteractionMode,
     capabilities: CapabilityContext,
     state_stamp: Option<StateStamp>,
 }
@@ -91,24 +91,24 @@ Luau
 Internal
 ~~~
 
-入口が違ってもCommand semanticsは変えません。
+入口が違ってもコマンドの意味は変えません。
 
-ただしsecurity capabilityと対話方針はactor/contextごとに異なってよいです。
+ただしセキュリティ権限と対話方針は実行主体 / 文脈ごとに異なってよいです。
 
 ### 対話方式
 
 ~~~text
 対話あり
-Non対話あり
+対話なし
 ~~~
 
 対話ありでは、必要に応じてSave/Discard/Cancelやoverwrite確認等のInteractionRequestを返せます。
 
-Non対話ありではpromptを出しません。
+対話なしでは確認入力を求めません。
 
 確認が必要なら安定した `INTERACTION_REQUIRED` 相当errorを返します。
 
-CLI `--no-input`、自動化、CIはNon対話ありです。
+CLI `--no-input`、自動化、CIは対話なしです。
 
 ### 事前検査
 
@@ -125,9 +125,9 @@ CommandRequest
   └─ 引数不正
 ~~~
 
-UIのenabled表示と実dispatchは、同じCommandSpec / preflight contractから導出します。
+UIのenabled表示と実dispatchは、同じCommandSpec / 事前検査の契約から導出します。
 
-ただしUIのenabled表示はhintにすぎません。
+ただしUIのenabled表示は表示上の補助にすぎません。
 dispatch時に必ず再preflightします。
 
 ### 状態印
@@ -145,7 +145,7 @@ GUIのstatus文字列を処理部が直接成功状態として作りません�
 ~~~rust
 struct CommandOutcome {
     command_id: CommandId,
-    result: コマンド結果,
+    result: CommandResult,
     diagnostics: Vec<Diagnostic>,
 }
 ~~~
@@ -160,7 +160,7 @@ struct CommandOutcome {
 実行停止(...)
 ~~~
 
-GUIはOutcomeを表示へ変換します。
+GUIは実行結果を表示へ変換します。
 CLI `--json` は同じOutcomeを機械可読形式へ変換できます。
 
 ### セキュリティ
@@ -181,9 +181,9 @@ Luau sandbox、DSL capability、CLI path 適用範囲はこの境界で迂回で
 
 ## 共通dispatch
 
-IDによるGUI入口は `dispatch` を使います。ショートカットによる入口は `dispatch_ショートカット` を使い、同じIDのdispatchへ合流します。無効な適用範囲・状態の場合、Registryは処理部を呼びません。処理部が操作失敗の `Result` を返した場合、Registryはその結果を変更せず返します。
+IDによるGUI入口は `dispatch` を使います。ショートカットによる入口は `dispatch_shortcut` を使い、同じIDのdispatchへ合流します。無効な適用範囲・状態の場合、Registryは処理部を呼びません。処理部が操作失敗の `Result` を返した場合、Registryはその結果を変更せず返します。
 
-`dispatch_ショートカット` へは、eguiが正規化した押下modifierとlogical keyを渡してください。eguiの `matches_exact` を使い、Shift/Altの過不足を許可しません。たとえばCtrl+Shift+ZをCtrl+Zとして先に消費しません。一致する定義がなければ `None`、定義が見つかって動的に無効なら `Some(Err(無効Command))` を返します。
+`dispatch_shortcut` へは、eguiが正規化した押下modifierとlogical keyを渡してください。eguiの `matches_exact` を使い、Shift/Altの過不足を許可しません。たとえばCtrl+Shift+ZをCtrl+Zとして先に消費しません。一致する定義がなければ `None`、定義が見つかって動的に無効なら `Some(Err(DisabledCommand))` を返します。
 
 以下は、gui featureを有効にしたRowlyを参照し、許可されたactionを取得する開発者向けのRust例です。サンプルはGUIやCSVの保存処理を呼びません。
 
@@ -209,11 +209,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-実GUIへ接続するときは、menu・toolbar・ショートカット・KeyTipsから同じアプリケーションコマンド Requestを作り、入口ごとの独立した操作実装を作らないでください。
+実GUIへ接続するときは、menu・toolbar・ショートカット・KeyTipsから同じアプリケーションコマンド要求を作り、入口ごとの独立した操作実装を作らないでください。
 
 GUIアダプタはOpen/Save/Undo/Redoの意味を実装せず、引数収集とOutcome表示に集中します。
 
-text widgetへfocusしている間のUndo/Redoは、CSV履歴commandへrequestを送らないようCommand 適用範囲 / focusで区別します。
+text widgetへfocusしている間のUndo/Redoは、CSV履歴commandへrequestを送らないようCommandScope / focusで区別します。
 
 ## 最初の基本定義
 

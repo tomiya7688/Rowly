@@ -2,7 +2,7 @@
 
 CSV値、計算、表示の境界は [`DATA_MODEL_PRINCIPLES.md`](DATA_MODEL_PRINCIPLES.md) を正本とします。data層はraw CSV文字列を保持し、Calculation Bindingとderived result、View上のgroupingは正本データから分離します。
 
-Interactive sessionのDraft / Dirty / ChangeSet / Transitionは [`SESSION_STATE_TRANSITIONS.md`](SESSION_STATE_TRANSITIONS.md)、3-way mergeは [`MERGE_CONTRACT.md`](MERGE_CONTRACT.md)、Save / Pack / Exportの永続化境界は [`PERSISTENCE_CONTRACT.md`](PERSISTENCE_CONTRACT.md)、GUI入口とApplication Commandの関係は [`COMMAND_REGISTRY.md`](COMMAND_REGISTRY.md) を正本とします。
+対話セッションの未適用編集・未保存状態・変更通知・遷移契約は [`SESSION_STATE_TRANSITIONS.md`](SESSION_STATE_TRANSITIONS.md)、3-way mergeは [`MERGE_CONTRACT.md`](MERGE_CONTRACT.md)、保存・Pack・Exportの永続化境界は [`PERSISTENCE_CONTRACT.md`](PERSISTENCE_CONTRACT.md)、GUI入口とアプリケーションコマンドの関係は [`COMMAND_REGISTRY.md`](COMMAND_REGISTRY.md) を正本とします。
 
 ## 目的
 
@@ -93,13 +93,13 @@ UI / Rowly DSL / Luau / Python adapters
 
 処理が大きくなった場合は、小さな processing module へ分割します。オーケストレータは調停に集中し、実装詳細を抱え込まないようにします。
 
-### Interactive Session / 状態遷移
+### 対話セッション / 状態遷移
 
 GUIや対話shellのように、canonical CSV、未適用draft、Calculation rules、derived result、Project保存状態を同時に扱うinteractive clientは、handlerごとにdirty判定・再計算・保存messageを実装しません。
 
-状態は Canonical / Draft / Rule / Derived / Backing に分け、canonical mutationは共通の DocumentChangeSet を発行し、Session Reconcileを通してdraft関係、Calculation freshness、View cache、selectionを更新します。
+状態は Canonical / Draft / Rule / Derived / Backing に分け、canonical mutationは共通の `DocumentChangeSet` を発行し、Session Reconcileを通してdraft関係、Calculation freshness、View cache、selectionを更新します。
 
-Open / Project source switch / Close / Quitは同じTransition Guardを使い、CSV dirtyだけでなくCode draft、inline edit、rule/config/package dirtyを含めて判定します。
+Open / Project source switch / Close / Quitは同じ遷移判定を使い、CSV dirtyだけでなくCode draft、inline edit、rule/config/package dirtyを含めて判定します。
 
 Saveは単純なboolではなくCSV / project config / package / pending draftを区別する構造化結果として扱います。Calculation resultの Evaluated はcurrent dependency snapshotとの一致を確認できる場合だけ有効とします。
 

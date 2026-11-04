@@ -1,4 +1,4 @@
-# Persistence / Save 契約
+# 永続化 / 保存契約
 
 ## 目的
 
@@ -6,25 +6,25 @@ RowlyではCSVが正本です。
 
 そのため「保存」は単に現在画面のbufferをfileへ書く操作ではありません。
 
-current sessionには複数のphysical CSV、project config、generated DSL、package archiveなど複数のpersist対象が存在し得ます。
+現在のセッションには複数の物理CSV、project config、generated DSL、package archiveなど複数の永続化対象が存在し得ます。
 
 この文書では、Save / Save As / Project Save / Pack / Exportの境界と、どこまでatomicを保証するかを定義します。
 
 ## 基本原則
 
-1. **Save never lies**
-2. **lossless-or-error**
-3. **never overwrite an input by accident**
-4. **prepare before replace**
-5. **external modification is compare-and-swap failure, not permission to overwrite**
-6. **multi-artifact partial successを隠さない**
+1. **保存したと嘘をつかない**
+2. **無損失かエラー**
+3. **入力を誤って上書きしない**
+4. **置換前に出力を完全に準備する**
+5. **外部変更は上書き許可ではなく比較交換の失敗として扱う**
+6. **複数成果物の部分成功を隠さない**
 
-## Persistence Artifact
+## 永続化成果物
 
-保存対象をboolではなくartifact identityで扱います。
+保存対象をboolではなく成果物 identityで扱います。
 
 ~~~text
-PersistenceArtifact
+Persistence成果物
 ├─ CsvSource(source identity)
 ├─ ProjectManifest
 ├─ GeneratedConfig
@@ -32,18 +32,18 @@ PersistenceArtifact
 └─ ExportOutput
 ~~~
 
-各artifactは独立したdirty / backing generation / save resultを持ちます。
+各成果物は独立したdirty / backing generation / save resultを持ちます。
 
 ## Ctrl+S / file.save の意味
 
-Rowlyの通常Saveは、**current sessionでpersist可能かつdirtyなartifactをすべて保存する**操作とします。
+Rowlyの通常Saveは、**現在のセッションでpersist可能かつdirtyな成果物をすべて保存する**操作とします。
 
 ~~~text
 file.save
-  -> current session dirty artifact set
+  -> 現在のセッション dirty 成果物 set
   -> preflight
   -> save plan
-  -> artifact results
+  -> 成果物 results
 ~~~
 
 Projectで複数CSVがdirtyなら、visible sourceだけを保存して「保存しました」とは表示しません。
@@ -59,7 +59,7 @@ file.save_current_source
 
 同じCommandを曖昧なcontext依存意味へしません。
 
-## Save Scope
+## 保存範囲
 
 概念:
 
@@ -68,32 +68,32 @@ SaveScope
 ├─ Session
 ├─ CurrentSource   (将来optional)
 ├─ Project
-└─ ExplicitArtifacts(...)
+└─ Explicit成果物s(...)
 ~~~
 
 1.0のGUI通常SaveはSession scopeを基本とします。
 
 CLIや内部APIは明示scopeを指定できます。
 
-## Save Plan
+## 保存計画
 
 Saveは直接writeを始めません。
 
 ~~~text
 Session snapshot
   ↓
-Preflight
+事前検査
   ↓
 SavePlan
-  ├─ artifact
+  ├─ 成果物
   ├─ expected backing generation
   ├─ target path
   ├─ overwrite policy
   └─ validation
   ↓
-Prepare
+準備
   ↓
-Commit
+確定
   ↓
 SaveReport
 ~~~
@@ -102,7 +102,7 @@ SavePlanはState Stampに紐付きます。
 
 commit前にstampが変わっていた場合はplanを破棄して再preflightします。
 
-## Preflight
+## 事前検査
 
 write開始前に少なくとも次を確認します。
 
@@ -119,9 +119,9 @@ write開始前に少なくとも次を確認します。
 
 preflightで検出できる失敗を、fileを作り始めてから検出しません。
 
-## Prepare
+## 準備
 
-artifactごとにtargetと同じfilesystem上のtemporary outputへ完全に書きます。
+成果物ごとにtargetと同じfilesystem上のtemporary outputへ完全に書きます。
 
 ### CSV
 
@@ -148,13 +148,13 @@ artifactごとにtargetと同じfilesystem上のtemporary outputへ完全に書�
 - temporary outputへ生成
 - bridgeが成功を返しても必要なpost-validationを行う余地を持つ
 
-Prepare成功前に既存targetを壊しません。
+準備成功前に既存targetを壊しません。
 
-## Commit
+## 確定
 
-### Compare-and-swap
+### 比較交換
 
-既存canonical artifactのSaveは、prepare時に見たbacking generationをcommit直前に再確認します。
+既存canonical 成果物のSaveは、prepare時に見たbacking generationをcommit直前に再確認します。
 
 変わっていればreplaceしません。
 
@@ -164,56 +164,56 @@ expected != current
 => no overwrite
 ~~~
 
-### Atomic replace
+### 原子的置換
 
-単一artifactは、platformが提供する安全なreplaceを使います。
+単一成果物は、platformが提供する安全なreplaceを使います。
 
 既存fileをtruncateしてその場で書き始めません。
 
-### Directory durability
+### ディレクトリ永続性
 
 可能なplatformではreplace後にparent directory metadataのflushを検討します。
 
 platform差はI/O adapterへ閉じ込め、application側へOS固有分岐を散らしません。
 
-## Multi-artifact Save
+## Multi-成果物 Save
 
-Session Saveは複数artifactを含み得ます。
+Session Saveは複数成果物を含み得ます。
 
-### Runtime atomicity
+### 実行時の原子性
 
-全artifactを先にPrepareしてからCommitへ進みます。
+全成果物を先に準備してから確定へ進みます。
 
-これにより、2つ目のartifactが「書けない」と分かっているのに1つ目だけ先に確定することを減らします。
+これにより、2つ目の成果物が「書けない」と分かっているのに1つ目だけ先に確定することを減らします。
 
-### Crash atomicity
+### クラッシュ時の原子性
 
 通常のdirectory projectでは、複数file全体を1つのfilesystem transactionとしてcommitできるとは限りません。
 
 1.0では次を正直に保証します。
 
-- artifact単位のatomic replace
+- 成果物単位のatomic replace
 - commit済み / 未commitをSaveReportへ正確に記録
 - partial successを全体成功と表示しない
-- retry時は未保存artifactだけを対象にできる
+- retry時は未保存成果物だけを対象にできる
 
-**複数artifact全体の電源断/crash atomicityは保証しません。**
+**複数成果物全体の電源断/crash atomicityは保証しません。**
 
-.rowlyxはfinal archiveが1つのartifactなので、package完成後のarchive replaceをatomic boundaryにできます。
+.rowlyxはfinal archiveが1つの成果物なので、package完成後のarchive replaceをatomic boundaryにできます。
 
-## Save Report
+## 保存結果
 
 ~~~rust
 struct SaveReport {
     scope: SaveScope,
-    artifacts: Vec<ArtifactSaveReport>,
+    成果物s: Vec<成果物SaveReport>,
     pending: Vec<PendingWork>,
     conflicts: Vec<UnresolvedConflictId>,
     overall: SaveOverall,
 }
 
-struct ArtifactSaveReport {
-    artifact: PersistenceArtifactId,
+struct 成果物SaveReport {
+    成果物: Persistence成果物Id,
     result: SavePart,
 }
 
@@ -222,53 +222,53 @@ enum SavePart {
     Unchanged,
     Saved,
     Failed(String),
-    Indeterminate(String),
+    状態不明(String),
 }
 
 enum SaveOverall {
-    Complete,
-    Partial,
-    Blocked,
-    Indeterminate,
+    完了,
+    部分成功,
+    実行前停止,
+    状態不明,
 }
 ~~~
 
-### Indeterminate
+### 状態不明
 
-OS / filesystem errorやrollback failureにより、targetがbefore / afterのどちらかをRowlyが証明できない場合は Failed ではなく Indeterminate とします。
+OS / filesystem errorやrollback failureにより、targetがbefore / afterのどちらかをRowlyが証明できない場合は Failed ではなく 状態不明 とします。
 
-Indeterminate artifactが1つでもある場合、SaveReport全体もIndeterminateです。
+状態不明 成果物が1つでもある場合、SaveReport全体も状態不明です。
 
 InteractiveSessionは SessionHealth::Uncertain へ移行し、通常Saveや破壊的操作を続行しません。
 
-### Complete
+### 完了
 
-- scope内のdirty persistable artifactがすべてSaved/Unchanged
+- scope内のdirty persistable 成果物がすべてSaved/Unchanged
 - blocking PendingWorkなし
 
-ただしUnresolved Conflictやsession-only workが残る場合、SessionResolvedとは別です。
+ただしUnresolved Conflictやsession-only workが残る場合、セッション解決済みとは別です。
 
-### Partial
+### 部分成功
 
-一部artifactだけcommit済み。
+一部成果物だけcommit済み。
 
-UIは成功artifactと失敗artifactを区別して表示します。
+UIは成功成果物と失敗成果物を区別して表示します。
 
-Partialは「状態不明」ではありません。
-どのartifactがSavedで、どれがFailedかRowlyが把握できている状態です。
+部分成功は「状態不明」ではありません。
+どの成果物がSavedで、どれがFailedかRowlyが把握できている状態です。
 
-### Blocked
+### 実行前停止
 
 write前にPending Draft / validation / unsafe path等で止まった。
 
-## BackingClean と SessionResolved
+## 保存先と一致 と セッション解決済み
 
 ~~~text
-BackingClean
-  = persist対象artifactがbackingと一致
+保存先と一致
+  = 永続化対象成果物がbackingと一致
 
-SessionResolved
-  = BackingClean
+セッション解決済み
+  = 保存先と一致
     + Pending Draftなし
     + Unresolved Conflictなし
     + NotPersistable workなし
@@ -293,7 +293,7 @@ stable source_idを持つproject sourceのpath変更は、通常Save Asではな
 
 これによりmanifest、source identity、provenanceを同時に更新します。
 
-## Overwrite Policy
+## 上書き方針
 
 ### Save
 
@@ -305,13 +305,13 @@ stable source_idを持つproject sourceのpath変更は、通常Save Asではな
 
 explicit OVERWRITE / confirmation等の明示操作を要求します。
 
-### Input alias
+### 入力先との同一実体
 
 Export / Pack outputがinput集合とaliasする場合、overwrite許可があっても拒否します。
 
 「overwriteを許可した」ことと「入力データを出力で破壊してよい」は別です。
 
-## Alias detection
+## 同一実体の検出
 
 既存pathはcanonical pathで比較します。
 
@@ -330,44 +330,44 @@ Export / Pack outputがinput集合とaliasする場合、overwrite許可があ�
 
 directory sourceでは**entry収集後に全entryとoutputを照合**します。
 
-## Failure semantics
+## 失敗時の扱い
 
-### Prepare failure
+### 準備 failure
 
 targetは変更しません。
 
-### CAS failure
+### 比較交換失敗
 
 targetは変更しません。
 external sync対象として報告します。
 
-### Commit failure before replace
+### 確定 failure before replace
 
 targetは変更しません。
 
-### Commit failure after一部artifact成功
+### 確定 failure after一部成果物成功
 
-SaveReport=Partial。
+SaveReport=部分成功。
 
-成功artifactを「失敗したこと」に戻して嘘をつきません。
+成功成果物を「失敗したこと」に戻して嘘をつきません。
 
 個別operationが安全なrollbackを実装している場合はrollbackしてよいですが、rollback自体の失敗を隠しません。
 
-rollback結果が確認できない場合は該当artifactをIndeterminateにします。
+rollback結果が確認できない場合は該当成果物を状態不明にします。
 
-## Retry
+## 再試行
 
-Retryは新しいSave commandです。
+再試行は新しいSave commandです。
 
 前回planをそのまま再利用せず、最新State Stamp / backing generationで再preflightします。
 
-## ExportはSaveではない
+## Exportは保存ではない
 
 XLSX / JSON / Markdown等へのExport成功はcanonical CSVのdirtyをcleanにしません。
 
 Export outputは交換成果物であり、canonical backingではありません。
 
-## PackはProject Saveではない
+## PackはProject保存ではない
 
 .rowlyxへのPackだけで、元directory projectのdirty CSV/configが自動的にsavedになったことにはしません。
 
@@ -375,13 +375,13 @@ Pack前にどのstateをpackageへ含めるかを明示し、staged/in-memory st
 
 ProjectSessionのpackage Saveは別途、managed workspaceをfinal archiveへcommitする正式なSave operationとして扱います。
 
-## Crash Recoveryとの境界
+## クラッシュ復旧との境界
 
-この契約はdiskへcommitしたartifactの安全性を扱います。
+この契約はdiskへcommitした成果物の安全性を扱います。
 
 未保存memory stateのprocess crash recoveryは SESSION_STATE_TRANSITIONS.md の保証境界に従い、別のRecovery Store設計とします。
 
-## Test matrix
+## テスト一覧
 
 最低限:
 
@@ -392,11 +392,11 @@ ProjectSessionのpackage Saveは別途、managed workspaceをfinal archiveへcom
 - dirty Code blocks Save
 - inline edit validation failure blocks Save
 - multiple dirty CSV sources
-- CSV success + config failure -> Partial
+- CSV success + config failure -> 部分成功
 - package prepare failure preserves original archive
 - export output aliases direct input
 - pack output aliases directory child input
-- long XLSX cell -> lossless-or-error
+- long XLSX cell -> 無損失かエラー
 - retry after partial failure
 
 この日本語版をRowlyのPersistence / Save正本仕様とします。

@@ -16,6 +16,12 @@ Small routing index for AI-assisted development. Do not duplicate detailed speci
 - Architecture and dependency rules: `docs/ARCHITECTURE.md`
 - Data and calculation decisions: `docs/DATA_MODEL_PRINCIPLES.md`
 - 対話セッション / 未適用編集 / 変更通知 / 保存契約: `docs/SESSION_STATE_TRANSITIONS.md`（日本語正本）
+- View表示契約: `docs/VIEW_MODEL.md`（日本語正本）
+- 意味ベース操作記録: `docs/COMMAND_RECORDING.md`（日本語正本）
+- 検索・置換: `docs/SEARCH_REPLACE.md`（日本語正本）
+- Codeモード編集器: `docs/CODE_EDITOR.md`（日本語正本）
+- 差分・競合表示: `docs/DIFF_INSPECTOR.md`（日本語正本）
+- データプロファイル: `docs/DATA_PROFILE.md`（日本語正本）
 - DSL declarations and assignment: `docs/DSL_BINDINGS.md` (Japanese canonical specification)
 - Implementation truth: `src/` and matching tests
 - Task intent: the current issue/conversation takes priority over speculative future work

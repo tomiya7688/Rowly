@@ -672,12 +672,12 @@ rollback失敗、replace結果の確認不能等により、in-memoryとbacking�
 
 **分からないのにClean/Savedと推測しません。**
 
-### 状態不明Artifact
+### UncertainArtifact
 
 状態不明はsession全体の曖昧なboolではなく、影響成果物を記録します。
 
 ~~~text
-状態不明Artifact
+UncertainArtifact
 ├─ 成果物 identity
 ├─ last known backing generation
 ├─ intended before state
@@ -1096,13 +1096,13 @@ status barの単語「Saved」は曖昧なので、最終的にはこの区別�
 
 ~~~rust
 struct SaveReport {
-    成果物s: Vec<ArtifactSaveReport>,
+    artifacts: Vec<ArtifactSaveReport>,
     pending: Vec<PendingWork>,
-    conflicts: Vec<未解決ConflictId>,
+    conflicts: Vec<UnresolvedConflictId>,
 }
 
 struct ArtifactSaveReport {
-    成果物: PersistenceArtifactId,
+    artifact: PersistenceArtifactId,
     result: SavePart,
 }
 

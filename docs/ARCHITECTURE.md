@@ -4,6 +4,8 @@ CSV値、計算、表示の境界は [`DATA_MODEL_PRINCIPLES.md`](DATA_MODEL_PRI
 
 対話セッションの未適用編集・未保存状態・変更通知・遷移契約は [`SESSION_STATE_TRANSITIONS.md`](SESSION_STATE_TRANSITIONS.md)、3-way mergeは [`MERGE_CONTRACT.md`](MERGE_CONTRACT.md)、保存・Pack・Exportの永続化境界は [`PERSISTENCE_CONTRACT.md`](PERSISTENCE_CONTRACT.md)、GUI入口とアプリケーションコマンドの関係は [`COMMAND_REGISTRY.md`](COMMAND_REGISTRY.md) を正本とします。
 
+Viewの非破壊Filter / Sort / layoutは [`VIEW_MODEL.md`](VIEW_MODEL.md)、意味ベースの操作記録は [`COMMAND_RECORDING.md`](COMMAND_RECORDING.md)、検索・置換は [`SEARCH_REPLACE.md`](SEARCH_REPLACE.md)、Codeモード編集器は [`CODE_EDITOR.md`](CODE_EDITOR.md)、差分表示は [`DIFF_INSPECTOR.md`](DIFF_INSPECTOR.md)、データプロファイルは [`DATA_PROFILE.md`](DATA_PROFILE.md) を正本とします。
+
 ## 目的
 
 Rowly は CSV-first のエディタです。表示、スクリプト、外部連携のコードが第二の正本を作らない構造を維持します。

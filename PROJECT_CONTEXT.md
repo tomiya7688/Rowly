@@ -28,7 +28,10 @@
 - 製品の原則と利用者向け入口: [`README.md`](README.md)
 - 構成と依存方向: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - CSV・計算・表示の正本: [`docs/DATA_MODEL_PRINCIPLES.md`](docs/DATA_MODEL_PRINCIPLES.md)
-- Interactive sessionのdraft・dirty・ChangeSet・保存契約: [`docs/SESSION_STATE_TRANSITIONS.md`](docs/SESSION_STATE_TRANSITIONS.md)
+- Interactive sessionのdraft・dirty・ChangeSet・transition契約: [`docs/SESSION_STATE_TRANSITIONS.md`](docs/SESSION_STATE_TRANSITIONS.md)
+- External Sync / Code Applyの3-way merge契約: [`docs/MERGE_CONTRACT.md`](docs/MERGE_CONTRACT.md)
+- Save / Save As / Pack / Exportの永続化契約: [`docs/PERSISTENCE_CONTRACT.md`](docs/PERSISTENCE_CONTRACT.md)
+- GUI Registry / Application Command契約: [`docs/COMMAND_REGISTRY.md`](docs/COMMAND_REGISTRY.md)
 - DSLの構文とBinding: [`docs/DSL_REFERENCE.md`](docs/DSL_REFERENCE.md)、[`docs/DSL_BINDINGS.md`](docs/DSL_BINDINGS.md)
 - 現在の動作: `src/` と対応するテスト。文書の説明だけで実装済みとは判断しないでください。
 

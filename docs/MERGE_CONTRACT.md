@@ -35,15 +35,15 @@ Local = Rowly内の現在canonical local
 相手側 = 新しいdisk
 ~~~
 
-### Code適用 after divergence
+### 分岐後のCode適用
 
 ~~~text
-Base  = Code編集開始時のcanonical snapshot
+Base  = Code編集開始時のcanonical スナップショット
 Local = parsed Code buffer
 相手側 = 現在のcanonical document
 ~~~
 
-ここで相手側は「相手側」という意味です。
+ここで「相手側」は、ローカル変更と比較する現在側の状態を指します。
 外部同期ではdisk、Code適用ではcurrent canonicalです。
 
 ## 純粋なmerge判定部
@@ -64,16 +64,16 @@ fn plan_merge(
 
 ~~~text
 MergePlan
-├─ merged candidate
-├─ ローカル側だけの変更 changes
-├─ 相手側だけの変更 changes
-├─ identical concurrent changes
-├─ cell 競合s
-├─ structural 競合s
-└─ changed scope
+├─ 統合候補
+├─ ローカル側だけの変更
+├─ 相手側だけの変更
+├─ 両側の同一変更
+├─ セル競合
+├─ 構造競合
+└─ 変更範囲
 ~~~
 
-MergePlan作成後、policy layerが適用するか判断します。
+MergePlan作成後、適用方針層が適用するか判断します。
 
 ## セル競合判定表
 
@@ -81,7 +81,7 @@ MergePlan作成後、policy layerが適用するか判断します。
 
 | Base | Local | 相手側 | 判定 |
 | --- | --- | --- | --- |
-| A | A | A | unchanged |
+| A | A | A | 変更なし |
 | A | B | A | ローカル側だけの変更 |
 | A | A | C | 相手側だけの変更 |
 | A | B | B | 両側の同一変更 |
@@ -89,21 +89,21 @@ MergePlan作成後、policy layerが適用するか判断します。
 
 最後のケースでどちらかを後勝ちさせてはいけません。
 
-## Header
+## ヘッダー
 
 CSV row 1はcanonical dataですが、logical schema判断に使われるため、外部同期の自動mergeでは保守的に扱います。
 
-- Baseと片側だけheader変更: structure/schema change
-- 両側が同一headerへ変更: identical structural changeとして扱える余地はある
+- Baseと片側だけheader変更: 構造 / schema変更
+- 両側が同一headerへ変更: 両側の同一構造変更として扱える余地はある
 - 両側が異なるheaderへ変更: 競合
 
-1.0ではheader変更を自動cell mergeせず、structure 競合へ倒してよいです。
+1.0ではheader変更を自動cell mergeせず、構造競合へ倒してよいです。
 
 安全性を優先します。
 
-## Ragged row
+## 不定幅行
 
-rowごとのfield数はcanonical CSV構造の一部です。
+行ごとのfield数はcanonical CSV構造の一部です。
 
 ~~~text
 a,b,c
@@ -123,13 +123,13 @@ a,b,c
 
 merge判定部は各rowの長さを保持します。
 
-同じbaseline rowに対して両側で異なるrow shape変更がある場合はstructural 競合です。
+同じbaseline rowに対して両側で異なるrow shape変更がある場合は構造競合です。
 
 ## 行の識別
 
-CSV自体にstable row IDはありません。
+CSV自体に安定した行IDはありません。
 
-そのためphysical CSVのexternal mergeでは、表示row numberを永続identityとして扱いません。
+そのためphysical CSVの外部mergeでは、表示行番号を永続identityとして扱いません。
 
 1.0の自動構造mergeは、baselineとの対応を一意に証明できる場合だけ許可します。
 
@@ -140,27 +140,27 @@ CSV自体にstable row IDはありません。
 対応が曖昧なら推測しません。
 
 ~~~text
-ambiguous -> structural 競合
+ambiguous -> 構造競合
 ~~~
 
-Project logical tableのstable source_id / provenanceは、どのphysical sourceへ書くかのidentityです。
-physical CSV内のrow identity問題を魔法のように解決するものではありません。
+Project logical tableの安定したsource_id / provenanceは、どのphysical sourceへ書くかのidentityです。
+physical CSV内の行identity問題を魔法のように解決するものではありません。
 
-## Row deletion
+## 行削除
 
 ### ローカル削除 / 相手側変更なし
 
-deleteを採用できます。
+削除を採用できます。
 
 ### ローカル変更なし / 相手側削除
 
-相手側 deleteを採用できます。
+相手側 削除を採用できます。
 
 ### ローカル削除 / 相手側が同じ行を編集
 
 競合です。
 
-削除を優先して相手側 editを捨てたり、editを優先してLocal deleteを消したりしません。
+削除を優先して相手側 編集を捨てたり、編集を優先してLocal 削除を消したりしません。
 
 ### ローカル編集 / 相手側削除
 
@@ -168,29 +168,29 @@ deleteを採用できます。
 
 ## 行追加
 
-baseline row間のslotを基準に扱います。
+baseline row間の挿入位置を基準に扱います。
 
-### 片側だけinsert
+### 片側だけ追加
 
 安全に採用できます。
 
-### 両側が同じslotへ同一row列をinsert
+### 両側が同じ挿入位置へ同一row列を追加
 
 同じ変更として1回だけ採用できます。
 
-### 両側が同じslotへ異なるrowをinsert
+### 両側が同じ挿入位置へ異なるrowを追加
 
-順序の意図を推測できないためstructural 競合です。
+順序の意図を推測できないため構造競合です。
 
 「Localを先、相手側を後」のような暗黙順序を作りません。
 
 ## 行並べ替え
 
-明示的なstable row identityが無いphysical CSVでは、reorderとdelete+insertを安全に区別できない場合があります。
+明示的なstable 行identityが無いphysical CSVでは、並べ替えと削除+追加を安全に区別できない場合があります。
 
-1.0では曖昧なreorderを自動mergeしません。
+1.0では曖昧な並べ替えを自動mergeしません。
 
-structure 競合へ倒します。
+構造競合へ倒します。
 
 ## 競合の表現
 
@@ -205,9 +205,9 @@ other
 
 ### StructuralConflict
 
-最低限reasonと3 snapshotを保持します。
+最低限reasonと3 スナップショットを保持します。
 
-reason例:
+理由の例:
 
 - HeaderChanged
 - RowShapeChanged
@@ -225,9 +225,9 @@ ConflictDraftのlifecycleは SESSION_STATE_TRANSITIONS.md に従います。
 
 ### 競合なし
 
-merged candidateをcanonicalへ適用します。
+統合候補をcanonicalへ適用します。
 
-相手側由来の変更はexternal baselineとして扱い、Local-only変更はRowly local editとして再適用します。
+相手側由来の変更は外部baselineとして扱い、ローカル側だけの変更はRowly local 編集として再適用します。
 
 ### 競合あり
 
@@ -251,7 +251,7 @@ UndoはCode適用由来の変更だけを戻し、途中で入った相手側/cu
 Code由来の変更は一件もcanonicalへ適用しません。
 
 - Code bufferを保持
-- Conflict情報を保持
+- 競合情報を保持
 - canonical currentは変更しない
 - 利用者が解決して再Apply
 
@@ -265,37 +265,37 @@ disk側変更そのものを通常のLocal Undo commandにはしません。
 
 外部同期後にreapplyしたLocal変更はUndo可能にします。
 
-現在のmemory history実装で過去の細かなLocal historyをrebasing時に保持できない場合でも、Local値そのものを失ってはいけません。
+現在のメモリ履歴実装で過去の細かなLocal historyを再基準化時に保持できない場合でも、Local値そのものを失ってはいけません。
 
 将来のpersistent Git-like historyでは、external sync前後のbranch / nodeを失わない設計へ接続します。
 
 ### Code適用
 
-成功したApply Codeは1つのUndo単位です。
+成功したCode適用は1つのUndo単位です。
 
 merge内部のcell数に応じて大量の別Undo stepへ分割しません。
 
 ## 入力規則
 
-MergePlan作成とvalidationを分けます。
+MergePlan作成と入力規則を分けます。
 
-Code適用ではmerged candidateに対して入力規則を検証し、違反が1件でもあればcanonicalへ適用しません。
+Code適用では統合候補に対して入力規則を検証し、違反が1件でもあればcanonicalへ適用しません。
 
 外部同期では外部CSVの違反値を読み込み拒否しない既存方針を維持します。
-外部由来validation violationはdiagnosticとして扱い、Local reapply側は通常validationを通します。
+外部由来入力規則 violationは診断情報として扱い、Local reapply側は通常入力規則を通します。
 
 ## 計算量 / 大規模CSV
 
-Phase 1では安全性を優先し、snapshot比較がO(table size)でも許容します。
+第1段階では安全性を優先し、スナップショット比較がO(table size)でも許容します。
 
 最適化時も判定意味を変えません。
 
 将来:
 
 - row fingerprint
-- immutable snapshot sharing
+- immutable スナップショット sharing
 - changed-region hint
-- streaming diff
+- 逐次差分
 
 を導入してよいですが、曖昧なmergeを高速化のために自動採用しません。
 
@@ -307,26 +307,26 @@ Phase 1では安全性を優先し、snapshot比較がO(table size)でも許容�
 
 - ローカル側だけの変更
 - 相手側だけの変更
-- same concurrent
-- different concurrent 競合
+- 両側の同一変更
+- 両側の異なる変更による競合
 
 ### Row
 
-- insert one side
-- same insert both
-- competing insert
-- delete one side
-- delete vs edit
-- ragged row edit
-- header change
-- duplicate rows
-- reorder
+- 追加 one side
+- same 追加 both
+- competing 追加
+- 削除 one side
+- 削除 vs 編集
+- ragged row 編集
+- ヘッダー変更
+- 重複行
+- 並べ替え
 
-### Policy
+### 適用方針
 
-- 外部同期: Disk current + Local 競合 preserved
-- Code適用: 競合時atomic no-op
-- Code適用: non-競合 merge + one Undo
-- repeated merge result determinism
+- 外部同期: Diskを現在値にしローカル競合を保持
+- Code適用: 競合時は正本を変更しない
+- Code適用: 非競合mergeを1回のUndo単位で適用
+- 同一入力でmerge結果が決定的
 
 この日本語版をRowlyの3-way merge正本仕様とします。

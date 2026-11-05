@@ -6,6 +6,9 @@ use super::types::{
 };
 use crate::process::CellRef;
 
+mod math;
+use math::{RoundingMode, modulo, round_to_integer};
+
 pub(super) const MAX_EXPRESSION_DEPTH: usize = 256;
 
 // ```text
@@ -74,8 +77,13 @@ pub(super) fn evaluate_expression(
             arguments,
         } => {
             let expected = match function {
-                PureCalculationFunction::Abs => 1,
-                PureCalculationFunction::Min | PureCalculationFunction::Max => 2,
+                PureCalculationFunction::Abs
+                | PureCalculationFunction::Round
+                | PureCalculationFunction::Floor
+                | PureCalculationFunction::Ceil => 1,
+                PureCalculationFunction::Min
+                | PureCalculationFunction::Max
+                | PureCalculationFunction::Mod => 2,
             };
             if arguments.len() != expected {
                 return Err(CalculationFailure::InvalidFunctionArguments {
@@ -222,6 +230,34 @@ fn call_pure_function(
                 actual: 0,
             },
         )?),
+        PureCalculationFunction::Round
+        | PureCalculationFunction::Floor
+        | PureCalculationFunction::Ceil => {
+            let mode = match function {
+                PureCalculationFunction::Floor => RoundingMode::Floor,
+                PureCalculationFunction::Ceil => RoundingMode::Ceil,
+                _ => RoundingMode::HalfAwayFromZero,
+            };
+            let value = arguments.into_iter().next().ok_or(
+                CalculationFailure::InvalidFunctionArguments {
+                    function: function_name(function),
+                    expected: 1,
+                    actual: 0,
+                },
+            )?;
+            round_to_integer(value, mode)
+        }
+        PureCalculationFunction::Mod => {
+            let mut arguments = arguments.into_iter();
+            let (Some(dividend), Some(divisor)) = (arguments.next(), arguments.next()) else {
+                return Err(CalculationFailure::InvalidFunctionArguments {
+                    function: "Mod",
+                    expected: 2,
+                    actual: 0,
+                });
+            };
+            modulo(dividend, divisor)
+        }
         PureCalculationFunction::Min | PureCalculationFunction::Max => {
             let mut arguments = arguments.into_iter();
             let first = arguments
@@ -242,7 +278,7 @@ fn call_pure_function(
             let take_first = match function {
                 PureCalculationFunction::Min => comparison != Ordering::Greater,
                 PureCalculationFunction::Max => comparison != Ordering::Less,
-                PureCalculationFunction::Abs => true,
+                _ => true,
             };
             Ok(if take_first { first } else { second })
         }
@@ -394,6 +430,10 @@ const fn function_name(function: PureCalculationFunction) -> &'static str {
         PureCalculationFunction::Abs => "Abs",
         PureCalculationFunction::Min => "Min",
         PureCalculationFunction::Max => "Max",
+        PureCalculationFunction::Round => "Round",
+        PureCalculationFunction::Floor => "Floor",
+        PureCalculationFunction::Ceil => "Ceil",
+        PureCalculationFunction::Mod => "Mod",
     }
 }
 

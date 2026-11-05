@@ -72,6 +72,14 @@ pub enum PureCalculationFunction {
     Min,
     /// 2つの数値の大きい方を返す。
     Max,
+    /// 数値を0から遠い方向へ四捨五入しIntegerを返す。
+    Round,
+    /// 数値を負の無限大方向へ切り捨てIntegerを返す。
+    Floor,
+    /// 数値を正の無限大方向へ切り上げIntegerを返す。
+    Ceil,
+    /// 除数と同じ符号の剰余を返す。
+    Mod,
 }
 
 impl CalculationExpression {
@@ -123,6 +131,10 @@ impl CalculationExpression {
                     PureCalculationFunction::Abs => "Abs",
                     PureCalculationFunction::Min => "Min",
                     PureCalculationFunction::Max => "Max",
+                    PureCalculationFunction::Round => "Round",
+                    PureCalculationFunction::Floor => "Floor",
+                    PureCalculationFunction::Ceil => "Ceil",
+                    PureCalculationFunction::Mod => "Mod",
                 };
                 let arguments = arguments
                     .iter()

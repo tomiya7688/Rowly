@@ -141,17 +141,11 @@ pub(super) fn compile_calculation_expression(
                 calculation_literal_argument(arguments, name)?.to_owned(),
             )))
         }
-        Expression::Call { name, arguments }
-            if name.eq_ignore_ascii_case("abs")
-                || name.eq_ignore_ascii_case("min")
-                || name.eq_ignore_ascii_case("max") =>
-        {
-            let function = if name.eq_ignore_ascii_case("abs") {
-                PureCalculationFunction::Abs
-            } else if name.eq_ignore_ascii_case("min") {
-                PureCalculationFunction::Min
-            } else {
-                PureCalculationFunction::Max
+        Expression::Call { name, arguments } if pure_function_by_name(name).is_some() => {
+            let Some(function) = pure_function_by_name(name) else {
+                return Err(ExecutionError::InvalidCalculationExpression(
+                    "expression contains an unsupported DSL operation".to_owned(),
+                ));
             };
             let arguments = arguments
                 .iter()
@@ -165,6 +159,24 @@ pub(super) fn compile_calculation_expression(
         _ => Err(ExecutionError::InvalidCalculationExpression(
             "expression contains an unsupported DSL operation".to_owned(),
         )),
+    }
+}
+
+// {
+//   責務: [pure_function_by_name: DSL関数名を許可済みpure functionへ大文字小文字無視で対応付ける]
+//   引数: [name: DSL上の関数名]
+//   戻り値: [Option<PureCalculationFunction>: 許可済み関数、未対応名はNone]
+// }
+pub(in crate::rowly_dsl) fn pure_function_by_name(name: &str) -> Option<PureCalculationFunction> {
+    match name.to_ascii_lowercase().as_str() {
+        "abs" => Some(PureCalculationFunction::Abs),
+        "min" => Some(PureCalculationFunction::Min),
+        "max" => Some(PureCalculationFunction::Max),
+        "round" => Some(PureCalculationFunction::Round),
+        "floor" => Some(PureCalculationFunction::Floor),
+        "ceil" => Some(PureCalculationFunction::Ceil),
+        "mod" => Some(PureCalculationFunction::Mod),
+        _ => None,
     }
 }
 

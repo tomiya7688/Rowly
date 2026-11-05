@@ -73,6 +73,9 @@ impl CalculationEngine {
         if expression_depth(&expression) > MAX_EXPRESSION_DEPTH {
             return Err(CalculationError::ExpressionTooDeep);
         }
+        if expression.has_oversized_range() {
+            return Err(CalculationError::RangeTooLarge);
+        }
         let previous_target = self
             .bindings
             .get(&id)
@@ -276,6 +279,16 @@ fn expressions_are_equivalent(left: &CalculationExpression, right: &CalculationE
             left == right
         }
         (CalculationExpression::DeletedReference, CalculationExpression::DeletedReference) => true,
+        (
+            CalculationExpression::Aggregate {
+                function: left_function,
+                range: left_range,
+            },
+            CalculationExpression::Aggregate {
+                function: right_function,
+                range: right_range,
+            },
+        ) => left_function == right_function && left_range == right_range,
         (CalculationExpression::Negate(left), CalculationExpression::Negate(right)) => {
             expressions_are_equivalent(left, right)
         }

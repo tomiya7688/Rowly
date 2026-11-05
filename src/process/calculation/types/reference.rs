@@ -140,6 +140,125 @@ impl fmt::Display for CalculationCellReference {
     }
 }
 
+/// 1つのrange参照が展開できるcellの上限。依存indexを巨大にしないための明示的な制限。
+pub const MAX_RANGE_CELLS: usize = 100_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// ```text
+/// 責務: [CalculationRangeReference: 左上と右下の端点にそれぞれ参照modeを持つ矩形range参照を表す]
+/// 補足: [``B2:B100``・``$B$2:B100`` のように端点ごとに相対・絶対を指定できる。始点は終点より後ろにできない]
+/// ```
+pub struct CalculationRangeReference {
+    /// 左上の端点。
+    start: CalculationCellReference,
+    /// 右下の端点。
+    end: CalculationCellReference,
+}
+
+impl CalculationRangeReference {
+    /// {
+    ///   責務: [new: 端点から範囲を作る。始点が終点より後ろならNone]
+    ///   引数: [start: 左上の端点, end: 右下の端点]
+    ///   戻り値: [Option<Self>: 正規の矩形range]
+    /// }
+    pub fn new(start: CalculationCellReference, end: CalculationCellReference) -> Option<Self> {
+        let (s, e) = (start.cell(), end.cell());
+        (s.row() <= e.row() && s.column() <= e.column()).then_some(Self { start, end })
+    }
+
+    /// {
+    ///   責務: [start: 左上の端点を返す]
+    ///   戻り値: [CalculationCellReference: 始点]
+    /// }
+    pub const fn start(self) -> CalculationCellReference {
+        self.start
+    }
+
+    /// {
+    ///   責務: [end: 右下の端点を返す]
+    ///   戻り値: [CalculationCellReference: 終点]
+    /// }
+    pub const fn end(self) -> CalculationCellReference {
+        self.end
+    }
+
+    /// {
+    ///   責務: [cell_count: range内のcell数を飽和計算で返す]
+    ///   戻り値: [usize: 行数×列数。overflow時はusize::MAX]
+    /// }
+    pub fn cell_count(self) -> usize {
+        let rows = self.end.cell().row() - self.start.cell().row() + 1;
+        let columns = self.end.cell().column() - self.start.cell().column() + 1;
+        rows.saturating_mul(columns)
+    }
+
+    /// {
+    ///   責務: [cells: range内のcellを行優先の順で返す。上限MAX_RANGE_CELLSまでに打ち切る]
+    ///   戻り値: [Vec<CellRef>: 展開したcell位置]
+    /// }
+    pub fn cells(self) -> Vec<CellRef> {
+        let (start, end) = (self.start.cell(), self.end.cell());
+        (start.row()..=end.row())
+            .flat_map(|row| {
+                (start.column()..=end.column()).map(move |column| CellRef::new(row, column))
+            })
+            .take(MAX_RANGE_CELLS)
+            .collect()
+    }
+
+    /// {
+    ///   責務: [shifted: Fill先に合わせて両端点の相対軸だけを移動する]
+    ///   引数: [row_offset: row移動量, column_offset: column移動量]
+    ///   戻り値: [Option<Self>: 移動後も有効な範囲]
+    /// }
+    pub fn shifted(self, row_offset: isize, column_offset: isize) -> Option<Self> {
+        Self::new(
+            self.start.shifted(row_offset, column_offset)?,
+            self.end.shifted(row_offset, column_offset)?,
+        )
+    }
+
+    /// {
+    ///   責務: [with_cells: 絶対指定を保ったまま両端点の位置だけを差し替える]
+    ///   引数: [start: 新しい始点位置, end: 新しい終点位置]
+    ///   戻り値: [Option<Self>: 始点が終点より後ろなら None]
+    /// }
+    pub fn with_cells(self, start: CellRef, end: CellRef) -> Option<Self> {
+        Self::new(self.start.with_cell(start), self.end.with_cell(end))
+    }
+}
+
+impl FromStr for CalculationRangeReference {
+    type Err = ReferenceError;
+
+    /// {
+    ///   責務: [from_str: ``B2:B100`` 形式のrangeを端点の参照modeごと解析する]
+    ///   引数: [input: range文字列]
+    ///   戻り値: [Result<Self, ReferenceError>: range、形式不正や始点>終点はInvalidCell]
+    /// }
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        let invalid = || ReferenceError::InvalidCell(input.to_owned());
+        let (start, end) = input.split_once(':').ok_or_else(invalid)?;
+        let start = start
+            .parse::<CalculationCellReference>()
+            .map_err(|_| invalid())?;
+        let end = end
+            .parse::<CalculationCellReference>()
+            .map_err(|_| invalid())?;
+        Self::new(start, end).ok_or_else(invalid)
+    }
+}
+
+impl fmt::Display for CalculationRangeReference {
+    /// {
+    ///   責務: [fmt: 端点の``$``を保ったA1:A1形式へ直列化する]
+    ///   引数: [formatter: 書き込み先]
+    ///   戻り値: [fmt::Result: 書き込み結果]
+    /// }
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}:{}", self.start, self.end)
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,5 +305,41 @@ mod tests {
         assert_eq!(moved("A1", -1, 0), None);
         assert_eq!(moved("$A1", 0, -5), Some("$A1".to_owned()));
         assert_eq!(moved("A$1", -5, 0), Some("A$1".to_owned()));
+    }
+
+    // {
+    //   責務: [range_parses_round_trips_and_rejects_reversed_ranges: range参照の解析・往復・不正形式の拒否を検証する]
+    //   戻り値: [(): 往復で表記が保たれ、逆順や形式不正が拒否されれば成功する]
+    // }
+    #[test]
+    fn range_parses_round_trips_and_rejects_reversed_ranges() {
+        for text in ["B2:B100", "$B$2:C10", "A1:A1"] {
+            let range = text.parse::<CalculationRangeReference>().unwrap();
+            assert_eq!(range.to_string(), text);
+        }
+        for bad in ["B9:B2", "B2", "B2:", ":B2", "B2:C3:D4", "B2:$$C3"] {
+            assert!(bad.parse::<CalculationRangeReference>().is_err(), "{bad}");
+        }
+        let range = "A1:B3".parse::<CalculationRangeReference>().unwrap();
+        assert_eq!(range.cell_count(), 6);
+        assert_eq!(range.cells().len(), 6);
+        assert_eq!(range.cells()[3], CellRef::new(1, 1));
+    }
+
+    // {
+    //   責務: [range_shift_moves_only_relative_endpoints: Fillでrange端点の相対軸だけが移動することを検証する]
+    //   戻り値: [(): 固定端点が動かず、相対端点が移動すれば成功する]
+    // }
+    #[test]
+    fn range_shift_moves_only_relative_endpoints() {
+        let range = "$A$1:B2".parse::<CalculationRangeReference>().unwrap();
+        assert_eq!(range.shifted(1, 1).unwrap().to_string(), "$A$1:C3");
+        assert!(
+            "B2:C3"
+                .parse::<CalculationRangeReference>()
+                .unwrap()
+                .shifted(-2, 0)
+                .is_none()
+        );
     }
 }

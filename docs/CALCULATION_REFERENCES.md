@@ -37,7 +37,8 @@ DSLではセル参照を`CellValue("$A$1")` のように引用符内に書きま
 
 - 実装済み: 単一cellの4参照mode、DSL解析、評価時のresolve、serialize、range宣言のFill時に相対軸だけを移動する動作。`$`を含まない参照は従来どおり両軸相対です。
 - 構造編集（#327、engine API）: `CalculationEngine::apply_structure_edit` が行・列の挿入削除に合わせてBindingのtargetと式内の全cell参照（相対・絶対とも）を同じ論理cellへ付け替え、全resultを再計算待ちにする。参照先が削除された参照は`DeletedReference`になり、評価は`DeletedReference` errorで、保存形式では`CellValue("#REF!")`と書く。targetの行・列が削除されたBindingは取り除く。`dsl:<cell>` 形式のIDは新しいtargetへ付け替える（DSL宣言とGUIがtargetからIDを導出するため）。それ以外のIDは変えない。付け替えた(旧ID, 新ID)は`StructureEditReport.renamed`で報告する。
-- 未実装: 式内のrange参照とrange端点のmode（range参照を使う集計関数と同時に実装する）。GUIの行・列操作とUndo/Redoからengineへ構造編集を伝える接続（履歴が構造編集の種類と位置を公開する必要がある）。
+- range参照（#290）: 集計関数の引数 `CellRange("B2:B100")` として実装済み。端点ごとに`A1`・`$A$1`・`$A1`・`A$1`のmodeを持ち、Fill時に相対軸だけが移動する（例: `Sum(CellRange("$A$2:A2"))` を縦にFillすると累計）。構造編集のrange追従は`CALCULATION_LIBRARY.md`の集計関数の規則を参照。
+- 未実装:GUIの行・列操作とUndo/Redoからengineへ構造編集を伝える接続（履歴が構造編集の種類と位置を公開する必要がある）。
 
 ## Fill
 

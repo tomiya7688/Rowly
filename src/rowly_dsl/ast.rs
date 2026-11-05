@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::process::calculation::{CalculationTarget, CalculationTrigger};
+use crate::process::calculation::{AggregateFunction, CalculationTarget, CalculationTrigger};
 use crate::process::{CellRange, ColumnType, ColumnTypeReport, JapaneseCheckReport};
 
 pub use crate::process::{ValidationExpression, ValidationOperand, ValidationRule};
@@ -417,4 +417,31 @@ pub use report::*;
 // }
 pub(super) fn normalize_identifier(identifier: &str) -> String {
     identifier.to_ascii_lowercase()
+}
+
+// {
+//   責務: [aggregate_call: ``Sum(CellRange("B2:B9"))`` 形の集計呼び出しを集計関数とrange文字列へ分解する]
+//   引数: [name: 呼び出し名, arguments: 引数式]
+//   戻り値: [Option<(AggregateFunction, &str)>: 集計関数とrange文字列。形が違う、または未対応名ならNone（``Min(a, b)`` のような2引数のスカラ関数は対象外）]
+// }
+pub(in crate::rowly_dsl) fn aggregate_call<'a>(
+    name: &str,
+    arguments: &'a [Expression],
+) -> Option<(AggregateFunction, &'a str)> {
+    let function = AggregateFunction::from_dsl_name(name)?;
+    let [
+        Expression::Call {
+            name: range_name,
+            arguments: range_arguments,
+        },
+    ] = arguments
+    else {
+        return None;
+    };
+    let [Expression::Literal(range)] = range_arguments.as_slice() else {
+        return None;
+    };
+    range_name
+        .eq_ignore_ascii_case("cellrange")
+        .then_some((function, range.as_str()))
 }

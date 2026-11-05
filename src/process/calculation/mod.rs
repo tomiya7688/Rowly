@@ -16,10 +16,11 @@ pub use engine::CalculationEngine;
 pub use materialize::{CalculationMaterialization, CalculationMaterializationError};
 pub use structure::{StructureEdit, StructureEditReport};
 pub use types::{
-    CalculationBinding, CalculationBindingId, CalculationCellReference,
+    AggregateFunction, CalculationBinding, CalculationBindingId, CalculationCellReference,
     CalculationDependencySnapshot, CalculationError, CalculationExpression, CalculationFailure,
-    CalculationOperator, CalculationRecalculationReport, CalculationResult, CalculationStatus,
-    CalculationTarget, CalculationTrigger, CalculationValue, PureCalculationFunction,
+    CalculationOperator, CalculationRangeReference, CalculationRecalculationReport,
+    CalculationResult, CalculationStatus, CalculationTarget, CalculationTrigger, CalculationValue,
+    MAX_RANGE_CELLS, PureCalculationFunction,
 };
 
 #[cfg(test)]

@@ -72,6 +72,82 @@ impl StructureEdit {
     }
 }
 
+impl StructureEdit {
+    /// {
+    ///   責務: [map_range: 編集前のrange端点を編集後の端点へ写す]
+    ///   処理: [挿入はrange内なら拡張、削除は残るcellだけへ縮小し、全cellが削除されたrangeはNone]
+    ///   引数: [start: 左上の端点, end: 右下の端点]
+    ///   戻り値: [Option<(CellRef, CellRef)>: 編集後の端点。rangeが全て削除されたらNone]
+    /// }
+    pub fn map_range(self, start: CellRef, end: CellRef) -> Option<(CellRef, CellRef)> {
+        let (rows, columns) = match self {
+            Self::InsertRows { index, count } => (
+                Some(insert_span((start.row(), end.row()), index, count)?),
+                None,
+            ),
+            Self::DeleteRows { index, count } => (
+                Some(delete_span((start.row(), end.row()), index, count)?),
+                None,
+            ),
+            Self::InsertColumns { index, count } => (
+                None,
+                Some(insert_span((start.column(), end.column()), index, count)?),
+            ),
+            Self::DeleteColumns { index, count } => (
+                None,
+                Some(delete_span((start.column(), end.column()), index, count)?),
+            ),
+        };
+        let (row_start, row_end) = rows.unwrap_or((start.row(), end.row()));
+        let (column_start, column_end) = columns.unwrap_or((start.column(), end.column()));
+        Some((
+            CellRef::new(row_start, column_start),
+            CellRef::new(row_end, column_end),
+        ))
+    }
+}
+
+// {
+//   責務: [insert_span: 1軸の範囲[first, last]へ挿入を反映する。挿入位置以降の端点だけが後ろへ移る]
+//   引数: [span: 範囲の両端, index: 挿入位置, count: 挿入数]
+//   戻り値: [Option<(usize, usize)>: 新しい両端。usizeを超える場合はNone]
+// }
+fn insert_span(span: (usize, usize), index: usize, count: usize) -> Option<(usize, usize)> {
+    Some((
+        insert_axis(span.0, index, count)?,
+        insert_axis(span.1, index, count)?,
+    ))
+}
+
+// {
+//   責務: [delete_span: 1軸の範囲[first, last]へ削除を反映し、残るcellだけへ縮小する]
+//   引数: [span: 範囲の両端, index: 削除開始位置, count: 削除数]
+//   戻り値: [Option<(usize, usize)>: 新しい両端。範囲の全cellが削除されたらNone]
+// }
+fn delete_span(span: (usize, usize), index: usize, count: usize) -> Option<(usize, usize)> {
+    let (first, last) = span;
+    let deleted_end = index.saturating_add(count);
+    if first >= index && last < deleted_end {
+        return None;
+    }
+    // 削除範囲に入る始点は削除範囲の直後(=index)へ、終点は削除範囲の直前(=index-1)へ寄せる。
+    let new_first = if first < index {
+        first
+    } else if first < deleted_end {
+        index
+    } else {
+        first - count
+    };
+    let new_last = if last < index {
+        last
+    } else if last < deleted_end {
+        index.checked_sub(1)?
+    } else {
+        last - count
+    };
+    (new_first <= new_last).then_some((new_first, new_last))
+}
+
 // {
 //   責務: [insert_axis: 挿入位置以降の座標を挿入数だけ後ろへ移す]
 //   引数: [position: 旧座標, index: 挿入位置, count: 挿入数]
@@ -142,6 +218,7 @@ impl CalculationEngine {
             .checked_add(1)
             .ok_or(CalculationError::RevisionOverflow)?;
         let map = |cell: CellRef| edit.map_cell(cell);
+        let map_range = |start: CellRef, end: CellRef| edit.map_range(start, end);
 
         let mut report = StructureEditReport::default();
         let mut bindings = BTreeMap::new();
@@ -166,7 +243,7 @@ impl CalculationEngine {
                 }
                 CalculationTarget::Range(_) | CalculationTarget::ColumnRelative { .. } => {}
             }
-            binding.expression = binding.expression.remap_cell_references(&map);
+            binding.expression = binding.expression.remap_cell_references(&map, &map_range);
             binding.dependencies = binding.expression.dependencies();
             binding.revision = binding_revision;
             if new_id != id {

@@ -27,7 +27,9 @@ pub(super) fn expression_depth(expression: &CalculationExpression) -> usize {
     while let Some((expression, depth)) = pending.pop() {
         maximum_depth = maximum_depth.max(depth);
         match expression {
-            CalculationExpression::Literal(_) | CalculationExpression::Cell(_) => {}
+            CalculationExpression::Literal(_)
+            | CalculationExpression::Cell(_)
+            | CalculationExpression::AnchoredCell(_) => {}
             CalculationExpression::Negate(operand) => pending.push((operand, depth + 1)),
             CalculationExpression::Arithmetic { left, right, .. } => {
                 pending.push((left, depth + 1));
@@ -63,6 +65,7 @@ pub(super) fn evaluate_expression(
         }
         CalculationExpression::Literal(value) => Ok(value.clone()),
         CalculationExpression::Cell(reference) => read_cell(*reference),
+        CalculationExpression::AnchoredCell(reference) => read_cell(reference.cell()),
         CalculationExpression::Negate(operand) => {
             let value = evaluate_expression(operand, depth + 1, read_cell)?;
             negate(value)

@@ -41,6 +41,8 @@ pub enum CalculationExpression {
     Literal(CalculationValue),
     /// canonical CSVから値を読み取るcell参照。
     Cell(CellRef),
+    /// ` $ `で相対・絶対を指定したcell参照（少なくとも1軸が絶対）。
+    AnchoredCell(CalculationCellReference),
     /// 算術演算前に数値へ評価する符号反転。
     Negate(Box<CalculationExpression>),
     /// 左右の数値式を計算する。
@@ -129,6 +131,12 @@ impl CalculationExpression {
                     quote_calculation_text(&reference.to_string())
                 )
             }
+            Self::AnchoredCell(reference) => {
+                format!(
+                    "CellValue({})",
+                    quote_calculation_text(&reference.to_string())
+                )
+            }
             Self::Negate(operand) => format!("-({})", operand.to_dsl_source()),
             Self::Arithmetic {
                 left,
@@ -197,6 +205,9 @@ impl CalculationExpression {
                 Self::Cell(reference) => {
                     dependencies.insert(*reference);
                 }
+                Self::AnchoredCell(reference) => {
+                    dependencies.insert(reference.cell());
+                }
                 Self::Negate(operand) => pending.push(operand),
                 Self::Arithmetic { left, right, .. } => {
                     pending.push(left);
@@ -223,6 +234,9 @@ impl CalculationExpression {
                 reference.row().checked_add_signed(row_offset)?,
                 reference.column().checked_add_signed(column_offset)?,
             ))),
+            Self::AnchoredCell(reference) => Some(Self::AnchoredCell(
+                reference.shifted(row_offset, column_offset)?,
+            )),
             Self::Negate(operand) => Some(Self::Negate(Box::new(
                 operand.shift_cell_references(row_offset, column_offset)?,
             ))),

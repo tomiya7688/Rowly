@@ -136,6 +136,19 @@ pub(super) fn validate_calculation_expression(
                     .map_err(|error| parse_error(line, error.to_string()))?;
             }
         }
+        Expression::Call { name, arguments } if name.eq_ignore_ascii_case("boolean") => {
+            let valid = matches!(
+                arguments.as_slice(),
+                [Expression::Literal(value)]
+                    if value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false")
+            );
+            if !valid {
+                return Err(parse_error(
+                    line,
+                    "Boolean calculation literal requires \"true\" or \"false\"",
+                ));
+            }
+        }
         Expression::Call { name, arguments } if name.eq_ignore_ascii_case("integer") => {
             let Some(Expression::Literal(value)) = arguments.first() else {
                 return Err(parse_error(
@@ -188,7 +201,7 @@ pub(super) fn validate_calculation_expression(
         _ => {
             return Err(parse_error(
                 line,
-                "calculation expression allows only literals, CellValue, arithmetic, Sum/Count/CountA/Average/Min/Max over CellRange, Abs, Min, Max, Round, Floor, Ceil, Mod, Len, Concat, Left, Right, Mid, Trim, Upper, Lower, Date, Year, Month, and Day",
+                "calculation expression allows only literals, CellValue, arithmetic, Sum/Count/CountA/Average/Min/Max over CellRange, Abs, Min, Max, Round, Floor, Ceil, Mod, Len, Concat, Left, Right, Mid, Trim, Upper, Lower, Date, Year, Month, Day, If, And, Or, Not, Boolean, Equals, NotEquals, Less, LessOrEqual, Greater, and GreaterOrEqual",
             ));
         }
     }
@@ -203,9 +216,10 @@ pub(super) fn validate_calculation_expression(
 fn pure_function_arity(name: &str) -> Option<usize> {
     match name.to_ascii_lowercase().as_str() {
         "abs" | "round" | "floor" | "ceil" | "len" | "trim" | "upper" | "lower" | "year"
-        | "month" | "day" => Some(1),
-        "min" | "max" | "mod" | "concat" | "left" | "right" => Some(2),
-        "mid" | "date" => Some(3),
+        | "month" | "day" | "not" => Some(1),
+        "min" | "max" | "mod" | "concat" | "left" | "right" | "and" | "or" | "equals"
+        | "notequals" | "less" | "lessorequal" | "greater" | "greaterorequal" => Some(2),
+        "mid" | "date" | "if" => Some(3),
         _ => None,
     }
 }

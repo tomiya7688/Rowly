@@ -128,6 +128,21 @@ pub(super) fn compile_calculation_expression(
                 CalculationExpression::AnchoredCell(reference)
             })
         }
+        Expression::Call { name, arguments } if name.eq_ignore_ascii_case("boolean") => {
+            let text = calculation_literal_argument(arguments, name)?;
+            let value = if text.eq_ignore_ascii_case("true") {
+                true
+            } else if text.eq_ignore_ascii_case("false") {
+                false
+            } else {
+                return Err(ExecutionError::InvalidCalculationExpression(
+                    "Boolean requires true or false".to_owned(),
+                ));
+            };
+            Ok(CalculationExpression::Literal(CalculationValue::Boolean(
+                value,
+            )))
+        }
         Expression::Call { name, arguments } if name.eq_ignore_ascii_case("integer") => {
             let value = calculation_literal_argument(arguments, name)?
                 .parse::<i64>()
@@ -205,6 +220,16 @@ pub(in crate::rowly_dsl) fn pure_function_by_name(name: &str) -> Option<PureCalc
         "trim" => Some(PureCalculationFunction::Trim),
         "upper" => Some(PureCalculationFunction::Upper),
         "lower" => Some(PureCalculationFunction::Lower),
+        "if" => Some(PureCalculationFunction::If),
+        "and" => Some(PureCalculationFunction::And),
+        "or" => Some(PureCalculationFunction::Or),
+        "not" => Some(PureCalculationFunction::Not),
+        "equals" => Some(PureCalculationFunction::Equals),
+        "notequals" => Some(PureCalculationFunction::NotEquals),
+        "less" => Some(PureCalculationFunction::Less),
+        "lessorequal" => Some(PureCalculationFunction::LessOrEqual),
+        "greater" => Some(PureCalculationFunction::Greater),
+        "greaterorequal" => Some(PureCalculationFunction::GreaterOrEqual),
         "date" => Some(PureCalculationFunction::Date),
         "year" => Some(PureCalculationFunction::Year),
         "month" => Some(PureCalculationFunction::Month),

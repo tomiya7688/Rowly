@@ -7,7 +7,11 @@ use super::types::{
 use crate::process::CellRef;
 
 mod aggregate;
+mod numeric;
+use numeric::NumericValue;
+mod compare;
 mod date;
+mod logic;
 mod math;
 mod text;
 use math::{RoundingMode, modulo, round_to_integer};
@@ -101,14 +105,25 @@ pub(super) fn evaluate_expression(
                 | PureCalculationFunction::Lower
                 | PureCalculationFunction::Year
                 | PureCalculationFunction::Month
-                | PureCalculationFunction::Day => 1,
+                | PureCalculationFunction::Day
+                | PureCalculationFunction::Not => 1,
                 PureCalculationFunction::Min
                 | PureCalculationFunction::Max
                 | PureCalculationFunction::Mod
                 | PureCalculationFunction::Concat
                 | PureCalculationFunction::Left
-                | PureCalculationFunction::Right => 2,
-                PureCalculationFunction::Mid | PureCalculationFunction::Date => 3,
+                | PureCalculationFunction::Right
+                | PureCalculationFunction::And
+                | PureCalculationFunction::Or
+                | PureCalculationFunction::Equals
+                | PureCalculationFunction::NotEquals
+                | PureCalculationFunction::Less
+                | PureCalculationFunction::LessOrEqual
+                | PureCalculationFunction::Greater
+                | PureCalculationFunction::GreaterOrEqual => 2,
+                PureCalculationFunction::Mid
+                | PureCalculationFunction::Date
+                | PureCalculationFunction::If => 3,
             };
             if arguments.len() != expected {
                 return Err(CalculationFailure::InvalidFunctionArguments {
@@ -116,6 +131,10 @@ pub(super) fn evaluate_expression(
                     expected,
                     actual: arguments.len(),
                 });
+            }
+
+            if let Some(result) = logic::evaluate_lazy(*function, arguments, depth, read_cell) {
+                return result;
             }
 
             let values = arguments
@@ -226,6 +245,9 @@ fn numeric_value(value: CalculationValue) -> Result<NumericValue, CalculationFai
         CalculationValue::Integer(value) => Ok(NumericValue::Integer(value)),
         CalculationValue::Decimal(value) if value.is_finite() => Ok(NumericValue::Decimal(value)),
         CalculationValue::Decimal(_) => Err(CalculationFailure::ArithmeticOverflow),
+        CalculationValue::Boolean(value) => Err(CalculationFailure::ExpectedNumber(
+            CalculationValue::Boolean(value).into_text(),
+        )),
         CalculationValue::Text(value) => {
             if let Ok(integer) = value.parse::<i64>() {
                 return Ok(NumericValue::Integer(integer));
@@ -295,6 +317,23 @@ fn call_pure_function(
         | PureCalculationFunction::Year
         | PureCalculationFunction::Month
         | PureCalculationFunction::Day => date::call_date_function(function, arguments),
+        PureCalculationFunction::Equals
+        | PureCalculationFunction::NotEquals
+        | PureCalculationFunction::Less
+        | PureCalculationFunction::LessOrEqual
+        | PureCalculationFunction::Greater
+        | PureCalculationFunction::GreaterOrEqual => {
+            compare::call_compare_function(function, arguments)
+        }
+        // If・And・Or・Notは短絡評価のためevaluate_lazyが処理し、ここへは来ない。
+        PureCalculationFunction::If
+        | PureCalculationFunction::And
+        | PureCalculationFunction::Or
+        | PureCalculationFunction::Not => Err(CalculationFailure::InvalidFunctionArguments {
+            function: function_name(function),
+            expected: 0,
+            actual: arguments.len(),
+        }),
         PureCalculationFunction::Min | PureCalculationFunction::Max => {
             let mut arguments = arguments.into_iter();
             let first = arguments
@@ -385,74 +424,20 @@ const fn function_name(function: PureCalculationFunction) -> &'static str {
         PureCalculationFunction::Trim => "Trim",
         PureCalculationFunction::Upper => "Upper",
         PureCalculationFunction::Lower => "Lower",
+        PureCalculationFunction::If => "If",
+        PureCalculationFunction::And => "And",
+        PureCalculationFunction::Or => "Or",
+        PureCalculationFunction::Not => "Not",
+        PureCalculationFunction::Equals => "Equals",
+        PureCalculationFunction::NotEquals => "NotEquals",
+        PureCalculationFunction::Less => "Less",
+        PureCalculationFunction::LessOrEqual => "LessOrEqual",
+        PureCalculationFunction::Greater => "Greater",
+        PureCalculationFunction::GreaterOrEqual => "GreaterOrEqual",
         PureCalculationFunction::Date => "Date",
         PureCalculationFunction::Year => "Year",
         PureCalculationFunction::Month => "Month",
         PureCalculationFunction::Day => "Day",
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-// {
-//   責務: [NumericValue: 算術をchecked integerまたはfinite decimalで行う内部値]
-// }
-enum NumericValue {
-    Integer(i64),
-    Decimal(f64),
-}
-
-impl NumericValue {
-    // {
-    //   責務: [checked_f64: integerの値を保てる場合だけf64へ変換する]
-    //   引数: [self: 変換対象]
-    //   戻り値: [Result<f64, CalculationFailure>: 正確な数値またはprecision error]
-    // }
-    fn checked_f64(self) -> Result<f64, CalculationFailure> {
-        match self {
-            Self::Integer(value) => exact_integer_as_f64(i128::from(value)),
-            Self::Decimal(value) if value.is_finite() => Ok(value),
-            Self::Decimal(_) => Err(CalculationFailure::ArithmeticOverflow),
-        }
-    }
-
-    // ```text
-    // 責務: [compare: integer同士を正確に比較し、integerとdecimalは境界検証後に比較する]
-    // 引数: [self: 左numeric値, other: 右numeric値]
-    // 戻り値: [Ordering: numericな大小関係]
-    // ```
-    fn compare(self, other: Self) -> Ordering {
-        match (self, other) {
-            (Self::Integer(left), Self::Integer(right)) => left.cmp(&right),
-            (Self::Decimal(left), Self::Decimal(right)) => left.total_cmp(&right),
-            (Self::Integer(integer), Self::Decimal(decimal)) => {
-                compare_integer_to_decimal(integer, decimal)
-            }
-            (Self::Decimal(decimal), Self::Integer(integer)) => {
-                compare_integer_to_decimal(integer, decimal).reverse()
-            }
-        }
-    }
-}
-
-// ```text
-// 責務: [compare_integer_to_decimal: 有限decimalとi64の比較でf64丸めによるinteger精度損失を避ける]
-// 引数: [integer: 比較するi64, decimal: 有限と検証済みのf64]
-// 戻り値: [Ordering: integerとdecimalの大小関係]
-// ```
-fn compare_integer_to_decimal(integer: i64, decimal: f64) -> Ordering {
-    let minimum = i64::MIN as f64;
-    let exclusive_maximum = -(i64::MIN as f64);
-    if decimal < minimum {
-        return Ordering::Greater;
-    }
-    if decimal >= exclusive_maximum {
-        return Ordering::Less;
-    }
-
-    match integer.cmp(&(decimal.trunc() as i64)) {
-        Ordering::Equal if decimal.fract() > 0.0 => Ordering::Less,
-        Ordering::Equal if decimal.fract() < 0.0 => Ordering::Greater,
-        ordering => ordering,
     }
 }
 
@@ -467,6 +452,7 @@ impl CalculationValue {
             Self::Text(value) => value,
             Self::Integer(value) => value.to_string(),
             Self::Decimal(value) => value.to_string(),
+            Self::Boolean(value) => if value { "TRUE" } else { "FALSE" }.to_owned(),
         }
     }
 }

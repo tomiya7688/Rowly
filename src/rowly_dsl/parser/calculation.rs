@@ -168,7 +168,7 @@ pub(super) fn validate_calculation_expression(
         _ => {
             return Err(parse_error(
                 line,
-                "calculation expression allows only literals, CellValue, arithmetic, Abs, Min, Max, Round, Floor, Ceil, Mod, Len, Concat, Left, Right, Mid, Trim, Upper, and Lower",
+                "calculation expression allows only literals, CellValue, arithmetic, Abs, Min, Max, Round, Floor, Ceil, Mod, Len, Concat, Left, Right, Mid, Trim, Upper, Lower, Date, Year, Month, and Day",
             ));
         }
     }
@@ -182,9 +182,10 @@ pub(super) fn validate_calculation_expression(
 // }
 fn pure_function_arity(name: &str) -> Option<usize> {
     match name.to_ascii_lowercase().as_str() {
-        "abs" | "round" | "floor" | "ceil" | "len" | "trim" | "upper" | "lower" => Some(1),
+        "abs" | "round" | "floor" | "ceil" | "len" | "trim" | "upper" | "lower" | "year"
+        | "month" | "day" => Some(1),
         "min" | "max" | "mod" | "concat" | "left" | "right" => Some(2),
-        "mid" => Some(3),
+        "mid" | "date" => Some(3),
         _ => None,
     }
 }

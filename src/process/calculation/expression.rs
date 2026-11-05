@@ -6,6 +6,7 @@ use super::types::{
 };
 use crate::process::CellRef;
 
+mod date;
 mod math;
 mod text;
 use math::{RoundingMode, modulo, round_to_integer};
@@ -87,14 +88,17 @@ pub(super) fn evaluate_expression(
                 | PureCalculationFunction::Len
                 | PureCalculationFunction::Trim
                 | PureCalculationFunction::Upper
-                | PureCalculationFunction::Lower => 1,
+                | PureCalculationFunction::Lower
+                | PureCalculationFunction::Year
+                | PureCalculationFunction::Month
+                | PureCalculationFunction::Day => 1,
                 PureCalculationFunction::Min
                 | PureCalculationFunction::Max
                 | PureCalculationFunction::Mod
                 | PureCalculationFunction::Concat
                 | PureCalculationFunction::Left
                 | PureCalculationFunction::Right => 2,
-                PureCalculationFunction::Mid => 3,
+                PureCalculationFunction::Mid | PureCalculationFunction::Date => 3,
             };
             if arguments.len() != expected {
                 return Err(CalculationFailure::InvalidFunctionArguments {
@@ -277,6 +281,10 @@ fn call_pure_function(
         | PureCalculationFunction::Trim
         | PureCalculationFunction::Upper
         | PureCalculationFunction::Lower => text::call_text_function(function, arguments),
+        PureCalculationFunction::Date
+        | PureCalculationFunction::Year
+        | PureCalculationFunction::Month
+        | PureCalculationFunction::Day => date::call_date_function(function, arguments),
         PureCalculationFunction::Min | PureCalculationFunction::Max => {
             let mut arguments = arguments.into_iter();
             let first = arguments
@@ -367,6 +375,10 @@ const fn function_name(function: PureCalculationFunction) -> &'static str {
         PureCalculationFunction::Trim => "Trim",
         PureCalculationFunction::Upper => "Upper",
         PureCalculationFunction::Lower => "Lower",
+        PureCalculationFunction::Date => "Date",
+        PureCalculationFunction::Year => "Year",
+        PureCalculationFunction::Month => "Month",
+        PureCalculationFunction::Day => "Day",
     }
 }
 

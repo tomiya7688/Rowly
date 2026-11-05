@@ -96,6 +96,14 @@ pub enum PureCalculationFunction {
     Upper,
     /// 小文字へ変換する。
     Lower,
+    /// 年・月・日からISO 8601の日付Textを作る。
+    Date,
+    /// 日付Textの年を返す。
+    Year,
+    /// 日付Textの月を返す。
+    Month,
+    /// 日付Textの日を返す。
+    Day,
 }
 
 impl CalculationExpression {
@@ -159,6 +167,10 @@ impl CalculationExpression {
                     PureCalculationFunction::Trim => "Trim",
                     PureCalculationFunction::Upper => "Upper",
                     PureCalculationFunction::Lower => "Lower",
+                    PureCalculationFunction::Date => "Date",
+                    PureCalculationFunction::Year => "Year",
+                    PureCalculationFunction::Month => "Month",
+                    PureCalculationFunction::Day => "Day",
                 };
                 let arguments = arguments
                     .iter()

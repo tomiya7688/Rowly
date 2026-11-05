@@ -186,6 +186,8 @@ pub enum CalculationFailure {
     MissingCell(CellRef),
     /// 演算子へ数値以外の値を渡した。
     ExpectedNumber(String),
+    /// 文字位置または文字数が0以上（MIDのstartは1以上）のIntegerではない。
+    InvalidTextIndex(String),
     /// 除数が0だった。
     DivisionByZero,
     /// checked arithmeticまたはfinite値検証でoverflowした。
@@ -279,6 +281,9 @@ impl std::fmt::Display for CalculationFailure {
         match self {
             Self::MissingCell(reference) => write!(formatter, "cell `{reference}` does not exist"),
             Self::ExpectedNumber(value) => write!(formatter, "value `{value}` is not numeric"),
+            Self::InvalidTextIndex(value) => {
+                write!(formatter, "text position or length `{value}` is invalid")
+            }
             Self::DivisionByZero => formatter.write_str("division by zero"),
             Self::ArithmeticOverflow => formatter.write_str("calculation overflowed"),
             Self::PrecisionLoss => formatter.write_str("calculation would lose integer precision"),

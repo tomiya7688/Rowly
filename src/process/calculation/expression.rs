@@ -7,6 +7,7 @@ use super::types::{
 use crate::process::CellRef;
 
 mod math;
+mod text;
 use math::{RoundingMode, modulo, round_to_integer};
 mod ratio;
 use ratio::{reduce_fraction, round_integer_ratio_as_f64};
@@ -82,10 +83,18 @@ pub(super) fn evaluate_expression(
                 PureCalculationFunction::Abs
                 | PureCalculationFunction::Round
                 | PureCalculationFunction::Floor
-                | PureCalculationFunction::Ceil => 1,
+                | PureCalculationFunction::Ceil
+                | PureCalculationFunction::Len
+                | PureCalculationFunction::Trim
+                | PureCalculationFunction::Upper
+                | PureCalculationFunction::Lower => 1,
                 PureCalculationFunction::Min
                 | PureCalculationFunction::Max
-                | PureCalculationFunction::Mod => 2,
+                | PureCalculationFunction::Mod
+                | PureCalculationFunction::Concat
+                | PureCalculationFunction::Left
+                | PureCalculationFunction::Right => 2,
+                PureCalculationFunction::Mid => 3,
             };
             if arguments.len() != expected {
                 return Err(CalculationFailure::InvalidFunctionArguments {
@@ -260,6 +269,14 @@ fn call_pure_function(
             };
             modulo(dividend, divisor)
         }
+        PureCalculationFunction::Len
+        | PureCalculationFunction::Concat
+        | PureCalculationFunction::Left
+        | PureCalculationFunction::Right
+        | PureCalculationFunction::Mid
+        | PureCalculationFunction::Trim
+        | PureCalculationFunction::Upper
+        | PureCalculationFunction::Lower => text::call_text_function(function, arguments),
         PureCalculationFunction::Min | PureCalculationFunction::Max => {
             let mut arguments = arguments.into_iter();
             let first = arguments
@@ -342,6 +359,14 @@ const fn function_name(function: PureCalculationFunction) -> &'static str {
         PureCalculationFunction::Floor => "Floor",
         PureCalculationFunction::Ceil => "Ceil",
         PureCalculationFunction::Mod => "Mod",
+        PureCalculationFunction::Len => "Len",
+        PureCalculationFunction::Concat => "Concat",
+        PureCalculationFunction::Left => "Left",
+        PureCalculationFunction::Right => "Right",
+        PureCalculationFunction::Mid => "Mid",
+        PureCalculationFunction::Trim => "Trim",
+        PureCalculationFunction::Upper => "Upper",
+        PureCalculationFunction::Lower => "Lower",
     }
 }
 

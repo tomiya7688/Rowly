@@ -176,6 +176,14 @@ pub(in crate::rowly_dsl) fn pure_function_by_name(name: &str) -> Option<PureCalc
         "floor" => Some(PureCalculationFunction::Floor),
         "ceil" => Some(PureCalculationFunction::Ceil),
         "mod" => Some(PureCalculationFunction::Mod),
+        "len" => Some(PureCalculationFunction::Len),
+        "concat" => Some(PureCalculationFunction::Concat),
+        "left" => Some(PureCalculationFunction::Left),
+        "right" => Some(PureCalculationFunction::Right),
+        "mid" => Some(PureCalculationFunction::Mid),
+        "trim" => Some(PureCalculationFunction::Trim),
+        "upper" => Some(PureCalculationFunction::Upper),
+        "lower" => Some(PureCalculationFunction::Lower),
         _ => None,
     }
 }

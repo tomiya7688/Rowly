@@ -43,6 +43,8 @@ pub enum CalculationExpression {
     Cell(CellRef),
     /// ` $ `で相対・絶対を指定したcell参照（少なくとも1軸が絶対）。
     AnchoredCell(CalculationCellReference),
+    /// 参照先が構造編集で削除されたcell参照。評価はDeletedReference errorになる。
+    DeletedReference,
     /// 算術演算前に数値へ評価する符号反転。
     Negate(Box<CalculationExpression>),
     /// 左右の数値式を計算する。
@@ -131,6 +133,7 @@ impl CalculationExpression {
                     quote_calculation_text(&reference.to_string())
                 )
             }
+            Self::DeletedReference => "CellValue(\"#REF!\")".to_owned(),
             Self::AnchoredCell(reference) => {
                 format!(
                     "CellValue({})",
@@ -201,7 +204,7 @@ impl CalculationExpression {
 
         while let Some(expression) = pending.pop() {
             match expression {
-                Self::Literal(_) => {}
+                Self::Literal(_) | Self::DeletedReference => {}
                 Self::Cell(reference) => {
                     dependencies.insert(*reference);
                 }
@@ -237,6 +240,7 @@ impl CalculationExpression {
             Self::AnchoredCell(reference) => Some(Self::AnchoredCell(
                 reference.shifted(row_offset, column_offset)?,
             )),
+            Self::DeletedReference => Some(Self::DeletedReference),
             Self::Negate(operand) => Some(Self::Negate(Box::new(
                 operand.shift_cell_references(row_offset, column_offset)?,
             ))),

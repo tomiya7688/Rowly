@@ -9,10 +9,12 @@ mod graph;
 mod indexes;
 mod materialize;
 mod recalculation;
+mod structure;
 mod types;
 
 pub use engine::CalculationEngine;
 pub use materialize::{CalculationMaterialization, CalculationMaterializationError};
+pub use structure::{StructureEdit, StructureEditReport};
 pub use types::{
     CalculationBinding, CalculationBindingId, CalculationCellReference,
     CalculationDependencySnapshot, CalculationError, CalculationExpression, CalculationFailure,

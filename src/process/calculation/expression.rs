@@ -29,7 +29,8 @@ pub(super) fn expression_depth(expression: &CalculationExpression) -> usize {
         match expression {
             CalculationExpression::Literal(_)
             | CalculationExpression::Cell(_)
-            | CalculationExpression::AnchoredCell(_) => {}
+            | CalculationExpression::AnchoredCell(_)
+            | CalculationExpression::DeletedReference => {}
             CalculationExpression::Negate(operand) => pending.push((operand, depth + 1)),
             CalculationExpression::Arithmetic { left, right, .. } => {
                 pending.push((left, depth + 1));
@@ -66,6 +67,7 @@ pub(super) fn evaluate_expression(
         CalculationExpression::Literal(value) => Ok(value.clone()),
         CalculationExpression::Cell(reference) => read_cell(*reference),
         CalculationExpression::AnchoredCell(reference) => read_cell(reference.cell()),
+        CalculationExpression::DeletedReference => Err(CalculationFailure::DeletedReference),
         CalculationExpression::Negate(operand) => {
             let value = evaluate_expression(operand, depth + 1, read_cell)?;
             negate(value)

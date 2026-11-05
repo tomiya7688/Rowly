@@ -176,6 +176,7 @@ pub enum CalculationTrigger {
 
 mod expression;
 mod reference;
+mod remap;
 pub use expression::*;
 pub use reference::CalculationCellReference;
 
@@ -192,6 +193,8 @@ pub enum CalculationFailure {
     InvalidTextIndex(String),
     /// 日付が存在しない、またはISO 8601の`YYYY-MM-DD`形式ではない。
     InvalidDate(String),
+    /// 参照先の行または列が構造編集で削除された。
+    DeletedReference,
     /// 除数が0だった。
     DivisionByZero,
     /// checked arithmeticまたはfinite値検証でoverflowした。
@@ -291,6 +294,7 @@ impl std::fmt::Display for CalculationFailure {
             Self::InvalidDate(value) => {
                 write!(formatter, "date `{value}` is not a valid YYYY-MM-DD date")
             }
+            Self::DeletedReference => formatter.write_str("referenced cell was deleted"),
             Self::DivisionByZero => formatter.write_str("division by zero"),
             Self::ArithmeticOverflow => formatter.write_str("calculation overflowed"),
             Self::PrecisionLoss => formatter.write_str("calculation would lose integer precision"),

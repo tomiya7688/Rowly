@@ -113,9 +113,12 @@ pub(super) fn validate_calculation_expression(
                     "CellValue requires a quoted A1 cell reference",
                 ));
             };
-            reference
-                .parse::<CalculationCellReference>()
-                .map_err(|error| parse_error(line, error.to_string()))?;
+            // 構造編集で削除された参照は`#REF!`として保存され、再読込でも評価errorを保つ。
+            if reference.trim() != "#REF!" {
+                reference
+                    .parse::<CalculationCellReference>()
+                    .map_err(|error| parse_error(line, error.to_string()))?;
+            }
         }
         Expression::Call { name, arguments } if name.eq_ignore_ascii_case("integer") => {
             let Some(Expression::Literal(value)) = arguments.first() else {

@@ -103,7 +103,11 @@ pub(super) fn compile_calculation_expression(
             })
         }
         Expression::Call { name, arguments } if name.eq_ignore_ascii_case("cellvalue") => {
-            let reference = calculation_literal_argument(arguments, name)?
+            let text = calculation_literal_argument(arguments, name)?;
+            if text.trim() == "#REF!" {
+                return Ok(CalculationExpression::DeletedReference);
+            }
+            let reference = text
                 .parse::<CalculationCellReference>()
                 .map_err(|error| ExecutionError::InvalidCalculationExpression(error.to_string()))?;
             Ok(if reference.is_relative() {

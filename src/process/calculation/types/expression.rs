@@ -14,6 +14,8 @@ pub enum CalculationValue {
     Integer(i64),
     /// 有限の浮動小数点値。
     Decimal(f64),
+    /// 比較・論理演算の結果。数値やTextへ暗黙に変換しない。
+    Boolean(bool),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,6 +162,26 @@ pub enum PureCalculationFunction {
     Upper,
     /// 小文字へ変換する。
     Lower,
+    /// 条件・比較・論理関数 If。
+    If,
+    /// 条件・比較・論理関数 And。
+    And,
+    /// 条件・比較・論理関数 Or。
+    Or,
+    /// 条件・比較・論理関数 Not。
+    Not,
+    /// 条件・比較・論理関数 Equals。
+    Equals,
+    /// 条件・比較・論理関数 NotEquals。
+    NotEquals,
+    /// 条件・比較・論理関数 Less。
+    Less,
+    /// 条件・比較・論理関数 LessOrEqual。
+    LessOrEqual,
+    /// 条件・比較・論理関数 Greater。
+    Greater,
+    /// 条件・比較・論理関数 GreaterOrEqual。
+    GreaterOrEqual,
     /// 年・月・日からISO 8601の日付Textを作る。
     Date,
     /// 日付Textの年を返す。
@@ -183,6 +205,9 @@ impl CalculationExpression {
             }
             Self::Literal(CalculationValue::Integer(value)) => {
                 format!("Integer({})", quote_calculation_text(&value.to_string()))
+            }
+            Self::Literal(CalculationValue::Boolean(value)) => {
+                format!("Boolean({})", quote_calculation_text(&value.to_string()))
             }
             Self::Literal(CalculationValue::Decimal(value)) => {
                 format!("Decimal({})", quote_calculation_text(&value.to_string()))
@@ -243,6 +268,16 @@ impl CalculationExpression {
                     PureCalculationFunction::Trim => "Trim",
                     PureCalculationFunction::Upper => "Upper",
                     PureCalculationFunction::Lower => "Lower",
+                    PureCalculationFunction::If => "If",
+                    PureCalculationFunction::And => "And",
+                    PureCalculationFunction::Or => "Or",
+                    PureCalculationFunction::Not => "Not",
+                    PureCalculationFunction::Equals => "Equals",
+                    PureCalculationFunction::NotEquals => "NotEquals",
+                    PureCalculationFunction::Less => "Less",
+                    PureCalculationFunction::LessOrEqual => "LessOrEqual",
+                    PureCalculationFunction::Greater => "Greater",
+                    PureCalculationFunction::GreaterOrEqual => "GreaterOrEqual",
                     PureCalculationFunction::Date => "Date",
                     PureCalculationFunction::Year => "Year",
                     PureCalculationFunction::Month => "Month",

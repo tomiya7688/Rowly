@@ -88,6 +88,15 @@
 - OR
 - NOT
 
+### 条件・比較・論理の規則（#292）
+
+- 値にBooleanを追加する。結果の表示は`TRUE`・`FALSE`で、数値やTextへ暗黙に変換せず、Boolean literalは`Boolean("true")`・`Boolean("false")`と書く。
+- 比較は関数形式で、`Equals`・`NotEquals`・`Less`・`LessOrEqual`・`Greater`・`GreaterOrEqual`（各2引数）。両辺が数値として解釈できる（数値文字列を含む）なら数値として比較し、そうでなければ表示文字列をUnicodeスカラ値の順（大文字小文字を区別）で比較する。数値とTextの混在は文字列比較。Booleanは同じ型同士の`Equals`・`NotEquals`だけ可能で、それ以外の組はIncomparableValues errorにする。
+- `If(条件, 真の式, 偽の式)`・`And(a, b)`・`Or(a, b)`・`Not(a)`。条件とオペランドはBooleanでなければならず、数値やTextはExpectedBoolean errorにする。
+- 短絡評価: `If`は選ばれた分岐だけを評価する。`And`は左辺がfalse、`Or`は左辺がtrueなら右辺を評価しない。使われない側のerrorは結果に影響しない。
+- 依存追跡は静的で、`If`の両方の分岐が参照するcellを依存に含める。循環検出もこの静的な依存で行う。
+- 副作用なし。DSL runtimeの任意functionは呼ばない。
+
 ### 条件付き集計
 
 - SUMIF

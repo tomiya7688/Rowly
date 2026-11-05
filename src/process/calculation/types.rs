@@ -200,6 +200,10 @@ pub enum CalculationFailure {
     DeletedReference,
     /// 空のrangeに対してAVERAGE・MIN・MAXを評価した。
     EmptyAggregate,
+    /// 条件式がBooleanではない（数値やTextを暗黙にBooleanへ変換しない）。
+    ExpectedBoolean(String),
+    /// 比較できない型の組（Booleanと数値・Text、またはBoolean同士の大小比較）。
+    IncomparableValues,
     /// 除数が0だった。
     DivisionByZero,
     /// checked arithmeticまたはfinite値検証でoverflowした。
@@ -301,6 +305,8 @@ impl std::fmt::Display for CalculationFailure {
             }
             Self::DeletedReference => formatter.write_str("referenced cell was deleted"),
             Self::EmptyAggregate => formatter.write_str("aggregate has no numeric values"),
+            Self::ExpectedBoolean(value) => write!(formatter, "value `{value}` is not a boolean"),
+            Self::IncomparableValues => formatter.write_str("values cannot be compared"),
             Self::DivisionByZero => formatter.write_str("division by zero"),
             Self::ArithmeticOverflow => formatter.write_str("calculation overflowed"),
             Self::PrecisionLoss => formatter.write_str("calculation would lose integer precision"),

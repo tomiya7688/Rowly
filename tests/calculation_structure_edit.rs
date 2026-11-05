@@ -53,18 +53,18 @@ fn row_insert_moves_targets_and_references_to_the_same_logical_cells() {
         .unwrap();
     engine.recalculate_all(&document).unwrap();
 
-    assert_eq!(report.rewritten, vec![id("C2"), id("C3")]);
+    assert_eq!(report.rewritten, vec![id("C3"), id("C4")]);
     assert_eq!(
-        engine.binding(&id("C2")).unwrap().target(),
+        engine.binding(&id("C3")).unwrap().target(),
         CalculationTarget::Cell(CellRef::new(2, 2))
     );
-    // $A$2 は絶対参照でも論理cellに追従して$A$3、B2はB3へ移る。
+    // $A$2 は絶対参照でも論理cellに追従して$A$3、B2はB3へ移る。IDもtargetへ追従する。
     assert_eq!(
-        engine.result(&id("C2")).unwrap().value.as_deref(),
+        engine.result(&id("C3")).unwrap().value.as_deref(),
         Some("11")
     );
     assert_eq!(
-        engine.result(&id("C3")).unwrap().value.as_deref(),
+        engine.result(&id("C4")).unwrap().value.as_deref(),
         Some("12")
     );
 }
@@ -83,16 +83,17 @@ fn row_delete_removes_deleted_targets_and_marks_deleted_references() {
     engine.recalculate_all(&document).unwrap();
 
     assert_eq!(report.removed, vec![id("C2")]);
-    assert!(engine.binding(&id("C2")).is_none());
-    // 残ったC3(新C2)は、削除された$A$2を参照するためDeletedReference errorになる。
-    let result = engine.result(&id("C3")).unwrap();
+    assert_eq!(report.renamed, vec![(id("C3"), id("C2"))]);
+    // 残った旧C3は新C2へ移りIDも dsl:C2 になる。削除された$A$2を参照するためDeletedReference errorになる。
+    assert!(engine.binding(&id("C3")).is_none());
+    let result = engine.result(&id("C2")).unwrap();
     assert_eq!(
         result.status,
         CalculationStatus::Error(CalculationFailure::DeletedReference)
     );
     assert_eq!(result.value, None);
     assert_eq!(
-        engine.binding(&id("C3")).unwrap().target(),
+        engine.binding(&id("C2")).unwrap().target(),
         CalculationTarget::Cell(CellRef::new(1, 2))
     );
 }
@@ -110,7 +111,7 @@ fn column_edits_follow_references_and_report_deleted_column() {
         .unwrap();
     engine.recalculate_all(&document).unwrap();
     assert_eq!(
-        engine.result(&id("C2")).unwrap().value.as_deref(),
+        engine.result(&id("D2")).unwrap().value.as_deref(),
         Some("11")
     );
 
@@ -142,7 +143,7 @@ fn deleted_reference_survives_dsl_round_trip() {
         .apply_structure_edit(StructureEdit::DeleteRows { index: 1, count: 1 })
         .unwrap();
     let source = engine
-        .binding(&id("C3"))
+        .binding(&id("C2"))
         .unwrap()
         .expression()
         .to_dsl_source();
@@ -172,4 +173,53 @@ fn zero_count_edit_changes_nothing() {
         .unwrap();
     assert!(report.rewritten.is_empty() && report.removed.is_empty());
     assert_eq!(engine.result(&id("C2")).unwrap(), &before);
+}
+
+#[test]
+// {
+//   責務: [dsl_ids_follow_their_moved_targets: 構造編集後にdsl:<cell>のIDがtargetへ追従し、以後のDSL宣言が別bindingを壊さないことを検証する。],
+//   処理: [行挿入でC2のruleがC3へ移った後、C2への新規宣言が移動済みruleを置換せず、C3への宣言が重複targetにならないことを確認する。],
+//   戻り値: [(): 全assertion成功時に完了する。]
+// }
+fn dsl_ids_follow_their_moved_targets() {
+    let (_directory, mut document, mut engine) = setup();
+    document.insert_rows(1, 1).unwrap();
+    let report = engine
+        .apply_structure_edit(StructureEdit::InsertRows { index: 1, count: 1 })
+        .unwrap();
+    assert_eq!(
+        report.renamed,
+        vec![(id("C2"), id("C3")), (id("C3"), id("C4"))]
+    );
+    assert!(engine.binding(&id("C2")).is_none());
+    assert_eq!(
+        engine.binding(&id("C3")).unwrap().target(),
+        CalculationTarget::Cell(CellRef::new(2, 2))
+    );
+    assert_eq!(
+        engine.binding(&id("C4")).unwrap().target(),
+        CalculationTarget::Cell(CellRef::new(3, 2))
+    );
+
+    // 空になったC2へ新規宣言しても、C3へ移ったruleは残る。
+    let dsl = "SET This.Worksheet.Editor.Cell(\"C2\").Calculation.Expression = Integer(\"5\")\n";
+    rowly_dsl::run_with_calculation_engine(dsl, &mut document, &mut engine).unwrap();
+    engine.recalculate_all(&document).unwrap();
+    assert_eq!(
+        engine.result(&id("C2")).unwrap().value.as_deref(),
+        Some("5")
+    );
+    assert_eq!(
+        engine.result(&id("C3")).unwrap().value.as_deref(),
+        Some("11")
+    );
+
+    // C3の宣言を更新すると、同じ表示cellの旧ruleを置換する（DuplicateTargetにならない）。
+    let dsl = "SET This.Worksheet.Editor.Cell(\"C3\").Calculation.Expression = Integer(\"7\")\n";
+    rowly_dsl::run_with_calculation_engine(dsl, &mut document, &mut engine).unwrap();
+    engine.recalculate_all(&document).unwrap();
+    assert_eq!(
+        engine.result(&id("C3")).unwrap().value.as_deref(),
+        Some("7")
+    );
 }

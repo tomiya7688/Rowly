@@ -109,6 +109,8 @@ pub struct StructureEditReport {
     pub rewritten: Vec<CalculationBindingId>,
     /// targetの行・列が削除されたため取り除いたbinding ID。
     pub removed: Vec<CalculationBindingId>,
+    /// `dsl:<cell>` 形式のIDを新しいtargetへ付け替えた(旧ID, 新ID)の一覧。
+    pub renamed: Vec<(CalculationBindingId, CalculationBindingId)>,
 }
 
 impl CalculationEngine {
@@ -143,16 +145,23 @@ impl CalculationEngine {
 
         let mut report = StructureEditReport::default();
         let mut bindings = BTreeMap::new();
+        let mut old_results = std::mem::take(&mut self.results);
+        let mut results = BTreeMap::new();
         for (id, mut binding) in std::mem::take(&mut self.bindings) {
+            let mut new_id = id.clone();
             // engineはset_bindingで単一cell targetだけを受け付けるため、Range・ColumnRelativeは登録されない。
             // 将来それらを許可する場合は、ここでtargetの写像を定義してから通す。
             match binding.target {
                 CalculationTarget::Cell(target) => {
                     let Some(new_target) = edit.map_cell(target) else {
                         report.removed.push(id.clone());
-                        self.results.remove(&id);
                         continue;
                     };
+                    // DSL宣言とGUIは`dsl:<target>`をIDとして導出するため、IDもtargetへ追従させる。
+                    // cell写像は単射なので、付け替え後のIDどうしは衝突しない。
+                    if id.as_str() == format!("dsl:{target}") {
+                        new_id = CalculationBindingId::new(format!("dsl:{new_target}"))?;
+                    }
                     binding.target = CalculationTarget::Cell(new_target);
                 }
                 CalculationTarget::Range(_) | CalculationTarget::ColumnRelative { .. } => {}
@@ -160,10 +169,18 @@ impl CalculationEngine {
             binding.expression = binding.expression.remap_cell_references(&map);
             binding.dependencies = binding.expression.dependencies();
             binding.revision = binding_revision;
-            report.rewritten.push(id.clone());
-            bindings.insert(id, binding);
+            if new_id != id {
+                report.renamed.push((id.clone(), new_id.clone()));
+                binding.id = new_id.clone();
+            }
+            if let Some(result) = old_results.remove(&id) {
+                results.insert(new_id.clone(), result);
+            }
+            report.rewritten.push(new_id.clone());
+            bindings.insert(new_id, binding);
         }
         self.bindings = bindings;
+        self.results = results;
         self.rebuild_indexes();
 
         for result in self.results.values_mut() {

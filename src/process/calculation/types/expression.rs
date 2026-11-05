@@ -80,6 +80,22 @@ pub enum PureCalculationFunction {
     Ceil,
     /// 除数と同じ符号の剰余を返す。
     Mod,
+    /// 文字列のUnicodeスカラ値の個数を返す。
+    Len,
+    /// 2つの値を文字列として連結する。
+    Concat,
+    /// 先頭から指定文字数を返す。
+    Left,
+    /// 末尾から指定文字数を返す。
+    Right,
+    /// 1始まりの位置から指定文字数を返す。
+    Mid,
+    /// 前後のUnicode空白を除く。
+    Trim,
+    /// 大文字へ変換する。
+    Upper,
+    /// 小文字へ変換する。
+    Lower,
 }
 
 impl CalculationExpression {
@@ -135,6 +151,14 @@ impl CalculationExpression {
                     PureCalculationFunction::Floor => "Floor",
                     PureCalculationFunction::Ceil => "Ceil",
                     PureCalculationFunction::Mod => "Mod",
+                    PureCalculationFunction::Len => "Len",
+                    PureCalculationFunction::Concat => "Concat",
+                    PureCalculationFunction::Left => "Left",
+                    PureCalculationFunction::Right => "Right",
+                    PureCalculationFunction::Mid => "Mid",
+                    PureCalculationFunction::Trim => "Trim",
+                    PureCalculationFunction::Upper => "Upper",
+                    PureCalculationFunction::Lower => "Lower",
                 };
                 let arguments = arguments
                     .iter()

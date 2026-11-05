@@ -32,6 +32,18 @@
 - UPPER
 - LOWER
 
+### 文字列関数の規則
+
+- 長さと位置の単位はUnicodeスカラ値（Rustのchar）。byte長ではない。結合文字・絵文字のZWJ列は構成するスカラ値ごとに数え、書記素クラスタ単位の扱いは1.0対象外。
+- LEN: 引数1個。文字数のIntegerを返す。Integer/Decimalは表示文字列として数える。
+- CONCAT: 引数2個。表示文字列を連結したTextを返す。
+- LEFT / RIGHT: 引数2個（値, 文字数）。文字数は0以上のInteger。文字数が長さを超える場合は全体を返し、0は空文字。
+- MID: 引数3個（値, 開始, 文字数）。開始は1始まりで1以上、文字数は0以上のInteger。開始が長さを超える場合は空文字、文字数が超える場合は末尾まで。
+- 位置・文字数が負、0（MIDの開始）、非整数、数値でない場合はInvalidTextIndex errorにする。
+- TRIM: 前後のUnicode空白だけを除き、内部の空白は保持する。
+- UPPER / LOWER: localeに依存しないUnicode標準の変換（例: UPPER("straße")は"STRASSE"）。
+- 結果はすべてText（LENはInteger）で、CSV本文は変更しない。
+
 ### 日付
 
 - DATE

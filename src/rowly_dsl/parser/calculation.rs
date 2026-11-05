@@ -153,16 +153,8 @@ pub(super) fn validate_calculation_expression(
                 ));
             }
         }
-        Expression::Call { name, arguments }
-            if name.eq_ignore_ascii_case("abs")
-                || name.eq_ignore_ascii_case("min")
-                || name.eq_ignore_ascii_case("max") =>
-        {
-            let expected = if name.eq_ignore_ascii_case("abs") {
-                1
-            } else {
-                2
-            };
+        Expression::Call { name, arguments } if pure_function_arity(name).is_some() => {
+            let expected = pure_function_arity(name).unwrap_or(2);
             if arguments.len() != expected {
                 return Err(parse_error(
                     line,
@@ -176,9 +168,22 @@ pub(super) fn validate_calculation_expression(
         _ => {
             return Err(parse_error(
                 line,
-                "calculation expression allows only literals, CellValue, arithmetic, Abs, Min, and Max",
+                "calculation expression allows only literals, CellValue, arithmetic, Abs, Min, Max, Round, Floor, Ceil, and Mod",
             ));
         }
     }
     Ok(())
+}
+
+// {
+//   責務: [pure_function_arity: 許可済みpure functionの引数個数を関数名から返す]
+//   引数: [name: DSL上の関数名]
+//   戻り値: [Option<usize>: 許可済み関数の引数個数、未対応名はNone]
+// }
+fn pure_function_arity(name: &str) -> Option<usize> {
+    match name.to_ascii_lowercase().as_str() {
+        "abs" | "round" | "floor" | "ceil" => Some(1),
+        "min" | "max" | "mod" => Some(2),
+        _ => None,
+    }
 }

@@ -14,6 +14,13 @@
 - CEIL
 - MOD
 
+### 数値関数の規則
+
+- ROUND: 引数1個。0から遠い方向へ四捨五入しIntegerを返す。
+- FLOOR / CEIL: 引数1個。負/正の無限大方向へ丸めIntegerを返す。
+- ROUND / FLOOR / CEILはDecimalの丸め結果がInteger範囲外ならoverflow errorにする。桁数指定は未対応。
+- MOD: 引数2個。除数と同じ符号の剰余を返す。除数0は0除算error、型規則はInteger同士ならInteger、Decimalを含むならDecimal。
+
 ### 文字列
 
 - LEN

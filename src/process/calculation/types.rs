@@ -188,6 +188,8 @@ pub enum CalculationFailure {
     ExpectedNumber(String),
     /// 文字位置または文字数が0以上（MIDのstartは1以上）のIntegerではない。
     InvalidTextIndex(String),
+    /// 日付が存在しない、またはISO 8601の`YYYY-MM-DD`形式ではない。
+    InvalidDate(String),
     /// 除数が0だった。
     DivisionByZero,
     /// checked arithmeticまたはfinite値検証でoverflowした。
@@ -283,6 +285,9 @@ impl std::fmt::Display for CalculationFailure {
             Self::ExpectedNumber(value) => write!(formatter, "value `{value}` is not numeric"),
             Self::InvalidTextIndex(value) => {
                 write!(formatter, "text position or length `{value}` is invalid")
+            }
+            Self::InvalidDate(value) => {
+                write!(formatter, "date `{value}` is not a valid YYYY-MM-DD date")
             }
             Self::DivisionByZero => formatter.write_str("division by zero"),
             Self::ArithmeticOverflow => formatter.write_str("calculation overflowed"),

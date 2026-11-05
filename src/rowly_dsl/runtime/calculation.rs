@@ -184,6 +184,10 @@ pub(in crate::rowly_dsl) fn pure_function_by_name(name: &str) -> Option<PureCalc
         "trim" => Some(PureCalculationFunction::Trim),
         "upper" => Some(PureCalculationFunction::Upper),
         "lower" => Some(PureCalculationFunction::Lower),
+        "date" => Some(PureCalculationFunction::Date),
+        "year" => Some(PureCalculationFunction::Year),
+        "month" => Some(PureCalculationFunction::Month),
+        "day" => Some(PureCalculationFunction::Day),
         _ => None,
     }
 }

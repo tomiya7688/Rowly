@@ -1,7 +1,8 @@
 //! Calculation Bindingの対象展開と式変換を行う。
 
 use super::*;
-use crate::process::calculation::CalculationCellReference;
+use crate::process::calculation::{CalculationCellReference, CalculationRangeReference};
+use crate::rowly_dsl::ast::aggregate_call;
 
 // {
 //   責務: [resolve_column: 列選択子をdocument内の0-based列indexへ解決する]
@@ -101,6 +102,17 @@ pub(super) fn compile_calculation_expression(
                 operator,
                 right: Box::new(compile_calculation_expression(right)?),
             })
+        }
+        Expression::Call { name, arguments } if aggregate_call(name, arguments).is_some() => {
+            let Some((function, range)) = aggregate_call(name, arguments) else {
+                return Err(ExecutionError::InvalidCalculationExpression(
+                    "expression contains an unsupported DSL operation".to_owned(),
+                ));
+            };
+            let range = range
+                .parse::<CalculationRangeReference>()
+                .map_err(|error| ExecutionError::InvalidCalculationExpression(error.to_string()))?;
+            Ok(CalculationExpression::Aggregate { function, range })
         }
         Expression::Call { name, arguments } if name.eq_ignore_ascii_case("cellvalue") => {
             let text = calculation_literal_argument(arguments, name)?;

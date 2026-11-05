@@ -1,7 +1,10 @@
 //! Calculation Bindingの宣言を解析する。
 
 use super::*;
-use crate::process::calculation::CalculationCellReference;
+use crate::process::calculation::{
+    CalculationCellReference, CalculationRangeReference, MAX_RANGE_CELLS,
+};
+use crate::rowly_dsl::ast::aggregate_call;
 
 // {
 //   責務: [is_calculation_declaration: SET文が計算規則宣言の対象パスを使うか判定する]
@@ -103,6 +106,19 @@ pub(super) fn validate_calculation_expression(
             validate_calculation_expression(left, line)?;
             validate_calculation_expression(right, line)?;
         }
+        Expression::Call { name, arguments } if aggregate_call(name, arguments).is_some() => {
+            if let Some((_, range)) = aggregate_call(name, arguments) {
+                let range = range
+                    .parse::<CalculationRangeReference>()
+                    .map_err(|error| parse_error(line, error.to_string()))?;
+                if range.cell_count() > MAX_RANGE_CELLS {
+                    return Err(parse_error(
+                        line,
+                        "CellRange exceeds the supported cell count",
+                    ));
+                }
+            }
+        }
         Expression::Call { name, arguments } if name.eq_ignore_ascii_case("cellvalue") => {
             if arguments.len() != 1 {
                 return Err(parse_error(line, "CellValue expects one A1 cell reference"));
@@ -172,7 +188,7 @@ pub(super) fn validate_calculation_expression(
         _ => {
             return Err(parse_error(
                 line,
-                "calculation expression allows only literals, CellValue, arithmetic, Abs, Min, Max, Round, Floor, Ceil, Mod, Len, Concat, Left, Right, Mid, Trim, Upper, Lower, Date, Year, Month, and Day",
+                "calculation expression allows only literals, CellValue, arithmetic, Sum/Count/CountA/Average/Min/Max over CellRange, Abs, Min, Max, Round, Floor, Ceil, Mod, Len, Concat, Left, Right, Mid, Trim, Upper, Lower, Date, Year, Month, and Day",
             ));
         }
     }

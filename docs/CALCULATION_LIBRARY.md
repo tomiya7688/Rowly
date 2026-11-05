@@ -71,6 +71,16 @@
 - MIN
 - MAX
 
+### 集計関数の規則（#290・#291）
+
+- DSLでは`Sum(CellRange("B2:B100"))` のようにrangeを`CellRange`で渡す。`Count`・`CountA`・`Average`・`Min`・`Max` も同じ形で、2引数の`Min(a, b)`・`Max(a, b)`は従来どおりスカラ関数。`CellRange`は集計関数の引数としてだけ使え、単独では評価できない。
+- rangeは行優先で読む。端点は`B2:B100`・`$2:B100`のように端点ごとに相対・絶対を指定でき、始点が終点より後ろのrangeは宣言時にerror。展開上限は100,000 cellで、超える宣言はerror。
+- 空または空白だけのcellはSUM・AVERAGE・MIN・MAXの対象外。数値でないTextは暗黙に0へ変換せずExpectedNumber errorにする。範囲がCSVの外へ出るとMissingCell error。
+- SUM: 空なら0。合計は通常の算術と同じchecked演算でInteger精度契約を保つ（overflow・precision lossはerror）。AVERAGE: 合計÷個数で、数値が無ければEmptyAggregate error。MIN・MAX: 元の型のまま返し、数値が無ければEmptyAggregate error。
+- COUNT: 数値として解釈できるcellの個数（数値でないTextはerrorにしない）。COUNTA: raw文字列が空でないcellの個数（空白だけのcellも数える）。
+- 依存追跡はrange内の各cellをdependency indexへ登録する。range内の変更だけがbindingの再評価対象で、range外の変更では結果をstaleにしない。
+- 構造編集（#327）では、挿入でrangeが拡張し、削除で残るcellへ縮小し、全cellが削除されたrangeは`DeletedReference`になる。
+
 ### 条件
 
 - IF

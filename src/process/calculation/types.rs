@@ -27,6 +27,9 @@ pub enum CalculationError {
     /// 式がサポートする深さを超えた。
     #[error("calculation expression exceeds the supported depth")]
     ExpressionTooDeep,
+    /// range参照が展開上限を超えた。
+    #[error("calculation range exceeds the supported cell count")]
+    RangeTooLarge,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -178,7 +181,7 @@ mod expression;
 mod reference;
 mod remap;
 pub use expression::*;
-pub use reference::CalculationCellReference;
+pub use reference::{CalculationCellReference, CalculationRangeReference, MAX_RANGE_CELLS};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// ```text
@@ -195,6 +198,8 @@ pub enum CalculationFailure {
     InvalidDate(String),
     /// 参照先の行または列が構造編集で削除された。
     DeletedReference,
+    /// 空のrangeに対してAVERAGE・MIN・MAXを評価した。
+    EmptyAggregate,
     /// 除数が0だった。
     DivisionByZero,
     /// checked arithmeticまたはfinite値検証でoverflowした。
@@ -295,6 +300,7 @@ impl std::fmt::Display for CalculationFailure {
                 write!(formatter, "date `{value}` is not a valid YYYY-MM-DD date")
             }
             Self::DeletedReference => formatter.write_str("referenced cell was deleted"),
+            Self::EmptyAggregate => formatter.write_str("aggregate has no numeric values"),
             Self::DivisionByZero => formatter.write_str("division by zero"),
             Self::ArithmeticOverflow => formatter.write_str("calculation overflowed"),
             Self::PrecisionLoss => formatter.write_str("calculation would lose integer precision"),

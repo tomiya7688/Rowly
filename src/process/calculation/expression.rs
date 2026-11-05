@@ -6,6 +6,7 @@ use super::types::{
 };
 use crate::process::CellRef;
 
+mod aggregate;
 mod date;
 mod math;
 mod text;
@@ -30,7 +31,8 @@ pub(super) fn expression_depth(expression: &CalculationExpression) -> usize {
             CalculationExpression::Literal(_)
             | CalculationExpression::Cell(_)
             | CalculationExpression::AnchoredCell(_)
-            | CalculationExpression::DeletedReference => {}
+            | CalculationExpression::DeletedReference
+            | CalculationExpression::Aggregate { .. } => {}
             CalculationExpression::Negate(operand) => pending.push((operand, depth + 1)),
             CalculationExpression::Arithmetic { left, right, .. } => {
                 pending.push((left, depth + 1));
@@ -68,6 +70,9 @@ pub(super) fn evaluate_expression(
         CalculationExpression::Cell(reference) => read_cell(*reference),
         CalculationExpression::AnchoredCell(reference) => read_cell(reference.cell()),
         CalculationExpression::DeletedReference => Err(CalculationFailure::DeletedReference),
+        CalculationExpression::Aggregate { function, range } => {
+            aggregate::evaluate_aggregate(*function, *range, read_cell)
+        }
         CalculationExpression::Negate(operand) => {
             let value = evaluate_expression(operand, depth + 1, read_cell)?;
             negate(value)

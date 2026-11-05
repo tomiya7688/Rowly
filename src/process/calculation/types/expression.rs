@@ -45,6 +45,13 @@ pub enum CalculationExpression {
     AnchoredCell(CalculationCellReference),
     /// 参照先が構造編集で削除されたcell参照。評価はDeletedReference errorになる。
     DeletedReference,
+    /// range内の値を集計する。rangeは集計関数の引数としてだけ現れる。
+    Aggregate {
+        /// 集計関数。
+        function: AggregateFunction,
+        /// 集計対象のrange。
+        range: CalculationRangeReference,
+    },
     /// 算術演算前に数値へ評価する符号反転。
     Negate(Box<CalculationExpression>),
     /// 左右の数値式を計算する。
@@ -63,6 +70,59 @@ pub enum CalculationExpression {
         /// functionへ渡す式。
         arguments: Vec<CalculationExpression>,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// ```text
+/// 責務: [AggregateFunction: range内の値を集計する副作用なし関数を表す]
+/// ```
+pub enum AggregateFunction {
+    /// 数値の合計。空は0。
+    Sum,
+    /// 数値として解釈できるcellの個数。
+    Count,
+    /// 空でないcellの個数（raw文字列が空でないもの）。
+    CountA,
+    /// 数値の平均。数値が無ければerror。
+    Average,
+    /// 数値の最小値。数値が無ければerror。
+    Min,
+    /// 数値の最大値。数値が無ければerror。
+    Max,
+}
+
+impl AggregateFunction {
+    /// {
+    ///   責務: [dsl_name: DSL上の関数名を返す]
+    ///   戻り値: [&'static str: 関数名]
+    /// }
+    pub const fn dsl_name(self) -> &'static str {
+        match self {
+            Self::Sum => "Sum",
+            Self::Count => "Count",
+            Self::CountA => "CountA",
+            Self::Average => "Average",
+            Self::Min => "Min",
+            Self::Max => "Max",
+        }
+    }
+
+    /// {
+    ///   責務: [from_dsl_name: DSL関数名を大文字小文字無視で集計関数へ対応付ける]
+    ///   引数: [name: DSL上の関数名]
+    ///   戻り値: [Option<Self>: 集計関数。未対応名はNone]
+    /// }
+    pub fn from_dsl_name(name: &str) -> Option<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "sum" => Some(Self::Sum),
+            "count" => Some(Self::Count),
+            "counta" => Some(Self::CountA),
+            "average" => Some(Self::Average),
+            "min" => Some(Self::Min),
+            "max" => Some(Self::Max),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,6 +194,11 @@ impl CalculationExpression {
                 )
             }
             Self::DeletedReference => "CellValue(\"#REF!\")".to_owned(),
+            Self::Aggregate { function, range } => format!(
+                "{}(CellRange({}))",
+                function.dsl_name(),
+                quote_calculation_text(&range.to_string())
+            ),
             Self::AnchoredCell(reference) => {
                 format!(
                     "CellValue({})",
@@ -205,6 +270,7 @@ impl CalculationExpression {
         while let Some(expression) = pending.pop() {
             match expression {
                 Self::Literal(_) | Self::DeletedReference => {}
+                Self::Aggregate { range, .. } => dependencies.extend(range.cells()),
                 Self::Cell(reference) => {
                     dependencies.insert(*reference);
                 }
@@ -241,6 +307,10 @@ impl CalculationExpression {
                 reference.shifted(row_offset, column_offset)?,
             )),
             Self::DeletedReference => Some(Self::DeletedReference),
+            Self::Aggregate { function, range } => Some(Self::Aggregate {
+                function: *function,
+                range: range.shifted(row_offset, column_offset)?,
+            }),
             Self::Negate(operand) => Some(Self::Negate(Box::new(
                 operand.shift_cell_references(row_offset, column_offset)?,
             ))),

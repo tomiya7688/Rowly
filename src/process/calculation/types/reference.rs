@@ -104,11 +104,11 @@ impl FromStr for CalculationCellReference {
         if !well_formed {
             return Err(ReferenceError::InvalidCell(input.to_owned()));
         }
-        Ok(Self::new(
-            plain.parse::<CellRef>()?,
-            row_absolute,
-            column_absolute,
-        ))
+        // 元の入力をerrorへ残し、``$``を除いた中間文字列を利用者へ見せない。
+        let cell = plain
+            .parse::<CellRef>()
+            .map_err(|_| ReferenceError::InvalidCell(input.to_owned()))?;
+        Ok(Self::new(cell, row_absolute, column_absolute))
     }
 }
 
@@ -148,6 +148,10 @@ mod tests {
         for text in ["A1", "$A$1", "$A1", "A$1", "$AB$12"] {
             assert_eq!(reference(text).to_string(), text);
         }
+        assert_eq!(
+            "$A1x".parse::<CalculationCellReference>(),
+            Err(ReferenceError::InvalidCell("$A1x".to_owned()))
+        );
         assert!(reference("A1").is_relative());
         assert!(!reference("$A1").is_relative());
         for bad in ["$", "A$", "$$A1", "A$$1", "1A", "$1", "A1$", "", "$A$1$"] {

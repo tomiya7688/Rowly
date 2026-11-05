@@ -123,6 +123,14 @@ impl CalculationEngine {
         &mut self,
         edit: StructureEdit,
     ) -> Result<StructureEditReport, CalculationError> {
+        let (StructureEdit::InsertRows { count, .. }
+        | StructureEdit::DeleteRows { count, .. }
+        | StructureEdit::InsertColumns { count, .. }
+        | StructureEdit::DeleteColumns { count, .. }) = edit;
+        if count == 0 {
+            // 位置が変わらない編集ではruleもresultも変えない。
+            return Ok(StructureEditReport::default());
+        }
         let binding_revision = self
             .binding_revision
             .checked_add(1)
@@ -136,13 +144,18 @@ impl CalculationEngine {
         let mut report = StructureEditReport::default();
         let mut bindings = BTreeMap::new();
         for (id, mut binding) in std::mem::take(&mut self.bindings) {
-            if let Some(target) = binding.target.single_cell() {
-                let Some(new_target) = edit.map_cell(target) else {
-                    report.removed.push(id.clone());
-                    self.results.remove(&id);
-                    continue;
-                };
-                binding.target = CalculationTarget::Cell(new_target);
+            // engineはset_bindingで単一cell targetだけを受け付けるため、Range・ColumnRelativeは登録されない。
+            // 将来それらを許可する場合は、ここでtargetの写像を定義してから通す。
+            match binding.target {
+                CalculationTarget::Cell(target) => {
+                    let Some(new_target) = edit.map_cell(target) else {
+                        report.removed.push(id.clone());
+                        self.results.remove(&id);
+                        continue;
+                    };
+                    binding.target = CalculationTarget::Cell(new_target);
+                }
+                CalculationTarget::Range(_) | CalculationTarget::ColumnRelative { .. } => {}
             }
             binding.expression = binding.expression.remap_cell_references(&map);
             binding.dependencies = binding.expression.dependencies();

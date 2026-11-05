@@ -158,3 +158,18 @@ fn deleted_reference_survives_dsl_round_trip() {
         CalculationStatus::Error(CalculationFailure::DeletedReference)
     );
 }
+
+#[test]
+// {
+//   責務: [zero_count_edit_changes_nothing: 件数0の構造編集がruleとresultを変えないことを検証する。],
+//   戻り値: [(): revisionとresultが変わらなければ成功する。]
+// }
+fn zero_count_edit_changes_nothing() {
+    let (_directory, _document, mut engine) = setup();
+    let before = engine.result(&id("C2")).unwrap().clone();
+    let report = engine
+        .apply_structure_edit(StructureEdit::DeleteRows { index: 1, count: 0 })
+        .unwrap();
+    assert!(report.rewritten.is_empty() && report.removed.is_empty());
+    assert_eq!(engine.result(&id("C2")).unwrap(), &before);
+}

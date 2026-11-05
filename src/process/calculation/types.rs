@@ -175,7 +175,9 @@ pub enum CalculationTrigger {
 }
 
 mod expression;
+mod reference;
 pub use expression::*;
+pub use reference::CalculationCellReference;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// ```text

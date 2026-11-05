@@ -31,6 +31,13 @@ CellReference
 └─ column mode: Relative | Absolute
 ```
 
+## DSL上の表記と実装状況（#326）
+
+DSLではセル参照を`CellValue("$A$1")` のように引用符内に書きます。`A1`・`$A$1`・`$A1`・`A$1` の4種類を受け付け、`$` は列文字の直前と行番号の直前だけに置けます（`A$$1`、`A1$`、`$1` は宣言時にerror）。generated.rlyへの保存でも同じ表記で往復します。
+
+- 実装済み: 単一cellの4参照mode、DSL解析、評価時のresolve、serialize、range宣言のFill時に相対軸だけを移動する動作。`$`を含まない参照は従来どおり両軸相対です。
+- 未実装: 式内のrange参照とrange端点のmode（range参照を使う集計関数と同時に実装する）、row/column insert/delete時の参照rewrite（#327）。
+
 ## Fill
 
 元target D2からD3へbindingをFillする場合:

@@ -1,6 +1,7 @@
 //! Calculation Bindingの宣言を解析する。
 
 use super::*;
+use crate::process::calculation::CalculationCellReference;
 
 // {
 //   責務: [is_calculation_declaration: SET文が計算規則宣言の対象パスを使うか判定する]
@@ -113,7 +114,7 @@ pub(super) fn validate_calculation_expression(
                 ));
             };
             reference
-                .parse::<CellRef>()
+                .parse::<CalculationCellReference>()
                 .map_err(|error| parse_error(line, error.to_string()))?;
         }
         Expression::Call { name, arguments } if name.eq_ignore_ascii_case("integer") => {

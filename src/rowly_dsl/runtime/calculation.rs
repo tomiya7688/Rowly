@@ -1,6 +1,7 @@
 //! Calculation Bindingの対象展開と式変換を行う。
 
 use super::*;
+use crate::process::calculation::CalculationCellReference;
 
 // {
 //   責務: [resolve_column: 列選択子をdocument内の0-based列indexへ解決する]
@@ -103,9 +104,13 @@ pub(super) fn compile_calculation_expression(
         }
         Expression::Call { name, arguments } if name.eq_ignore_ascii_case("cellvalue") => {
             let reference = calculation_literal_argument(arguments, name)?
-                .parse::<CellRef>()
+                .parse::<CalculationCellReference>()
                 .map_err(|error| ExecutionError::InvalidCalculationExpression(error.to_string()))?;
-            Ok(CalculationExpression::Cell(reference))
+            Ok(if reference.is_relative() {
+                CalculationExpression::Cell(reference.cell())
+            } else {
+                CalculationExpression::AnchoredCell(reference)
+            })
         }
         Expression::Call { name, arguments } if name.eq_ignore_ascii_case("integer") => {
             let value = calculation_literal_argument(arguments, name)?

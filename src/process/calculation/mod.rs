@@ -14,10 +14,10 @@ mod types;
 pub use engine::CalculationEngine;
 pub use materialize::{CalculationMaterialization, CalculationMaterializationError};
 pub use types::{
-    CalculationBinding, CalculationBindingId, CalculationDependencySnapshot, CalculationError,
-    CalculationExpression, CalculationFailure, CalculationOperator, CalculationRecalculationReport,
-    CalculationResult, CalculationStatus, CalculationTarget, CalculationTrigger, CalculationValue,
-    PureCalculationFunction,
+    CalculationBinding, CalculationBindingId, CalculationCellReference,
+    CalculationDependencySnapshot, CalculationError, CalculationExpression, CalculationFailure,
+    CalculationOperator, CalculationRecalculationReport, CalculationResult, CalculationStatus,
+    CalculationTarget, CalculationTrigger, CalculationValue, PureCalculationFunction,
 };
 
 #[cfg(test)]

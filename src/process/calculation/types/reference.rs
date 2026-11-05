@@ -41,6 +41,15 @@ impl CalculationCellReference {
     }
 
     /// {
+    ///   責務: [with_cell: 絶対指定を保ったまま参照先だけを差し替える]
+    ///   引数: [cell: 新しい参照先]
+    ///   戻り値: [Self: 差し替え後の参照]
+    /// }
+    pub const fn with_cell(self, cell: CellRef) -> Self {
+        Self::new(cell, self.row_absolute, self.column_absolute)
+    }
+
+    /// {
     ///   責務: [is_relative: 両軸とも相対（``$``なし）かを返す]
     ///   戻り値: [bool: 両軸相対ならtrue]
     /// }

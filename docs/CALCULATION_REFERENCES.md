@@ -36,7 +36,8 @@ CellReference
 DSLではセル参照を`CellValue("$A$1")` のように引用符内に書きます。`A1`・`$A$1`・`$A1`・`A$1` の4種類を受け付け、`$` は列文字の直前と行番号の直前だけに置けます（`A$$1`、`A1$`、`$1` は宣言時にerror）。generated.rlyへの保存でも同じ表記で往復します。
 
 - 実装済み: 単一cellの4参照mode、DSL解析、評価時のresolve、serialize、range宣言のFill時に相対軸だけを移動する動作。`$`を含まない参照は従来どおり両軸相対です。
-- 未実装: 式内のrange参照とrange端点のmode（range参照を使う集計関数と同時に実装する）、row/column insert/delete時の参照rewrite（#327）。
+- 構造編集（#327、engine API）: `CalculationEngine::apply_structure_edit` が行・列の挿入削除に合わせてBindingのtargetと式内の全cell参照（相対・絶対とも）を同じ論理cellへ付け替え、全resultを再計算待ちにする。参照先が削除された参照は`DeletedReference`になり、評価は`DeletedReference` errorで、保存形式では`CellValue("#REF!")`と書く。targetの行・列が削除されたBindingは取り除く。binding IDは付け替え後も変えない。
+- 未実装: 式内のrange参照とrange端点のmode（range参照を使う集計関数と同時に実装する）。GUIの行・列操作とUndo/Redoからengineへ構造編集を伝える接続（履歴が構造編集の種類と位置を公開する必要がある）。
 
 ## Fill
 

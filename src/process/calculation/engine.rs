@@ -275,6 +275,7 @@ fn expressions_are_equivalent(left: &CalculationExpression, right: &CalculationE
         (CalculationExpression::AnchoredCell(left), CalculationExpression::AnchoredCell(right)) => {
             left == right
         }
+        (CalculationExpression::DeletedReference, CalculationExpression::DeletedReference) => true,
         (CalculationExpression::Negate(left), CalculationExpression::Negate(right)) => {
             expressions_are_equivalent(left, right)
         }

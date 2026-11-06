@@ -18,6 +18,7 @@ mod column;
 mod document;
 mod history;
 mod metadata;
+pub mod pivot;
 mod validation;
 #[cfg(feature = "gui")]
 mod watcher;

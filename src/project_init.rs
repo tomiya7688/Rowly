@@ -211,8 +211,8 @@ use config::ProjectInitConfig;
 #[path = "project_init/script_includes.rs"]
 mod script_includes;
 use script_includes::{
-    InitInclude, is_rem_comment, parse_column_type_declaration, parse_init_includes, parse_quoted,
-    quote, read_safe_init_config, strip_prefix_ci,
+    InitInclude, declaration_continues_with, is_rem_comment, parse_column_type_declaration,
+    parse_init_includes, parse_quoted, quote, read_safe_init_config, strip_prefix_ci,
 };
 
 #[path = "project_init/aggregation_views.rs"]

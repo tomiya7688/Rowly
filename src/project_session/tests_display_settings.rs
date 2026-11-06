@@ -176,10 +176,11 @@ fn display_settings_are_staged_until_save_and_restored_after_reopen() {
     let user = manifest.parent().unwrap().join("scripts/user.rly");
     let before_generated = fs::read(&generated).unwrap();
     let before_user = fs::read(&user).unwrap();
-    let csv_files: Vec<_> = fs::read_dir(manifest.parent().unwrap())
+    let mut csv_files: Vec<_> = fs::read_dir(manifest.parent().unwrap())
         .unwrap()
         .map(|entry| entry.unwrap().file_name())
         .collect();
+    csv_files.sort();
     let expected = sample_settings();
 
     let mut session = ProjectSession::open(&manifest).unwrap();
@@ -203,11 +204,37 @@ fn display_settings_are_staged_until_save_and_restored_after_reopen() {
     assert_eq!(reopened.display_settings("data").unwrap(), expected);
 
     // 保存で別のfile（CSVのsidecar等）は増えない。
-    let after: Vec<_> = fs::read_dir(manifest.parent().unwrap())
+    let mut after: Vec<_> = fs::read_dir(manifest.parent().unwrap())
         .unwrap()
         .map(|entry| entry.unwrap().file_name())
         .collect();
+    after.sort();
     assert_eq!(after, csv_files);
+}
+
+#[test]
+// {
+//   責務: [quoted_text_that_looks_like_another_declaration_does_not_misroute: chart名や集計名の引用文字列に別の宣言の中間句が含まれていても、その行を別の種類の宣言として誤って読まず、元の種類のまま読めることを検証する。],
+//   戻り値: [(): 全assertion成功時に完了する。]
+// }
+fn quoted_text_that_looks_like_another_declaration_does_not_misroute() {
+    let (_directory, manifest) = create_project();
+    let prefix = "SET This.Project.Source(\"data\").Worksheet.";
+    fs::write(
+        generated_path(&manifest),
+        format!(
+            "{prefix}Chart(\"x).Worksheet.Display.Format(\").Definition = Line(Source(\"data\"), Series([Series(\"Score\")]))\n\
+             {prefix}Aggregation(\"y).Worksheet.Chart(\").Definition = GroupBy(Scope(\"AllRows\"), Keys([\"Name\"]), Aggregates([CountRows()]))\n"
+        ),
+    )
+    .unwrap();
+    let session = ProjectSession::open(&manifest).unwrap();
+    assert_eq!(session.chart_views("data").unwrap().len(), 1);
+    assert_eq!(session.aggregation_views("data").unwrap().len(), 1);
+    assert_eq!(
+        session.display_settings("data").unwrap(),
+        DisplaySettings::default()
+    );
 }
 
 #[test]

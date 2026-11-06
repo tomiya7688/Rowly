@@ -3,6 +3,7 @@ use crate::{
         CsvDocument,
         aggregation_definition::AggregationDefinition,
         calculation::{CalculationEngine, CalculationTarget},
+        chart::ChartDefinition,
     },
     project::{SourceKind, resolve_project_reference},
     project_init,
@@ -181,6 +182,54 @@ impl ProjectSession {
             Ok(staged_init.aggregation_views(source_id)?)
         } else {
             Ok(project_init::load_aggregation_views(
+                &self.project,
+                self.manifest_path(),
+                source_id,
+            )?)
+        }
+    }
+
+    /// ```text
+    /// 責務: [save_generated_chart_views: sourceのChart定義をgenerated init DSLへstagingする]
+    /// 処理: [source idを確認し、渡された定義の全集合でsourceのgenerated Chart定義を置き換えてsession内へ保持する。data sourceや列が欠けていても定義は捨てない。bare CSVにはprojectが無いのでこのAPIは使えず、定義はsession内だけに留まる]
+    /// 引数: [source_id: Chartの元になるproject source id, definitions: 保存する全定義]
+    /// 戻り値: [Result<(), ProjectSessionError>: staging成功または設定error]
+    /// 副作用: [generated設定をsession内へ保持しproject config dirtyを立てる。user.rlyは書き換えない]
+    /// エラー: [ProjectSessionError: source、定義の名前・data source、script検証の失敗]
+    /// ```
+    pub fn save_generated_chart_views(
+        &mut self,
+        source_id: &str,
+        definitions: &[ChartDefinition],
+    ) -> Result<(), ProjectSessionError> {
+        self.require_source(source_id)?;
+        let staged = project_init::stage_generated_chart_views(
+            &self.project,
+            self.manifest_path(),
+            source_id,
+            definitions,
+            self.staged_init.as_ref(),
+        )?;
+        self.staged_init = Some(staged);
+        self.mark_structure_or_config_dirty();
+        Ok(())
+    }
+
+    /// ```text
+    /// 責務: [chart_views: sourceのChart定義を読む]
+    /// 処理: [staged configがあればuser overrideを重ね、なければproject DSLから読む。data sourceや列の有無は見ない（解決はchart::resolveで行う）]
+    /// 引数: [source_id: project source id]
+    /// 戻り値: [Result<Vec<ChartDefinition>, ProjectSessionError>: 名前順の定義。未保存なら空]
+    /// ```
+    pub fn chart_views(
+        &self,
+        source_id: &str,
+    ) -> Result<Vec<ChartDefinition>, ProjectSessionError> {
+        self.require_source(source_id)?;
+        if let Some(staged_init) = &self.staged_init {
+            Ok(staged_init.chart_views(source_id)?)
+        } else {
+            Ok(project_init::load_chart_views(
                 &self.project,
                 self.manifest_path(),
                 source_id,

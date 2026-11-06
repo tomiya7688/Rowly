@@ -7,6 +7,7 @@ use thiserror::Error;
 use crate::{
     process::aggregation_definition::AggregationDefinition,
     process::calculation::{CalculationEngine, CalculationTarget, CalculationTrigger},
+    process::chart::ChartDefinition,
     process::{CellRef, CsvDocument},
     project::{ProjectError, RowlyProject, write_project_file_atomic},
 };
@@ -69,6 +70,7 @@ enum ProjectInitUpdate<'a> {
     ValidationRules(&'a CsvDocument),
     CalculationBindings(&'a CalculationEngine),
     AggregationViews(&'a [AggregationDefinition]),
+    ChartViews(&'a [ChartDefinition]),
 }
 
 impl ProjectInitSnapshot {
@@ -171,6 +173,15 @@ impl StagedProjectInit {
         config.apply_source(source_id, document)
     }
 
+    pub(crate) fn chart_views(
+        &self,
+        source_id: &str,
+    ) -> Result<Vec<ChartDefinition>, ProjectInitError> {
+        let mut config = self.config.clone();
+        config.apply_user_overrides(read_optional_config(&self.user_path)?);
+        Ok(config.source_chart_views(source_id))
+    }
+
     pub(crate) fn aggregation_views(
         &self,
         source_id: &str,
@@ -206,8 +217,12 @@ use script_includes::{
 #[path = "project_init/aggregation_views.rs"]
 mod aggregation_views;
 use aggregation_views::{
-    AggregationViews, is_aggregation_declaration, parse_aggregation_declaration,
+    AggregationViews, ChartViews, is_aggregation_declaration, parse_aggregation_declaration,
 };
+
+#[path = "project_init/chart_views.rs"]
+mod chart_views;
+use chart_views::{is_chart_declaration, parse_chart_declaration};
 
 #[path = "project_init/calculation_bindings.rs"]
 mod calculation_bindings;
@@ -326,6 +341,38 @@ pub(crate) fn stage_generated_aggregation_views(
 }
 
 // {
+//   責務: [stage_generated_chart_views: sourceのChart定義をgenerated設定へstagingする]
+//   処理: [渡された定義の集合でsourceのgenerated Chart定義を置き換える。user.rlyは読むだけで書かない。data sourceや列が欠けていても定義は保存し、解決の可否はchart::resolveが判断する]
+//   戻り値: [Result<StagedProjectInit, ProjectInitError>: 新しいstaging、または名前・data sourceの不備・script検証の失敗]
+// }
+pub(crate) fn stage_generated_chart_views(
+    project: &RowlyProject,
+    manifest_path: &Path,
+    source_id: &str,
+    definitions: &[ChartDefinition],
+    staged: Option<&StagedProjectInit>,
+) -> Result<StagedProjectInit, ProjectInitError> {
+    stage_generated_configuration(
+        project,
+        manifest_path,
+        source_id,
+        staged,
+        ProjectInitUpdate::ChartViews(definitions),
+    )
+}
+
+// {
+//   責務: [load_chart_views: 保存済みのChart定義をgenerated + user.rlyから読む。user.rlyの同名定義を優先して名前順に返す]
+// }
+pub(crate) fn load_chart_views(
+    project: &RowlyProject,
+    manifest_path: &Path,
+    source_id: &str,
+) -> Result<Vec<ChartDefinition>, ProjectInitError> {
+    Ok(read_safe_init_config(project, manifest_path, source_id)?.source_chart_views(source_id))
+}
+
+// {
 //   責務: [load_aggregation_views: 保存済みのGroup By / Pivot定義をgenerated + user.rlyから読む]
 //   処理: [safe initのincludeに従い、user.rlyの同名定義をgeneratedより優先して名前順に返す]
 //   戻り値: [Result<Vec<AggregationDefinition>, ProjectInitError>: sourceの定義。未保存なら空]
@@ -385,6 +432,9 @@ fn stage_generated_configuration(
         }
         ProjectInitUpdate::AggregationViews(definitions) => {
             config.update_aggregation_views(source_id, definitions, &user_config)?;
+        }
+        ProjectInitUpdate::ChartViews(definitions) => {
+            config.update_chart_views(source_id, definitions, &user_config)?;
         }
         ProjectInitUpdate::CalculationBindings(engine) => {
             config.update_calculation_bindings(source_id, engine, &user_config)?;
@@ -504,6 +554,8 @@ pub enum ProjectInitError {
     MissingCalculationExpression(String),
     #[error("invalid aggregation definition: {0}")]
     InvalidAggregationDefinition(String),
+    #[error("invalid chart definition: {0}")]
+    InvalidChartDefinition(String),
     #[error(transparent)]
     Dsl(#[from] crate::rowly_dsl::DslError),
     #[error(transparent)]

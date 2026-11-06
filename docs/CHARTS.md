@@ -104,3 +104,15 @@ Chartだけで意味を伝えません。
 - project reopen
 
 この日本語版をChartの正本とします。
+
+## Chart定義とdata source resolverの実装契約（#302）
+
+状態: 実装済み（`src/process/chart.rs`、`src/process/chart/source.rs`）。確認日: 2026-11-06。
+
+- `ChartDefinition{name, kind, source_id, category_header, series[]}`は、source idと列の見出しだけで持つ。表示座標や列indexを持たず、CSVには保存されない。種類はline / bar / column / area / scatter / pie。
+- data sourceは`SourceTable{id, headers, rows}`に統一する。raw range・current Viewのrowは`from_input_rows`、Group By結果は`from_group_by`、Pivot結果は`from_pivot`（1つのValueを列keyごとの列にした幅広い表）で作る。どの行を入れるか（全row・View filter後・選択範囲）は呼び出し側が選ぶ。
+- `resolve(definition, tables)`は現在のsourceへ引き直す。source idや見出しが無い・複数ある場合は、欠けたものを全部まとめて`ChartError::Unresolved`で返す。定義は捨てられず、sourceや列が戻れば再び解決できる。列の並びが変わっても結果は変わらない。
+- stale・error・pendingのcellは通常のseriesとして描かない。空、数値でない値、categoryがfreshでない点、円グラフの負の値も欠損にし、理由（`MissingReason`）を点に残して件数を`ChartDiagnostics`に数える。`stale_indicator()`で古い値を含むことを示せる。
+- 各点は`provenance`（元row参照）を持つ。aggregateの点はgroup / bucketに入った全rowで、drill downに使える。Pivotの空のbucketは元row参照が空の欠損になる。
+- 円グラフはseriesが1つ、散布図はcategory列を数値のxに使う。seriesが無い、円グラフに複数series、散布図にx列が無い定義は`InvalidDefinition`。
+- 解決はCSVに触れず、source表を変えてもCSVは変わらない。対象外: 描画（#303）、Projectへの保存（#304）、GUI（#305）。

@@ -14,6 +14,7 @@ mod address;
 pub mod aggregation;
 pub mod aggregation_definition;
 pub mod calculation;
+pub mod chart;
 mod clipboard;
 mod column;
 mod document;

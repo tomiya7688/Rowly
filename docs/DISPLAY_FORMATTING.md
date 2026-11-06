@@ -188,3 +188,16 @@ XLSX / PDF / displayed View exportでは、対応可能なstyleだけを明示�
 - 書式に読めないrawは書き換えず、`Display::Error{shown: raw, error}`で、rawをそのまま示し、理由（`FormatError`）を添える。空のrawは値が無いので、どの書式でも空の表示（errorにならない）。
 - Customは`CustomFormatRegistry`（idでrawを整形する登録先）に任せる拡張の境界で、coreは中身を知らない。未登録は`UnknownCustom`、整形の失敗は`CustomFailed`で、いずれもrawを保つ。`format_value`は登録先なしとして扱う。
 - 対象外: 配置・罫線・フォント・条件付き書式（#285・#286）、書式のProjectへの保存（#287）、GUI（#288）、ExcelやlocaleのCustom書式文字列の解釈。
+
+## View style modelの実装契約（#285）
+
+状態: 実装済み（`src/process/view_style.rs`）。確認日: 2026-11-07。
+
+- `ViewStyle{rules, row_heights}`は、配置・折返し・罫線・太字等・色・行高のView設定で、`CsvDocument`を受け取らずCSVには触れない。`CellStyle`の各項目は「未指定（None）」を持ち、未指定は他のstyleを上書きしない。項目は水平配置、垂直配置、折返し・切り詰め・省略記号、太字・斜体・下線、文字色・背景色（`#rrggbb`、小文字へ正規化）、罫線。
+- 罫線は`BorderEdge::ALL`の6方向（上・下・左・右・斜め2方向）を同じ型、同じ`set_border`で扱う。斜め罫線だけ別の経路にしない。辺ごとに`Line`（線種と色）または`Clear`（明示的に消す）を指定でき、後の指定が先の指定を上書きする。キーボード操作などの網羅は`BorderEdge::ALL`を正本にする。
+- 統合は決定的: `resolve`した後、`style_for(row, column)`が有効なruleを入力順にたどり、項目ごとに後の明示値が勝つよう重ねる。順序を入れ替えれば結果が変わる（順序が意味を持つ）。同じ入力から常に同じ結果。条件付き書式（#286）はこの統合の上に重ねる。
+- targetはstable identityで持つ: 列は見出し、行はCSVの行位置（表示順ではない）。種類は`Column`・`Cell`・`Range`（列の集合と行の範囲）。現在の見出しへ引き直すので、列の並びが変わっても同じcellに効く。
+- 見出しが無い、または複数あるruleだけが`resolve`で休眠（`DormantRule{missing, ambiguous}`）になり、他のruleは有効のまま。休眠したruleは捨てず、見出しが戻れば再び有効になる。
+- `style_for`は1 cellあたり有効なruleの数に比例する計算量なので、大きな表では表示するcellだけを解決して呼ぶ（全cellを走査しない）。範囲に同じ見出しが重複しても、解決後の列位置は1回だけ持つ。
+- 行高は行位置をキーにした正で有限（上限1,000mm）の値で、CSV構造に影響しない。`add_rule`は空のtargetや逆の行範囲を、`set_row_height`は不正な行高を拒否する。
+- 対象外: 表示書式の適用（#284）、条件付き書式（#286）、Projectへの保存（#287）、GUI・Command登録（#288）、描画。

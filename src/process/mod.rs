@@ -24,6 +24,7 @@ mod metadata;
 pub mod pivot;
 pub mod print_layout;
 mod validation;
+pub mod view_style;
 #[cfg(feature = "gui")]
 mod watcher;
 

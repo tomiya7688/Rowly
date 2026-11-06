@@ -103,7 +103,7 @@ fn extreme(
 //   引数: [value: 数値]
 //   戻り値: [CalculationValue: 同じ型のscalar]
 // }
-fn into_value(value: NumericValue) -> CalculationValue {
+pub(super) fn into_value(value: NumericValue) -> CalculationValue {
     match value {
         NumericValue::Integer(value) => CalculationValue::Integer(value),
         NumericValue::Decimal(value) => CalculationValue::Decimal(value),

@@ -47,6 +47,19 @@ pub enum CalculationExpression {
     AnchoredCell(CalculationCellReference),
     /// 参照先が構造編集で削除されたcell参照。評価はDeletedReference errorになる。
     DeletedReference,
+    /// 条件に合う行だけを集計する（SUMIF・COUNTIF）。
+    ConditionalAggregate {
+        /// SumIfまたはCountIf。
+        function: ConditionalAggregateFunction,
+        /// 条件を判定するrange。
+        criteria_range: CalculationRangeReference,
+        /// 比較関数（Equals・NotEquals・Less・LessOrEqual・Greater・GreaterOrEqual）。
+        comparison: PureCalculationFunction,
+        /// 判定するcellと比べる値の式。
+        value: Box<CalculationExpression>,
+        /// SumIfの合計対象range。CountIfではNone。
+        sum_range: Option<CalculationRangeReference>,
+    },
     /// range内の値を集計する。rangeは集計関数の引数としてだけ現れる。
     Aggregate {
         /// 集計関数。
@@ -219,6 +232,27 @@ impl CalculationExpression {
                 )
             }
             Self::DeletedReference => "CellValue(\"#REF!\")".to_owned(),
+            Self::ConditionalAggregate {
+                function,
+                criteria_range,
+                comparison,
+                value,
+                sum_range,
+            } => {
+                let mut arguments = format!(
+                    "CellRange({}), {}, {}",
+                    quote_calculation_text(&criteria_range.to_string()),
+                    quote_calculation_text(comparison_symbol(*comparison).unwrap_or("=")),
+                    value.to_dsl_source()
+                );
+                if let Some(sum_range) = sum_range {
+                    arguments.push_str(&format!(
+                        ", CellRange({})",
+                        quote_calculation_text(&sum_range.to_string())
+                    ));
+                }
+                format!("{}({arguments})", function.dsl_name())
+            }
             Self::Aggregate { function, range } => format!(
                 "{}(CellRange({}))",
                 function.dsl_name(),
@@ -306,6 +340,18 @@ impl CalculationExpression {
             match expression {
                 Self::Literal(_) | Self::DeletedReference => {}
                 Self::Aggregate { range, .. } => dependencies.extend(range.cells()),
+                Self::ConditionalAggregate {
+                    criteria_range,
+                    value,
+                    sum_range,
+                    ..
+                } => {
+                    dependencies.extend(criteria_range.cells());
+                    if let Some(sum_range) = sum_range {
+                        dependencies.extend(sum_range.cells());
+                    }
+                    pending.push(value);
+                }
                 Self::Cell(reference) => {
                     dependencies.insert(*reference);
                 }
@@ -342,6 +388,22 @@ impl CalculationExpression {
                 reference.shifted(row_offset, column_offset)?,
             )),
             Self::DeletedReference => Some(Self::DeletedReference),
+            Self::ConditionalAggregate {
+                function,
+                criteria_range,
+                comparison,
+                value,
+                sum_range,
+            } => Some(Self::ConditionalAggregate {
+                function: *function,
+                criteria_range: criteria_range.shifted(row_offset, column_offset)?,
+                comparison: *comparison,
+                value: Box::new(value.shift_cell_references(row_offset, column_offset)?),
+                sum_range: match sum_range {
+                    Some(range) => Some(range.shifted(row_offset, column_offset)?),
+                    None => None,
+                },
+            }),
             Self::Aggregate { function, range } => Some(Self::Aggregate {
                 function: *function,
                 range: range.shifted(row_offset, column_offset)?,

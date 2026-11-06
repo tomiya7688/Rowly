@@ -183,6 +183,17 @@ impl CalculationRangeReference {
     }
 
     /// {
+    ///   責務: [dimensions: rangeの(行数, 列数)を返す]
+    ///   戻り値: [(usize, usize): 行数と列数]
+    /// }
+    pub fn dimensions(self) -> (usize, usize) {
+        (
+            self.end.cell().row() - self.start.cell().row() + 1,
+            self.end.cell().column() - self.start.cell().column() + 1,
+        )
+    }
+
+    /// {
     ///   責務: [cell_count: range内のcell数を飽和計算で返す]
     ///   戻り値: [usize: 行数×列数。overflow時はusize::MAX]
     /// }

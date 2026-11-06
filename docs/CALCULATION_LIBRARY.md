@@ -189,6 +189,14 @@ SUMIF/COUNTIFの条件はpure predicateです。
 
 File I/Oやscript callを含めません。
 
+### SUMIF・COUNTIFの規則（#293）
+
+- DSLでは`SumIf(CellRange("A2:A9"), ">", Integer("5"), CellRange("B2:B9"))`と`CountIf(CellRange("A2:A9"), "=", String("a"))`の形で書く。比較記号は`=`・`<>`・`<`・`<=`・`>`・`>=`の6種類。合計対象rangeは省略でき、省略時は判定range自身を合計する。
+- 比較は`Equals`・`Greater`等と同じ規則（#292）。両方が数値として読めれば数値順、そうでなければUnicodeスカラー値の文字列順。判定rangeの空cellは空文字として比べる。比較値は1回だけ評価する。
+- 判定rangeと合計対象rangeは同じ大きさ（行数×列数）でなければならず、宣言時にparse errorにする。構造編集後に大きさが食い違った場合はRangeShapeMismatch errorになる。各rangeはMAX_RANGE_CELLS以下。
+- 条件に合ったcellだけ、対応する位置の合計対象cellを読む。空白は飛ばし、数値でないTextは暗黙に0へ変換せずExpectedNumber errorにする。合計は通常の算術と同じchecked演算。
+- 判定range・合計対象range・比較値が読むcellのどれが変わっても再評価の対象になる。構造編集では`Sum`等のrangeと同じ規則で両rangeが同じ論理cellへ追従し、判定rangeが全削除されるとDeletedReferenceになる。
+
 ## lookup
 
 1.0ではexact matchを基本にします。

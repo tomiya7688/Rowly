@@ -2,9 +2,9 @@
 
 use super::*;
 use crate::process::calculation::{
-    CalculationCellReference, CalculationRangeReference, MAX_RANGE_CELLS,
+    CalculationCellReference, CalculationRangeReference, MAX_RANGE_CELLS, comparison_from_symbol,
 };
-use crate::rowly_dsl::ast::aggregate_call;
+use crate::rowly_dsl::ast::{aggregate_call, conditional_call};
 
 // {
 //   責務: [is_calculation_declaration: SET文が計算規則宣言の対象パスを使うか判定する]
@@ -106,6 +106,41 @@ pub(super) fn validate_calculation_expression(
             validate_calculation_expression(left, line)?;
             validate_calculation_expression(right, line)?;
         }
+        Expression::Call { name, arguments } if conditional_call(name, arguments).is_some() => {
+            let Some(call) = conditional_call(name, arguments) else {
+                return Ok(());
+            };
+            let criteria = call
+                .criteria_range
+                .parse::<CalculationRangeReference>()
+                .map_err(|error| parse_error(line, error.to_string()))?;
+            let sum = call
+                .sum_range
+                .map(|text| text.parse::<CalculationRangeReference>())
+                .transpose()
+                .map_err(|error| parse_error(line, error.to_string()))?;
+            if criteria.cell_count() > MAX_RANGE_CELLS
+                || sum.is_some_and(|range| range.cell_count() > MAX_RANGE_CELLS)
+            {
+                return Err(parse_error(
+                    line,
+                    "CellRange exceeds the supported cell count",
+                ));
+            }
+            if sum.is_some_and(|range| range.dimensions() != criteria.dimensions()) {
+                return Err(parse_error(
+                    line,
+                    "criteria range and sum range must have the same size",
+                ));
+            }
+            if comparison_from_symbol(call.symbol).is_none() {
+                return Err(parse_error(
+                    line,
+                    "comparison must be one of =, <>, <, <=, >, >=",
+                ));
+            }
+            validate_calculation_expression(call.value, line)?;
+        }
         Expression::Call { name, arguments } if aggregate_call(name, arguments).is_some() => {
             if let Some((_, range)) = aggregate_call(name, arguments) {
                 let range = range
@@ -201,7 +236,7 @@ pub(super) fn validate_calculation_expression(
         _ => {
             return Err(parse_error(
                 line,
-                "calculation expression allows only literals, CellValue, arithmetic, Sum/Count/CountA/Average/Min/Max over CellRange, Abs, Min, Max, Round, Floor, Ceil, Mod, Len, Concat, Left, Right, Mid, Trim, Upper, Lower, Date, Year, Month, Day, If, And, Or, Not, Boolean, Equals, NotEquals, Less, LessOrEqual, Greater, and GreaterOrEqual",
+                "calculation expression allows only literals, CellValue, arithmetic, Sum/Count/CountA/Average/Min/Max over CellRange, SumIf/CountIf, Abs, Min, Max, Round, Floor, Ceil, Mod, Len, Concat, Left, Right, Mid, Trim, Upper, Lower, Date, Year, Month, Day, If, And, Or, Not, Boolean, Equals, NotEquals, Less, LessOrEqual, Greater, and GreaterOrEqual",
             ));
         }
     }

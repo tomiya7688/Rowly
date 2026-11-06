@@ -22,6 +22,37 @@ impl CalculationExpression {
                     Self::AnchoredCell(reference.with_cell(cell))
                 }),
             Self::DeletedReference => Self::DeletedReference,
+            Self::ConditionalAggregate {
+                function,
+                criteria_range,
+                comparison,
+                value,
+                sum_range,
+            } => {
+                let remap = |range: &CalculationRangeReference| {
+                    map_range(range.start().cell(), range.end().cell())
+                        .and_then(|(start, end)| range.with_cells(start, end))
+                };
+                let criteria = remap(criteria_range);
+                let sum = sum_range.as_ref().map(remap);
+                match (criteria, sum) {
+                    (Some(criteria_range), None) => Self::ConditionalAggregate {
+                        function: *function,
+                        criteria_range,
+                        comparison: *comparison,
+                        value: Box::new(value.remap_cell_references(map, map_range)),
+                        sum_range: None,
+                    },
+                    (Some(criteria_range), Some(Some(sum_range))) => Self::ConditionalAggregate {
+                        function: *function,
+                        criteria_range,
+                        comparison: *comparison,
+                        value: Box::new(value.remap_cell_references(map, map_range)),
+                        sum_range: Some(sum_range),
+                    },
+                    _ => Self::DeletedReference,
+                }
+            }
             Self::Aggregate { function, range } => {
                 map_range(range.start().cell(), range.end().cell())
                     .and_then(|(start, end)| range.with_cells(start, end))
@@ -67,6 +98,19 @@ impl CalculationExpression {
             match expression {
                 Self::Aggregate { range, .. } if range.cell_count() > MAX_RANGE_CELLS => {
                     return true;
+                }
+                Self::ConditionalAggregate {
+                    criteria_range,
+                    value,
+                    sum_range,
+                    ..
+                } => {
+                    if criteria_range.cell_count() > MAX_RANGE_CELLS
+                        || sum_range.is_some_and(|range| range.cell_count() > MAX_RANGE_CELLS)
+                    {
+                        return true;
+                    }
+                    pending.push(value);
                 }
                 Self::Negate(operand) => pending.push(operand),
                 Self::Arithmetic { left, right, .. } => {

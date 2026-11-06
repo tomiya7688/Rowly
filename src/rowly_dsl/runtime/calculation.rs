@@ -1,8 +1,10 @@
 //! Calculation Bindingの対象展開と式変換を行う。
 
 use super::*;
-use crate::process::calculation::{CalculationCellReference, CalculationRangeReference};
-use crate::rowly_dsl::ast::aggregate_call;
+use crate::process::calculation::{
+    CalculationCellReference, CalculationRangeReference, comparison_from_symbol,
+};
+use crate::rowly_dsl::ast::{aggregate_call, conditional_call};
 
 // {
 //   責務: [resolve_column: 列選択子をdocument内の0-based列indexへ解決する]
@@ -101,6 +103,37 @@ pub(super) fn compile_calculation_expression(
                 left: Box::new(compile_calculation_expression(left)?),
                 operator,
                 right: Box::new(compile_calculation_expression(right)?),
+            })
+        }
+        Expression::Call { name, arguments } if conditional_call(name, arguments).is_some() => {
+            let Some(call) = conditional_call(name, arguments) else {
+                return Err(ExecutionError::InvalidCalculationExpression(
+                    "expression contains an unsupported DSL operation".to_owned(),
+                ));
+            };
+            let to_error = |error: crate::process::ReferenceError| {
+                ExecutionError::InvalidCalculationExpression(error.to_string())
+            };
+            let criteria_range = call
+                .criteria_range
+                .parse::<CalculationRangeReference>()
+                .map_err(to_error)?;
+            let sum_range = call
+                .sum_range
+                .map(|text| text.parse::<CalculationRangeReference>())
+                .transpose()
+                .map_err(to_error)?;
+            let comparison = comparison_from_symbol(call.symbol).ok_or_else(|| {
+                ExecutionError::InvalidCalculationExpression(
+                    "comparison must be one of =, <>, <, <=, >, >=".to_owned(),
+                )
+            })?;
+            Ok(CalculationExpression::ConditionalAggregate {
+                function: call.function,
+                criteria_range,
+                comparison,
+                value: Box::new(compile_calculation_expression(call.value)?),
+                sum_range,
             })
         }
         Expression::Call { name, arguments } if aggregate_call(name, arguments).is_some() => {

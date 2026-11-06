@@ -7,6 +7,7 @@ use super::types::{
 use crate::process::CellRef;
 
 mod aggregate;
+mod conditional;
 mod numeric;
 use numeric::NumericValue;
 mod compare;
@@ -37,6 +38,9 @@ pub(super) fn expression_depth(expression: &CalculationExpression) -> usize {
             | CalculationExpression::AnchoredCell(_)
             | CalculationExpression::DeletedReference
             | CalculationExpression::Aggregate { .. } => {}
+            CalculationExpression::ConditionalAggregate { value, .. } => {
+                pending.push((value, depth + 1));
+            }
             CalculationExpression::Negate(operand) => pending.push((operand, depth + 1)),
             CalculationExpression::Arithmetic { left, right, .. } => {
                 pending.push((left, depth + 1));
@@ -74,6 +78,23 @@ pub(super) fn evaluate_expression(
         CalculationExpression::Cell(reference) => read_cell(*reference),
         CalculationExpression::AnchoredCell(reference) => read_cell(reference.cell()),
         CalculationExpression::DeletedReference => Err(CalculationFailure::DeletedReference),
+        CalculationExpression::ConditionalAggregate {
+            function,
+            criteria_range,
+            comparison,
+            value,
+            sum_range,
+        } => conditional::evaluate_conditional(
+            conditional::ConditionalSpec {
+                function: *function,
+                criteria_range: *criteria_range,
+                comparison: *comparison,
+                value,
+                sum_range: *sum_range,
+            },
+            depth,
+            read_cell,
+        ),
         CalculationExpression::Aggregate { function, range } => {
             aggregate::evaluate_aggregate(*function, *range, read_cell)
         }

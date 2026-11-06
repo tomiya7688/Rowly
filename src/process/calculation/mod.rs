@@ -20,7 +20,8 @@ pub use types::{
     CalculationDependencySnapshot, CalculationError, CalculationExpression, CalculationFailure,
     CalculationOperator, CalculationRangeReference, CalculationRecalculationReport,
     CalculationResult, CalculationStatus, CalculationTarget, CalculationTrigger, CalculationValue,
-    MAX_RANGE_CELLS, PureCalculationFunction,
+    ConditionalAggregateFunction, MAX_RANGE_CELLS, PureCalculationFunction, comparison_from_symbol,
+    comparison_symbol,
 };
 
 #[cfg(test)]

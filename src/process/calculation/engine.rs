@@ -280,6 +280,28 @@ fn expressions_are_equivalent(left: &CalculationExpression, right: &CalculationE
         }
         (CalculationExpression::DeletedReference, CalculationExpression::DeletedReference) => true,
         (
+            CalculationExpression::ConditionalAggregate {
+                function: left_function,
+                criteria_range: left_criteria,
+                comparison: left_comparison,
+                value: left_value,
+                sum_range: left_sum,
+            },
+            CalculationExpression::ConditionalAggregate {
+                function: right_function,
+                criteria_range: right_criteria,
+                comparison: right_comparison,
+                value: right_value,
+                sum_range: right_sum,
+            },
+        ) => {
+            left_function == right_function
+                && left_criteria == right_criteria
+                && left_comparison == right_comparison
+                && left_sum == right_sum
+                && expressions_are_equivalent(left_value, right_value)
+        }
+        (
             CalculationExpression::Aggregate {
                 function: left_function,
                 range: left_range,

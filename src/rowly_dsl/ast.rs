@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::process::calculation::{AggregateFunction, CalculationTarget, CalculationTrigger};
+use crate::process::calculation::{
+    AggregateFunction, CalculationTarget, CalculationTrigger, ConditionalAggregateFunction,
+};
 use crate::process::{CellRange, ColumnType, ColumnTypeReport, JapaneseCheckReport};
 
 pub use crate::process::{ValidationExpression, ValidationOperand, ValidationRule};
@@ -444,4 +446,66 @@ pub(in crate::rowly_dsl) fn aggregate_call<'a>(
     range_name
         .eq_ignore_ascii_case("cellrange")
         .then_some((function, range.as_str()))
+}
+
+/// SUMIF・COUNTIFの呼び出しを分解した結果。
+pub(in crate::rowly_dsl) struct ConditionalCall<'a> {
+    /// SumIfまたはCountIf。
+    pub(in crate::rowly_dsl) function: ConditionalAggregateFunction,
+    /// 判定rangeの文字列。
+    pub(in crate::rowly_dsl) criteria_range: &'a str,
+    /// 比較記号（``=``等）。
+    pub(in crate::rowly_dsl) symbol: &'a str,
+    /// 比較値の式。
+    pub(in crate::rowly_dsl) value: &'a Expression,
+    /// 合計対象rangeの文字列。CountIfまたは省略時はNone。
+    pub(in crate::rowly_dsl) sum_range: Option<&'a str>,
+}
+
+// {
+//   責務: [cell_range_text: ``CellRange("B2:B9")`` 形の式からrange文字列を取り出す]
+//   引数: [expression: 検査する式]
+//   戻り値: [Option<&str>: range文字列。形が違えばNone]
+// }
+fn cell_range_text(expression: &Expression) -> Option<&str> {
+    let Expression::Call { name, arguments } = expression else {
+        return None;
+    };
+    let [Expression::Literal(range)] = arguments.as_slice() else {
+        return None;
+    };
+    name.eq_ignore_ascii_case("cellrange")
+        .then_some(range.as_str())
+}
+
+// {
+//   責務: [conditional_call: ``SumIf(CellRange(..), "=", 値[, CellRange(..)])`` と ``CountIf(CellRange(..), "=", 値)`` を分解する]
+//   引数: [name: 呼び出し名, arguments: 引数式]
+//   戻り値: [Option<ConditionalCall>: 分解結果。名前や引数の形が違えばNone]
+// }
+pub(in crate::rowly_dsl) fn conditional_call<'a>(
+    name: &str,
+    arguments: &'a [Expression],
+) -> Option<ConditionalCall<'a>> {
+    let function = ConditionalAggregateFunction::from_dsl_name(name)?;
+    let (criteria, symbol, value, sum_range) = match (function, arguments) {
+        (ConditionalAggregateFunction::CountIf, [criteria, Expression::Literal(symbol), value]) => {
+            (criteria, symbol, value, None)
+        }
+        (ConditionalAggregateFunction::SumIf, [criteria, Expression::Literal(symbol), value]) => {
+            (criteria, symbol, value, None)
+        }
+        (
+            ConditionalAggregateFunction::SumIf,
+            [criteria, Expression::Literal(symbol), value, sum_range],
+        ) => (criteria, symbol, value, Some(cell_range_text(sum_range)?)),
+        _ => return None,
+    };
+    Some(ConditionalCall {
+        function,
+        criteria_range: cell_range_text(criteria)?,
+        symbol: symbol.as_str(),
+        value,
+        sum_range,
+    })
 }

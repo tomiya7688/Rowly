@@ -177,9 +177,11 @@ pub enum CalculationTrigger {
     Manual,
 }
 
+mod conditional;
 mod expression;
 mod reference;
 mod remap;
+pub use conditional::*;
 pub use expression::*;
 pub use reference::{CalculationCellReference, CalculationRangeReference, MAX_RANGE_CELLS};
 
@@ -204,6 +206,8 @@ pub enum CalculationFailure {
     ExpectedBoolean(String),
     /// 比較できない型の組（Booleanと数値・Text、またはBoolean同士の大小比較）。
     IncomparableValues,
+    /// 条件範囲と合計範囲の大きさが異なる。
+    RangeShapeMismatch,
     /// 除数が0だった。
     DivisionByZero,
     /// checked arithmeticまたはfinite値検証でoverflowした。
@@ -307,6 +311,9 @@ impl std::fmt::Display for CalculationFailure {
             Self::EmptyAggregate => formatter.write_str("aggregate has no numeric values"),
             Self::ExpectedBoolean(value) => write!(formatter, "value `{value}` is not a boolean"),
             Self::IncomparableValues => formatter.write_str("values cannot be compared"),
+            Self::RangeShapeMismatch => {
+                formatter.write_str("criteria range and sum range have different sizes")
+            }
             Self::DivisionByZero => formatter.write_str("division by zero"),
             Self::ArithmeticOverflow => formatter.write_str("calculation overflowed"),
             Self::PrecisionLoss => formatter.write_str("calculation would lose integer precision"),

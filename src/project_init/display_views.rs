@@ -6,19 +6,19 @@
 use std::collections::{BTreeMap, HashSet};
 
 use crate::process::{
-    conditional_format::{
-        CompareOp, ConditionalFormat, ConditionalRule, Literal, Predicate, ValueSource,
-    },
-    display_format::{DateStyle, DisplayFormat},
+    conditional_format::{ConditionalFormat, ConditionalRule},
+    display_format::DisplayFormat,
     display_settings::{ColumnFormat, DisplaySettings},
-    view_style::{
-        BorderEdge, BorderEdgeSetting, BorderLine, BorderStyle, CellStyle, Color, HorizontalAlign,
-        StyleRule, StyleTarget, TextOverflow, VerticalAlign, ViewStyle,
-    },
+    view_style::{StyleRule, ViewStyle},
 };
 
-use super::aggregation_views::{Value, argument, optional_argument, parse_value, single_text};
-use super::{ProjectInitError, parse_quoted, quote, strip_prefix_ci};
+use super::aggregation_views::{Value, parse_value, single_text};
+use super::{
+    ProjectInitError, ProjectInitUpdate, StagedProjectInit, parse_quoted, quote,
+    read_optional_config, read_safe_init_config, stage_generated_configuration, strip_prefix_ci,
+};
+use crate::project::RowlyProject;
+use std::path::Path;
 
 const PREFIX: &str = "SET This.Project.Source(";
 const MIDDLE: &str = ").Worksheet.Display.";
@@ -375,480 +375,64 @@ pub(super) fn parse_display_declaration(line: &str) -> Result<(String, DisplayIt
     Ok((source_id, item))
 }
 
-fn parse_index(text: &str) -> Result<usize, String> {
-    text.parse()
-        .map_err(|_| format!("`{text}` is not a non-negative integer"))
-}
+use conditional_syntax::{
+    SOURCES, interpret_conditional_rule, interpret_style_rule, serialize_predicate,
+};
+use style_syntax::{
+    interpret_format, name_of, parse_index, serialize_format, serialize_style, serialize_target,
+};
 
-fn parse_bool(text: &str) -> Result<bool, String> {
-    match text {
-        "true" => Ok(true),
-        "false" => Ok(false),
-        other => Err(format!("`{other}` is not true or false")),
-    }
-}
-
-// 名前と値の対応表。保存形式の名前は表で1か所に定める。
-const HORIZONTAL: [(&str, HorizontalAlign); 3] = [
-    ("Left", HorizontalAlign::Left),
-    ("Center", HorizontalAlign::Center),
-    ("Right", HorizontalAlign::Right),
-];
-const VERTICAL: [(&str, VerticalAlign); 3] = [
-    ("Top", VerticalAlign::Top),
-    ("Middle", VerticalAlign::Middle),
-    ("Bottom", VerticalAlign::Bottom),
-];
-const OVERFLOW: [(&str, TextOverflow); 3] = [
-    ("Wrap", TextOverflow::Wrap),
-    ("Truncate", TextOverflow::Truncate),
-    ("Ellipsis", TextOverflow::Ellipsis),
-];
-const EDGES: [(&str, BorderEdge); 6] = [
-    ("Top", BorderEdge::Top),
-    ("Bottom", BorderEdge::Bottom),
-    ("Left", BorderEdge::Left),
-    ("Right", BorderEdge::Right),
-    ("DiagonalDown", BorderEdge::DiagonalDown),
-    ("DiagonalUp", BorderEdge::DiagonalUp),
-];
-const BORDER_STYLES: [(&str, BorderStyle); 6] = [
-    ("Thin", BorderStyle::Thin),
-    ("Medium", BorderStyle::Medium),
-    ("Thick", BorderStyle::Thick),
-    ("Dashed", BorderStyle::Dashed),
-    ("Dotted", BorderStyle::Dotted),
-    ("Double", BorderStyle::Double),
-];
-const DATE_STYLES: [(&str, DateStyle); 5] = [
-    ("Iso", DateStyle::Iso),
-    ("Slash", DateStyle::Slash),
-    ("Japanese", DateStyle::Japanese),
-    ("DayMonthYear", DateStyle::DayMonthYear),
-    ("MonthDayYear", DateStyle::MonthDayYear),
-];
-const SOURCES: [(&str, ValueSource); 5] = [
-    ("Raw", ValueSource::Raw),
-    ("Number", ValueSource::Number),
-    ("Date", ValueSource::Date),
-    ("DerivedText", ValueSource::DerivedText),
-    ("DerivedNumber", ValueSource::DerivedNumber),
-];
-const OPERATORS: [(&str, CompareOp); 6] = [
-    ("Eq", CompareOp::Eq),
-    ("Ne", CompareOp::Ne),
-    ("Lt", CompareOp::Lt),
-    ("Le", CompareOp::Le),
-    ("Gt", CompareOp::Gt),
-    ("Ge", CompareOp::Ge),
-];
-
-fn name_of<T: PartialEq + Copy>(table: &[(&'static str, T)], value: T) -> &'static str {
-    table
-        .iter()
-        .find(|(_, candidate)| *candidate == value)
-        .map(|(name, _)| *name)
-        .unwrap_or_default()
-}
-
-fn value_of<T: Copy>(table: &[(&str, T)], name: &str, what: &str) -> Result<T, String> {
-    table
-        .iter()
-        .find(|(candidate, _)| *candidate == name)
-        .map(|(_, value)| *value)
-        .ok_or_else(|| format!("unknown {what} `{name}`"))
-}
-
-fn interpret_format(value: &Value) -> Result<DisplayFormat, String> {
-    let Value::Call(name, arguments) = value else {
-        return Err("expected a display format such as Decimal(..)".to_owned());
-    };
-    let thousands =
-        || -> Result<bool, String> { parse_bool(&single_text(argument(arguments, "Thousands")?)?) };
-    let places = || -> Result<u8, String> {
-        single_text(argument(arguments, "Places")?)?
-            .parse()
-            .map_err(|_| "Places is not a small non-negative integer".to_owned())
-    };
-    let date_style = || -> Result<DateStyle, String> {
-        value_of(
-            &DATE_STYLES,
-            &single_text(argument(arguments, "Style")?)?,
-            "date style",
-        )
-    };
-    Ok(match name.to_ascii_lowercase().as_str() {
-        "text" if arguments.is_empty() => DisplayFormat::Text,
-        "integer" => DisplayFormat::Integer {
-            thousands_separator: thousands()?,
-        },
-        "decimal" => DisplayFormat::Decimal {
-            places: places()?,
-            thousands_separator: thousands()?,
-        },
-        "percent" => DisplayFormat::Percent { places: places()? },
-        "date" => DisplayFormat::Date(date_style()?),
-        "datetime" => DisplayFormat::DateTime {
-            style: date_style()?,
-            show_seconds: parse_bool(&single_text(argument(arguments, "Seconds")?)?)?,
-        },
-        "boolean" => DisplayFormat::Boolean {
-            true_label: single_text(argument(arguments, "True")?)?,
-            false_label: single_text(argument(arguments, "False")?)?,
-        },
-        "custom" => DisplayFormat::Custom(single_text(arguments)?),
-        other => return Err(format!("unknown display format `{other}`")),
-    })
-}
-
-fn serialize_format(format: &DisplayFormat) -> String {
-    let flag = |value: bool| quote(&value.to_string());
-    match format {
-        DisplayFormat::Text => "Text()".to_owned(),
-        DisplayFormat::Integer {
-            thousands_separator,
-        } => format!("Integer(Thousands({}))", flag(*thousands_separator)),
-        DisplayFormat::Decimal {
-            places,
-            thousands_separator,
-        } => format!(
-            "Decimal(Places({}), Thousands({}))",
-            quote(&places.to_string()),
-            flag(*thousands_separator)
-        ),
-        DisplayFormat::Percent { places } => {
-            format!("Percent(Places({}))", quote(&places.to_string()))
-        }
-        DisplayFormat::Date(style) => {
-            format!("Date(Style({}))", quote(name_of(&DATE_STYLES, *style)))
-        }
-        DisplayFormat::DateTime {
-            style,
-            show_seconds,
-        } => format!(
-            "DateTime(Style({}), Seconds({}))",
-            quote(name_of(&DATE_STYLES, *style)),
-            flag(*show_seconds)
-        ),
-        DisplayFormat::Boolean {
-            true_label,
-            false_label,
-        } => format!(
-            "Boolean(True({}), False({}))",
-            quote(true_label),
-            quote(false_label)
-        ),
-        DisplayFormat::Custom(id) => format!("Custom({})", quote(id)),
+#[path = "display_views/conditional_syntax.rs"]
+mod conditional_syntax;
+impl StagedProjectInit {
+    // {
+    //   責務: [display_settings: staging中のgenerated設定にuser.rlyを重ねて、sourceの表示設定を返す]
+    //   戻り値: [Result<DisplaySettings, ProjectInitError>: sourceの設定。user.rlyの読取に失敗したらerror]
+    // }
+    pub(crate) fn display_settings(
+        &self,
+        source_id: &str,
+    ) -> Result<DisplaySettings, ProjectInitError> {
+        let mut config = self.config.clone();
+        config.apply_user_overrides(read_optional_config(&self.user_path)?);
+        Ok(config.display.source_settings(source_id))
     }
 }
 
-fn interpret_target(arguments: &[Value]) -> Result<StyleTarget, String> {
-    let [Value::Call(name, inner)] = arguments else {
-        return Err("Target expects one of Column(..), Cell(..), Range(..)".to_owned());
-    };
-    match (name.to_ascii_lowercase().as_str(), inner.as_slice()) {
-        ("column", [Value::Text(column)]) => Ok(StyleTarget::Column(column.clone())),
-        ("cell", [Value::Text(column), Value::Text(row)]) => Ok(StyleTarget::Cell {
-            column: column.clone(),
-            row: parse_index(row)?,
-        }),
-        ("range", [Value::List(items), Value::Text(first), Value::Text(last)]) => {
-            let columns = items
-                .iter()
-                .map(|item| match item {
-                    Value::Text(text) => Ok(text.clone()),
-                    _ => Err("Range expects a list of quoted headers".to_owned()),
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(StyleTarget::Range {
-                columns,
-                first_row: parse_index(first)?,
-                last_row: parse_index(last)?,
-            })
-        }
-        _ => Err("Target expects Column(\"h\"), Cell(\"h\", \"row\") or Range([..], \"first\", \"last\")".to_owned()),
-    }
-}
-
-fn serialize_target(target: &StyleTarget) -> String {
-    match target {
-        StyleTarget::Column(column) => format!("Column({})", quote(column)),
-        StyleTarget::Cell { column, row } => {
-            format!("Cell({}, {})", quote(column), quote(&row.to_string()))
-        }
-        StyleTarget::Range {
-            columns,
-            first_row,
-            last_row,
-        } => {
-            let columns: Vec<String> = columns.iter().map(|column| quote(column)).collect();
-            format!(
-                "Range([{}], {}, {})",
-                columns.join(", "),
-                quote(&first_row.to_string()),
-                quote(&last_row.to_string())
-            )
-        }
-    }
-}
-
-fn interpret_color(text: &str) -> Result<Color, String> {
-    Color::parse(text).ok_or_else(|| format!("`{text}` is not a #rrggbb color"))
-}
-
-fn interpret_style(arguments: &[Value]) -> Result<CellStyle, String> {
-    let mut style = CellStyle::default();
-    let mut seen = HashSet::new();
-    for argument in arguments {
-        let Value::Call(name, inner) = argument else {
-            return Err("expected a style property such as Bold(\"true\")".to_owned());
-        };
-        let key = name.to_ascii_lowercase();
-        if !seen.insert(key.clone()) {
-            return Err(format!("`{name}(..)` appears more than once"));
-        }
-        match key.as_str() {
-            "horizontal" => {
-                style.horizontal = Some(value_of(&HORIZONTAL, &single_text(inner)?, "alignment")?);
-            }
-            "vertical" => {
-                style.vertical = Some(value_of(&VERTICAL, &single_text(inner)?, "alignment")?);
-            }
-            "overflow" => {
-                style.overflow = Some(value_of(&OVERFLOW, &single_text(inner)?, "overflow")?);
-            }
-            "bold" => style.bold = Some(parse_bool(&single_text(inner)?)?),
-            "italic" => style.italic = Some(parse_bool(&single_text(inner)?)?),
-            "underline" => style.underline = Some(parse_bool(&single_text(inner)?)?),
-            "textcolor" => style.text_color = Some(interpret_color(&single_text(inner)?)?),
-            "background" => style.background = Some(interpret_color(&single_text(inner)?)?),
-            "borders" => {
-                let [Value::List(items)] = inner.as_slice() else {
-                    return Err("expected Borders([..])".to_owned());
-                };
-                for item in items {
-                    let (edge, setting) = interpret_border(item)?;
-                    if style.borders.insert(edge, setting).is_some() {
-                        return Err("a border edge appears more than once".to_owned());
-                    }
-                }
-            }
-            other => return Err(format!("unknown style property `{other}`")),
-        }
-    }
-    Ok(style)
-}
-
-fn interpret_border(item: &Value) -> Result<(BorderEdge, BorderEdgeSetting), String> {
-    let Value::Call(name, arguments) = item else {
-        return Err("expected Border(\"edge\", \"style\")".to_owned());
-    };
-    if !name.eq_ignore_ascii_case("Border") {
-        return Err("expected Border(\"edge\", \"style\")".to_owned());
-    }
-    let texts = arguments
-        .iter()
-        .map(|argument| match argument {
-            Value::Text(text) => Ok(text.as_str()),
-            _ => Err("Border expects quoted strings".to_owned()),
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    match texts.as_slice() {
-        [edge, "Clear"] => Ok((
-            value_of(&EDGES, edge, "border edge")?,
-            BorderEdgeSetting::Clear,
-        )),
-        [edge, style] => Ok((
-            value_of(&EDGES, edge, "border edge")?,
-            BorderEdgeSetting::Line(BorderLine {
-                style: value_of(&BORDER_STYLES, style, "border style")?,
-                color: None,
-            }),
-        )),
-        [edge, style, color] => Ok((
-            value_of(&EDGES, edge, "border edge")?,
-            BorderEdgeSetting::Line(BorderLine {
-                style: value_of(&BORDER_STYLES, style, "border style")?,
-                color: Some(interpret_color(color)?),
-            }),
-        )),
-        _ => Err("Border expects an edge, a style and an optional color".to_owned()),
-    }
-}
-
-fn serialize_style(style: &CellStyle) -> String {
-    let mut parts = Vec::new();
-    if let Some(value) = style.horizontal {
-        parts.push(format!(
-            "Horizontal({})",
-            quote(name_of(&HORIZONTAL, value))
-        ));
-    }
-    if let Some(value) = style.vertical {
-        parts.push(format!("Vertical({})", quote(name_of(&VERTICAL, value))));
-    }
-    if let Some(value) = style.overflow {
-        parts.push(format!("Overflow({})", quote(name_of(&OVERFLOW, value))));
-    }
-    for (name, value) in [
-        ("Bold", style.bold),
-        ("Italic", style.italic),
-        ("Underline", style.underline),
-    ] {
-        if let Some(value) = value {
-            parts.push(format!("{name}({})", quote(&value.to_string())));
-        }
-    }
-    if let Some(color) = &style.text_color {
-        parts.push(format!("TextColor({})", quote(color.as_str())));
-    }
-    if let Some(color) = &style.background {
-        parts.push(format!("Background({})", quote(color.as_str())));
-    }
-    if !style.borders.is_empty() {
-        let borders: Vec<String> = style
-            .borders
-            .iter()
-            .map(|(edge, setting)| {
-                let edge = quote(name_of(&EDGES, *edge));
-                match setting {
-                    BorderEdgeSetting::Clear => format!("Border({edge}, \"Clear\")"),
-                    BorderEdgeSetting::Line(line) => {
-                        let style = quote(name_of(&BORDER_STYLES, line.style));
-                        match &line.color {
-                            Some(color) => {
-                                format!("Border({edge}, {style}, {})", quote(color.as_str()))
-                            }
-                            None => format!("Border({edge}, {style})"),
-                        }
-                    }
-                }
-            })
-            .collect();
-        parts.push(format!("Borders([{}])", borders.join(", ")));
-    }
-    format!("Style({})", parts.join(", "))
-}
-
-fn interpret_style_rule(value: &Value) -> Result<StyleRule, String> {
-    let Value::Call(name, arguments) = value else {
-        return Err("expected Rule(Target(..), Style(..))".to_owned());
-    };
-    if !name.eq_ignore_ascii_case("Rule") {
-        return Err("expected Rule(Target(..), Style(..))".to_owned());
-    }
-    Ok(StyleRule {
-        target: interpret_target(argument(arguments, "Target")?)?,
-        style: interpret_style(argument(arguments, "Style")?)?,
-    })
-}
-
-fn interpret_conditional_rule(value: &Value) -> Result<ConditionalRule, String> {
-    let Value::Call(name, arguments) = value else {
-        return Err("expected Rule(Target(..), Source(..), When(..), Style(..))".to_owned());
-    };
-    if !name.eq_ignore_ascii_case("Rule") {
-        return Err("expected Rule(Target(..), Source(..), When(..), Style(..))".to_owned());
-    }
-    let [predicate] = argument(arguments, "When")? else {
-        return Err("When expects one condition".to_owned());
-    };
-    let stop_if_true = match optional_argument(arguments, "Stop")? {
-        [] => false,
-        inner => parse_bool(&single_text(inner)?)?,
-    };
-    Ok(ConditionalRule {
-        target: interpret_target(argument(arguments, "Target")?)?,
-        source: value_of(
-            &SOURCES,
-            &single_text(argument(arguments, "Source")?)?,
-            "value source",
-        )?,
-        predicate: interpret_predicate(predicate)?,
-        style: interpret_style(argument(arguments, "Style")?)?,
-        stop_if_true,
-    })
-}
-
-fn interpret_literal(value: &Value) -> Result<Literal, String> {
-    let Value::Call(name, arguments) = value else {
-        return Err("expected Text(..), Number(..) or Date(..)".to_owned());
-    };
-    let text = single_text(arguments)?;
-    match name.to_ascii_lowercase().as_str() {
-        "text" => Ok(Literal::Text(text)),
-        "number" => Ok(Literal::Number(text)),
-        "date" => Ok(Literal::Date(text)),
-        other => Err(format!("unknown literal `{other}`")),
-    }
-}
-
-fn serialize_literal(literal: &Literal) -> String {
-    match literal {
-        Literal::Text(text) => format!("Text({})", quote(text)),
-        Literal::Number(text) => format!("Number({})", quote(text)),
-        Literal::Date(text) => format!("Date({})", quote(text)),
-    }
-}
-
-fn interpret_predicate(value: &Value) -> Result<Predicate, String> {
-    let Value::Call(name, arguments) = value else {
-        return Err("expected a condition such as Compare(..)".to_owned());
-    };
-    let predicates = |inner: &[Value]| -> Result<Vec<Predicate>, String> {
-        let [Value::List(items)] = inner else {
-            return Err("expected one list of conditions".to_owned());
-        };
-        items.iter().map(interpret_predicate).collect()
-    };
-    Ok(
-        match (name.to_ascii_lowercase().as_str(), arguments.as_slice()) {
-            ("compare", [Value::Text(op), literal]) => Predicate::Compare {
-                op: value_of(&OPERATORS, op, "operator")?,
-                literal: interpret_literal(literal)?,
-            },
-            ("between", [low, high]) => Predicate::Between {
-                low: interpret_literal(low)?,
-                high: interpret_literal(high)?,
-            },
-            ("contains", [Value::Text(text)]) => Predicate::Contains(text.clone()),
-            ("startswith", [Value::Text(text)]) => Predicate::StartsWith(text.clone()),
-            ("isempty", []) => Predicate::IsEmpty,
-            ("isnotempty", []) => Predicate::IsNotEmpty,
-            ("and", inner) => Predicate::And(predicates(inner)?),
-            ("or", inner) => Predicate::Or(predicates(inner)?),
-            ("not", [inner]) => Predicate::Not(Box::new(interpret_predicate(inner)?)),
-            (other, _) => return Err(format!("unknown or malformed condition `{other}`")),
-        },
+// {
+//   責務: [stage_generated_display_settings: sourceの列の表示書式・View style・行高・条件付き書式をgenerated設定へstagingする]
+//   処理: [渡された設定一式でsourceのgenerated設定を置き換える。user.rlyは読むだけで書かない。列が欠けていても設定は保存し、休眠の判断は解決時（DisplaySettings::resolve）に行う]
+//   戻り値: [Result<StagedProjectInit, ProjectInitError>: 新しいstaging、または設定の不備・script検証の失敗]
+// }
+pub(crate) fn stage_generated_display_settings(
+    project: &RowlyProject,
+    manifest_path: &Path,
+    source_id: &str,
+    settings: &DisplaySettings,
+    staged: Option<&StagedProjectInit>,
+) -> Result<StagedProjectInit, ProjectInitError> {
+    stage_generated_configuration(
+        project,
+        manifest_path,
+        source_id,
+        staged,
+        ProjectInitUpdate::DisplaySettings(settings),
     )
 }
 
-fn serialize_predicate(predicate: &Predicate) -> String {
-    match predicate {
-        Predicate::Compare { op, literal } => format!(
-            "Compare({}, {})",
-            quote(name_of(&OPERATORS, *op)),
-            serialize_literal(literal)
-        ),
-        Predicate::Between { low, high } => format!(
-            "Between({}, {})",
-            serialize_literal(low),
-            serialize_literal(high)
-        ),
-        Predicate::Contains(text) => format!("Contains({})", quote(text)),
-        Predicate::StartsWith(text) => format!("StartsWith({})", quote(text)),
-        Predicate::IsEmpty => "IsEmpty()".to_owned(),
-        Predicate::IsNotEmpty => "IsNotEmpty()".to_owned(),
-        Predicate::And(children) => format!("And([{}])", serialize_predicates(children)),
-        Predicate::Or(children) => format!("Or([{}])", serialize_predicates(children)),
-        Predicate::Not(inner) => format!("Not({})", serialize_predicate(inner)),
-    }
+// {
+//   責務: [load_display_settings: 保存済みの表示設定をgenerated + user.rlyから読む]
+//   処理: [safe initのincludeに従い、user.rlyの項目をgeneratedより優先して返す]
+//   戻り値: [Result<DisplaySettings, ProjectInitError>: sourceの設定。未保存なら空]
+// }
+pub(crate) fn load_display_settings(
+    project: &RowlyProject,
+    manifest_path: &Path,
+    source_id: &str,
+) -> Result<DisplaySettings, ProjectInitError> {
+    Ok(read_safe_init_config(project, manifest_path, source_id)?
+        .display
+        .source_settings(source_id))
 }
-
-fn serialize_predicates(children: &[Predicate]) -> String {
-    children
-        .iter()
-        .map(serialize_predicate)
-        .collect::<Vec<_>>()
-        .join(", ")
-}
+#[path = "display_views/style_syntax.rs"]
+mod style_syntax;

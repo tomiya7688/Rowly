@@ -4,6 +4,7 @@ use crate::{
         aggregation_definition::AggregationDefinition,
         calculation::{CalculationEngine, CalculationTarget},
         chart::ChartDefinition,
+        display_settings::DisplaySettings,
     },
     project::{SourceKind, resolve_project_reference},
     project_init,
@@ -230,6 +231,54 @@ impl ProjectSession {
             Ok(staged_init.chart_views(source_id)?)
         } else {
             Ok(project_init::load_chart_views(
+                &self.project,
+                self.manifest_path(),
+                source_id,
+            )?)
+        }
+    }
+
+    /// ```text
+    /// 責務: [save_generated_display_settings: sourceの列の表示書式・View style・行高・条件付き書式をgenerated init DSLへstagingする]
+    /// 処理: [source idを確認し、渡された設定一式でsourceのgenerated設定を置き換えてsession内へ保持する。列が欠けていても設定は捨てない。bare CSVにはprojectが無いのでこのAPIは使えず、設定はsession内だけに留まる]
+    /// 引数: [source_id: project source id, settings: 保存する設定の全集合]
+    /// 戻り値: [Result<(), ProjectSessionError>: staging成功または設定error]
+    /// 副作用: [generated設定をsession内へ保持しproject config dirtyを立てる。user.rlyは書き換えない]
+    /// エラー: [ProjectSessionError: source、設定の不備（重複・空の見出し、検証に通らないstyle・条件付き書式・行高）、script検証の失敗]
+    /// ```
+    pub fn save_generated_display_settings(
+        &mut self,
+        source_id: &str,
+        settings: &DisplaySettings,
+    ) -> Result<(), ProjectSessionError> {
+        self.require_source(source_id)?;
+        let staged = project_init::stage_generated_display_settings(
+            &self.project,
+            self.manifest_path(),
+            source_id,
+            settings,
+            self.staged_init.as_ref(),
+        )?;
+        self.staged_init = Some(staged);
+        self.mark_structure_or_config_dirty();
+        Ok(())
+    }
+
+    /// ```text
+    /// 責務: [display_settings: sourceの表示設定を読む]
+    /// 処理: [staged configがあればuser overrideを重ね、なければproject DSLから読む。列の有無は見ない（解決はDisplaySettings::resolveで行う）]
+    /// 引数: [source_id: project source id]
+    /// 戻り値: [Result<DisplaySettings, ProjectSessionError>: 列の表示書式は見出し順、style・条件付き書式は保存順。未保存なら空]
+    /// ```
+    pub fn display_settings(
+        &self,
+        source_id: &str,
+    ) -> Result<DisplaySettings, ProjectSessionError> {
+        self.require_source(source_id)?;
+        if let Some(staged_init) = &self.staged_init {
+            Ok(staged_init.display_settings(source_id)?)
+        } else {
+            Ok(project_init::load_display_settings(
                 &self.project,
                 self.manifest_path(),
                 source_id,

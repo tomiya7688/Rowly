@@ -214,3 +214,17 @@ XLSX / PDF / displayed View exportでは、対応可能なstyleだけを明示�
 - stale / error / pendingの計算結果、計算結果が無いcellは、通常の値として評価せず（条件に合う値でも）、`DerivedStale`・`DerivedError`・`DerivedPending`・`DerivedMissing`の診断にする。freshな計算結果だけが評価される。
 - 優先順位はruleの順序: 先のruleから評価し、合ったruleのstyleをView styleと同じ規則（項目ごとに後の明示値が勝つ）で重ねる。`stop_if_true`のruleが合ったら、後のruleは評価しない。順序を入れ替えれば結果が変わる。
 - 対象外: Projectへの保存（#287）、GUI・Command登録（#288）、色の自動配色（色階調・データバー）。
+
+## 表示設定のProject保存の実装契約（#287）
+
+状態: 実装済み（`src/project_init/display_views.rs`、`src/process/display_settings.rs`）。確認日: 2026-11-07。
+
+- 保存するのは設定だけ: 列の表示書式（`DisplayFormat`）、View styleのrule（`StyleRule`）、行高、条件付き書式のrule（`ConditionalRule`）。表示結果やCSVの値は保存しない。CSVにもsidecar fileにも書かない。
+- 保存先はgenerated init DSL。1項目1行で、`SET This.Project.Source("id").Worksheet.Display.<Format|RowHeight|Style|Conditional>("key") = ..`の形。keyは、Formatは列の見出し、RowHeightはCSVの行位置、Style・Conditionalは順序を表す通し番号（0始まり、読み戻しでは数値順）。値は既存のDSL値（文字列・リスト・名前付き呼び出し）だけで、数値も引用符つきの文字列で持つ。
+- 書式: `Text()`、`Integer(Thousands(..))`、`Decimal(Places(..), Thousands(..))`、`Percent(Places(..))`、`Date(Style(..))`、`DateTime(Style(..), Seconds(..))`、`Boolean(True(..), False(..))`、`Custom("id")`。styleは指定した項目だけを書き、罫線は6方向とも同じ`Border("辺", "線種"[, "色"])`・`Border("辺", "Clear")`で書く。
+- 読み戻しは、書式・style・行高・条件付き書式をそれぞれのmodelの検証（`add_rule`・`set_row_height`）に通す。文法や検証の誤りは、行番号つきのerrorにして、黙って捨てない。
+- 列は見出し名で持つので、保存時に現在のCSVに列があるかは見ない。解決時（`DisplaySettings::resolve`）に、見出しが無い・重複する設定だけが休眠し、他の設定はそのまま有効になる。休眠した設定は保存にも残り、見出しが戻れば再び有効になる。
+- `user.rly`は読むだけで書き換えない。generatedとの優先は、列の表示書式と行高はキー（見出し・行位置）ごとにuser側が勝つ。style ruleと条件付き書式は順序が意味を持つので、userが1つでも定義したsourceではそのカテゴリのgeneratedを使わず、保存もしない。
+- `ProjectSession::save_generated_display_settings`は、検証に通らない設定（見出しの重複・空、不正なstyle・条件付き書式・行高）や不明なsourceを、stagingの前に拒否する。stagingは`save`までdiskに出ず、保存に失敗してもstagingは残って再試行できる。bare CSV（projectが無い）では使えず、設定はsession内だけに留まる。
+- `DisplaySettings::resolve`と`ResolvedDisplay::render_cell`は、表示書式で整形した文字列と、View styleの上に条件付き書式を重ねたstyleを一度に返す。条件付き書式の評価はrawと計算結果から行い、整形後の文字列は使わない。
+- 対象外: GUI・Command登録（#288）、structure edit（行・列の挿入・削除）に追随する設定の付け替え（#343）。

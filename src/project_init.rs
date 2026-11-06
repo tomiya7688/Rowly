@@ -7,8 +7,8 @@ use thiserror::Error;
 use crate::{
     process::aggregation_definition::AggregationDefinition,
     process::calculation::{CalculationEngine, CalculationTarget, CalculationTrigger},
-    process::chart::ChartDefinition,
     process::{CellRef, CsvDocument},
+    process::{chart::ChartDefinition, display_settings::DisplaySettings},
     project::{ProjectError, RowlyProject, write_project_file_atomic},
 };
 
@@ -71,6 +71,7 @@ enum ProjectInitUpdate<'a> {
     CalculationBindings(&'a CalculationEngine),
     AggregationViews(&'a [AggregationDefinition]),
     ChartViews(&'a [ChartDefinition]),
+    DisplaySettings(&'a DisplaySettings),
 }
 
 impl ProjectInitSnapshot {
@@ -182,6 +183,15 @@ impl StagedProjectInit {
         Ok(config.source_chart_views(source_id))
     }
 
+    pub(crate) fn display_settings(
+        &self,
+        source_id: &str,
+    ) -> Result<DisplaySettings, ProjectInitError> {
+        let mut config = self.config.clone();
+        config.apply_user_overrides(read_optional_config(&self.user_path)?);
+        Ok(config.display.source_settings(source_id))
+    }
+
     pub(crate) fn aggregation_views(
         &self,
         source_id: &str,
@@ -223,6 +233,10 @@ use aggregation_views::{
 #[path = "project_init/chart_views.rs"]
 mod chart_views;
 use chart_views::{is_chart_declaration, parse_chart_declaration};
+
+#[path = "project_init/display_views.rs"]
+mod display_views;
+use display_views::{DisplayStore, is_display_declaration, parse_display_declaration};
 
 #[path = "project_init/calculation_bindings.rs"]
 mod calculation_bindings;
@@ -362,6 +376,42 @@ pub(crate) fn stage_generated_chart_views(
 }
 
 // {
+//   責務: [stage_generated_display_settings: sourceの列の表示書式・View style・行高・条件付き書式をgenerated設定へstagingする]
+//   処理: [渡された設定一式でsourceのgenerated設定を置き換える。user.rlyは読むだけで書かない。列が欠けていても設定は保存し、休眠の判断は解決時（DisplaySettings::resolve）に行う]
+//   戻り値: [Result<StagedProjectInit, ProjectInitError>: 新しいstaging、または設定の不備・script検証の失敗]
+// }
+pub(crate) fn stage_generated_display_settings(
+    project: &RowlyProject,
+    manifest_path: &Path,
+    source_id: &str,
+    settings: &DisplaySettings,
+    staged: Option<&StagedProjectInit>,
+) -> Result<StagedProjectInit, ProjectInitError> {
+    stage_generated_configuration(
+        project,
+        manifest_path,
+        source_id,
+        staged,
+        ProjectInitUpdate::DisplaySettings(settings),
+    )
+}
+
+// {
+//   責務: [load_display_settings: 保存済みの表示設定をgenerated + user.rlyから読む]
+//   処理: [safe initのincludeに従い、user.rlyの項目をgeneratedより優先して返す]
+//   戻り値: [Result<DisplaySettings, ProjectInitError>: sourceの設定。未保存なら空]
+// }
+pub(crate) fn load_display_settings(
+    project: &RowlyProject,
+    manifest_path: &Path,
+    source_id: &str,
+) -> Result<DisplaySettings, ProjectInitError> {
+    Ok(read_safe_init_config(project, manifest_path, source_id)?
+        .display
+        .source_settings(source_id))
+}
+
+// {
 //   責務: [load_chart_views: 保存済みのChart定義をgenerated + user.rlyから読む。user.rlyの同名定義を優先して名前順に返す]
 // }
 pub(crate) fn load_chart_views(
@@ -435,6 +485,11 @@ fn stage_generated_configuration(
         }
         ProjectInitUpdate::ChartViews(definitions) => {
             config.update_chart_views(source_id, definitions, &user_config)?;
+        }
+        ProjectInitUpdate::DisplaySettings(settings) => {
+            config
+                .display
+                .update(source_id, settings, &user_config.display)?;
         }
         ProjectInitUpdate::CalculationBindings(engine) => {
             config.update_calculation_bindings(source_id, engine, &user_config)?;
@@ -556,6 +611,8 @@ pub enum ProjectInitError {
     InvalidAggregationDefinition(String),
     #[error("invalid chart definition: {0}")]
     InvalidChartDefinition(String),
+    #[error("invalid display settings: {0}")]
+    InvalidDisplaySettings(String),
     #[error(transparent)]
     Dsl(#[from] crate::rowly_dsl::DslError),
     #[error(transparent)]

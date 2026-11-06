@@ -248,6 +248,18 @@ fn empty_dimensions_and_bad_columns() {
         Ok(CalculationValue::Integer(43))
     );
 
+    // 残るrowが無ければ格子は空。keyは実在するrowからだけ作る。
+    let mut none = request();
+    none.filters = vec![PivotFilter {
+        column: 0,
+        allowed: vec!["nobody".into()],
+    }];
+    for rows in [&rows[..0], &rows[..]] {
+        let result = pivot(rows, &none).unwrap();
+        assert!(result.row_keys.is_empty() && result.column_keys.is_empty());
+        assert!(result.cells.is_empty() && result.excluded_rows.is_empty());
+    }
+
     for request in [
         PivotRequest {
             row_columns: vec![9],

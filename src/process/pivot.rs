@@ -61,6 +61,7 @@ pub struct PivotResult {
 //   責務: [pivot: filterで絞ったrowを(row key, column key)毎に集計し、クロスタブの格子と各cellのprovenanceを返す]
 //   処理: [filterはfilter指定順に判定し、non-freshなfilter cellのrowはexcluded_rowsに残し、不一致のrowは黙って除く。key・値の扱いはGroup Byコアと同じ（raw key、non-fresh値は集計から除き診断に数える）。row・columnの順序は入力での初出順で決まり、同じ入力なら常に同じ結果になる]
 //   引数: [rows: 集計入力, request: Rows・Columns・Values・Filters]
+//   補足: [filter後に残るrowが無ければ格子は空（keyは実在するrowからだけ作る）]
 //   戻り値: [Result<PivotResult, AggregationError>: 結果。列範囲外はerror]
 // }
 pub fn pivot(rows: &[InputRow], request: &PivotRequest) -> Result<PivotResult, AggregationError> {

@@ -148,6 +148,6 @@ source freshnessを引き継ぎます。
 - 要求は`PivotRequest{row_columns, column_columns, values, filters}`。集計とkey・non-freshの扱いはGroup Byコア（#297）をそのまま使い、(row key, column key)をgroup keyにして格子へ並べる。
 - 入力filterは集計前に適用する。`PivotFilter{column, allowed}`はfilter指定順にraw値で判定し、すべてに一致したrowだけを残す。不一致のrowは黙って除き、`excluded_rows`には入れない。non-freshなfilter cellのrowは判定できないため`excluded_rows`に残す。
 - row keyとcolumn keyは入力での初出順に並べる。同じ入力なら常に同じ結果になる。表示Sortはこのcoreの外のDerived Viewで行い、元CSV順は変えない。
-- 該当rowが無いbucketは`None`（空）で、0や空文字にしない。Rows・Columnsが空なら全体を1行・1列として1つのcellにする。
+- 該当rowが無いbucketは`None`（空）で、0や空文字にしない。Rows・Columnsが空なら全体を1行・1列として1つのcellにする。filterの後に残るrowが1つも無ければ、Rows・Columnsが空でもkeyは作らず、格子は空（row_keys・column_keys・cellsが空）になる。keyは実在するrowからだけ作る。
 - 各`PivotCell`は集計値・`source_rows`（drill down用）・`FreshnessDiagnostics`を持つ。元データは複製せず、CSVの元cellへ書き込まない。
 - 総計・小計、列の動的な展開上限、Viewへの保存は対象外（Viewへの保存は#299）。

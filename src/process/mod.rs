@@ -17,6 +17,7 @@ pub mod calculation;
 pub mod chart;
 mod clipboard;
 mod column;
+pub mod display_format;
 mod document;
 mod history;
 mod metadata;

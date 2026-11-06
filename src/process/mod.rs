@@ -20,6 +20,7 @@ mod document;
 mod history;
 mod metadata;
 pub mod pivot;
+pub mod print_layout;
 mod validation;
 #[cfg(feature = "gui")]
 mod watcher;

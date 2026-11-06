@@ -17,6 +17,10 @@ const MIN_SCALE_PERCENT: u16 = 10;
 const MAX_SCALE_PERCENT: u16 = 400;
 /// ヘッダー/フッターが空でないときに本文から取り分ける高さ（mm）。
 const HEADER_FOOTER_BAND_MM: f64 = 8.0;
+/// 1つの長さ（用紙・余白・列幅・行高）の上限（mm）。整数演算がオーバーフローしないよう、これを超える値はerrorにする。
+const MAX_LENGTH_MM: f64 = 100_000.0;
+/// 行数の上限。上限の長さと倍率を掛けた合計でも`i64`に収まる。
+const MAX_ROWS: usize = 100_000_000;
 
 /// 行の高さ。
 #[derive(Debug, Clone, PartialEq)]
@@ -113,12 +117,14 @@ fn to_um(mm: f64) -> i64 {
 //   責務: [scaled: 長さへ倍率を掛ける（切り上げ。縮小・拡大とも、ページに収まる側へ誤差を寄せない）]
 // }
 fn scaled(length_um: i64, basis_points: u32) -> i64 {
+    // 呼び出し元はpositiveを通した正の長さだけを渡す（負の値では切り上げにならない）。
+    debug_assert!(length_um >= 0);
     let product = i128::from(length_um) * i128::from(basis_points);
     ((product + 9_999) / 10_000) as i64
 }
 
 fn positive(value: f64, name: &'static str) -> Result<i64, PrintLayoutError> {
-    if value.is_finite() && value > 0.0 {
+    if value.is_finite() && value > 0.0 && value <= MAX_LENGTH_MM {
         Ok(to_um(value))
     } else {
         Err(PrintLayoutError::InvalidLength(name))
@@ -145,7 +151,10 @@ pub fn paginate(setup: &PageSetup, table: &TableMetrics) -> Result<PageLayout, P
         setup.margins.left_mm,
         setup.margins.right_mm,
     ];
-    if margins.iter().any(|m| !m.is_finite() || *m < 0.0) {
+    if margins
+        .iter()
+        .any(|m| !m.is_finite() || *m < 0.0 || *m > MAX_LENGTH_MM)
+    {
         return Err(PrintLayoutError::InvalidMargin);
     }
     let band = to_um(HEADER_FOOTER_BAND_MM);
@@ -169,6 +178,9 @@ pub fn paginate(setup: &PageSetup, table: &TableMetrics) -> Result<PageLayout, P
         .collect::<Result<_, _>>()?;
     let heights: Vec<i64> = match &table.row_heights {
         RowHeights::Uniform { count, height_mm } => {
+            if *count > MAX_ROWS {
+                return Err(PrintLayoutError::InvalidLength("row count"));
+            }
             vec![positive(*height_mm, "row height")?; *count]
         }
         RowHeights::Each(each) => each
@@ -192,9 +204,24 @@ pub fn paginate(setup: &PageSetup, table: &TableMetrics) -> Result<PageLayout, P
             if total <= printable_width || total == 0 {
                 10_000
             } else {
-                // 収まる最大の倍率（切り捨て）。最小倍率で下限を持つ。
-                let fitted = i128::from(printable_width) * 10_000 / i128::from(total);
-                (fitted as u32).max(MIN_SCALE_PERCENT as u32 * 100)
+                // 収まる最大の倍率（切り捨て）。列ごとの切り上げが累積して溢れる場合は、
+                // 列数だけ（1列あたり最大1um）余裕を見込んだ倍率に下げる。最小倍率で下限を持つ。
+                let fit = |width: i64| (i128::from(width) * 10_000 / i128::from(total)) as u32;
+                let exact = fit(printable_width);
+                let fits = |basis_points: u32| {
+                    widths
+                        .iter()
+                        .map(|width| scaled(*width, basis_points))
+                        .sum::<i64>()
+                        <= printable_width
+                };
+                let columns = i64::try_from(widths.len()).unwrap_or(i64::MAX);
+                let chosen = if fits(exact) {
+                    exact
+                } else {
+                    fit((printable_width - columns).max(0))
+                };
+                chosen.max(MIN_SCALE_PERCENT as u32 * 100)
             }
         }
     };

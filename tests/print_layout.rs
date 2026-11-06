@@ -213,3 +213,68 @@ fn empty_tables_oversized_columns_and_invalid_input() {
         Err(PrintLayoutError::HeaderRowsExceedRows)
     );
 }
+
+#[test]
+// {
+//   責務: [fit_width_never_splits_columns_because_of_rounding: 列ごとの切り上げが累積しても、最小倍率に達しない限りFitWidthで列が分かれないことを、列数と列幅を振って検証する。],
+//   戻り値: [(): 全assertion成功時に完了する。]
+// }
+fn fit_width_never_splits_columns_because_of_rounding() {
+    let mut fit = setup();
+    fit.scale = Scale::FitWidth;
+    for columns in 1..=300 {
+        for width in [0.37, 1.0, 3.333, 7.77, 12.345, 59.999] {
+            let metrics = table(columns, width, 3, 10.0);
+            let total = width * columns as f64;
+            // 総幅が本文幅の10倍以内なら、最小倍率(10%)に達しないので必ず収まる。
+            if total > 1_700.0 {
+                continue;
+            }
+            let layout = paginate(&fit, &metrics).unwrap();
+            assert!(
+                layout.column_breaks.is_empty(),
+                "{columns} columns x {width}mm split at {:?}",
+                layout.column_breaks
+            );
+        }
+    }
+}
+
+#[test]
+// {
+//   責務: [absurd_lengths_and_row_counts_are_rejected_instead_of_overflowing: 極端に大きい寸法・余白・行数がoverflowせずerrorになることを検証する。],
+//   戻り値: [(): 全assertion成功時に完了する。]
+// }
+fn absurd_lengths_and_row_counts_are_rejected_instead_of_overflowing() {
+    assert!(matches!(
+        paginate(&setup(), &table(1, 1.0e30, 1, 10.0)),
+        Err(PrintLayoutError::InvalidLength(_))
+    ));
+    assert!(matches!(
+        paginate(&setup(), &table(1, 40.0, 1, 1.0e12)),
+        Err(PrintLayoutError::InvalidLength(_))
+    ));
+    assert!(matches!(
+        paginate(&setup(), &table(1, 40.0, usize::MAX, 10.0)),
+        Err(PrintLayoutError::InvalidLength("row count"))
+    ));
+    let huge_margin = PageSetup {
+        margins: Margins::uniform(1.0e15),
+        ..setup()
+    };
+    assert_eq!(
+        paginate(&huge_margin, &table(1, 40.0, 1, 10.0)),
+        Err(PrintLayoutError::InvalidMargin)
+    );
+    let huge_paper = PageSetup {
+        paper: PaperSize::Custom {
+            width_mm: 1.0e12,
+            height_mm: 100.0,
+        },
+        ..setup()
+    };
+    assert!(matches!(
+        paginate(&huge_paper, &table(1, 40.0, 1, 10.0)),
+        Err(PrintLayoutError::InvalidLength(_))
+    ));
+}

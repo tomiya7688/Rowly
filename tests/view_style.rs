@@ -164,6 +164,20 @@ fn targets_keep_header_identity_and_missing_ones_go_dormant() {
     let reordered: Vec<String> = ["sales", "dept", "month"].map(String::from).to_vec();
     assert_eq!(view.resolve(&reordered).style_for(0, 0).bold, Some(true));
 
+    // 範囲に同じ見出しを2回書いても、解決後の列位置は重複しない。
+    let mut twice = ViewStyle::default();
+    twice
+        .add_rule(rule(
+            StyleTarget::Range {
+                columns: vec!["month".into(), "month".into(), "dept".into()],
+                first_row: 0,
+                last_row: 1,
+            },
+            bold.clone(),
+        ))
+        .unwrap();
+    assert_eq!(twice.resolve(&headers()).active[0].columns, [1, 0]);
+
     // 見出しが戻れば休眠したruleも有効になる。ruleは捨てられていない。
     let mut with_gone = headers();
     with_gone.push("gone".into());

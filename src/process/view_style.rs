@@ -292,7 +292,12 @@ impl ViewStyle {
                     .enumerate()
                     .filter(|(_, header)| *header == name);
                 match (found.next(), found.next()) {
-                    (Some((column, _)), None) => columns.push(column),
+                    (Some((column, _)), None) => {
+                        // 範囲に同じ見出しが2回あっても、列位置は1回だけ持つ。
+                        if !columns.contains(&column) {
+                            columns.push(column);
+                        }
+                    }
                     (None, _) => push_unique(&mut missing, name),
                     (Some(_), Some(_)) => push_unique(&mut ambiguous, name),
                 }
@@ -374,6 +379,7 @@ impl ResolvedStyle {
     //   責務: [style_for: cellに効くstyleを決定的に統合して返す]
     //   処理: [有効なruleを入力順にたどり、そのcellを含むruleのstyleを、項目ごとに後の明示値が勝つよう重ねる]
     //   引数: [row: CSVの行位置, column: 列位置]
+    //   補足: [1 cellあたり有効なruleの数に比例する計算量。大きな表では、表示するcellだけを解決して呼ぶ（全cellを走査しない）]
     //   戻り値: [CellStyle: 効くstyle。どのruleも当たらなければ全項目が未指定]
     // }
     pub fn style_for(&self, row: usize, column: usize) -> CellStyle {

@@ -198,5 +198,6 @@ XLSX / PDF / displayed View exportでは、対応可能なstyleだけを明示�
 - 統合は決定的: `resolve`した後、`style_for(row, column)`が有効なruleを入力順にたどり、項目ごとに後の明示値が勝つよう重ねる。順序を入れ替えれば結果が変わる（順序が意味を持つ）。同じ入力から常に同じ結果。条件付き書式（#286）はこの統合の上に重ねる。
 - targetはstable identityで持つ: 列は見出し、行はCSVの行位置（表示順ではない）。種類は`Column`・`Cell`・`Range`（列の集合と行の範囲）。現在の見出しへ引き直すので、列の並びが変わっても同じcellに効く。
 - 見出しが無い、または複数あるruleだけが`resolve`で休眠（`DormantRule{missing, ambiguous}`）になり、他のruleは有効のまま。休眠したruleは捨てず、見出しが戻れば再び有効になる。
+- `style_for`は1 cellあたり有効なruleの数に比例する計算量なので、大きな表では表示するcellだけを解決して呼ぶ（全cellを走査しない）。範囲に同じ見出しが重複しても、解決後の列位置は1回だけ持つ。
 - 行高は行位置をキーにした正で有限（上限1,000mm）の値で、CSV構造に影響しない。`add_rule`は空のtargetや逆の行範囲を、`set_row_height`は不正な行高を拒否する。
 - 対象外: 表示書式の適用（#284）、条件付き書式（#286）、Projectへの保存（#287）、GUI・Command登録（#288）、描画。

@@ -176,3 +176,15 @@ XLSX / PDF / displayed View exportでは、対応可能なstyleだけを明示�
 - project reopenで復元
 
 この日本語版を表示書式・条件付き書式の正本とします。
+
+## DisplayFormat coreの実装契約（#284）
+
+状態: 実装済み（`src/process/display_format.rs`）。確認日: 2026-11-07。
+
+- `format_value(raw, &DisplayFormat) -> Display`は、rawを表示文字列にする純粋な関数で、`CsvDocument`を受け取らない。CSVのraw valueは変わらない。書式はText / Integer / Decimal / Percent / Date / DateTime / Boolean / Customで、View設定であり、CSVには保存されない。
+- rawは常に文字列で、表示形式を理由に数値などへ自動変換しない。Textはrawをそのまま見せる（`00123`の先頭の0を保つ。数字に見える文字列も解釈しない）。
+- 数値は10進の桁の文字列のまま扱い、浮動小数点の誤差を持ち込まない。丸めは絶対値で5以上を切り上げ、桁上がり（`9.995`→`10.00`）も正しく、丸めて0になった値に負の符号を付けない。Integerは小数部が0以外のrawを黙って丸めず`NotAnInteger`にする。Percentはrawを100倍して`%`を付ける（`0.125`→`12.5%`）。
+- rawの読み方はlocale非依存の正規形だけ: 任意の符号、整数部1桁以上、小数点を付けるなら小数部1桁以上のASCII数字。「1,234」「1.234,5」「1e3」「.5」「5.」「全角数字」は読まず、曖昧なまま正規形にしない。前後の空白は読む時だけ許す。日付は`YYYY-MM-DD`（存在する日。うるう年を判定）、日時は`YYYY-MM-DDTHH:MM[:SS]`または空白区切りで、時差の指定は読まない。真偽は`true`/`false`（大文字小文字は問わず、`1`/`0`/`yes`は読まない）。日付の表示様式（ISO・スラッシュ・日本語・日月年・月日年）は表示だけを変える。
+- 書式に読めないrawは書き換えず、`Display::Error{shown: raw, error}`で、rawをそのまま示し、理由（`FormatError`）を添える。空のrawは値が無いので、どの書式でも空の表示（errorにならない）。
+- Customは`CustomFormatRegistry`（idでrawを整形する登録先）に任せる拡張の境界で、coreは中身を知らない。未登録は`UnknownCustom`、整形の失敗は`CustomFailed`で、いずれもrawを保つ。`format_value`は登録先なしとして扱う。
+- 対象外: 配置・罫線・フォント・条件付き書式（#285・#286）、書式のProjectへの保存（#287）、GUI（#288）、ExcelやlocaleのCustom書式文字列の解釈。

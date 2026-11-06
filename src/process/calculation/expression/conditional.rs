@@ -43,6 +43,9 @@ pub(super) fn evaluate_conditional(
 
     let criterion = evaluate_expression(spec.value, depth + 1, read_cell)?;
 
+    if spec.function == ConditionalAggregateFunction::Lookup {
+        return lookup(&spec, &criterion, &criteria_cells, &sum_cells, read_cell);
+    }
     let mut count = 0_i64;
     let mut total = CalculationValue::Integer(0);
     for (index, cell) in criteria_cells.iter().enumerate() {
@@ -72,5 +75,39 @@ pub(super) fn evaluate_conditional(
     Ok(match spec.function {
         ConditionalAggregateFunction::CountIf => CalculationValue::Integer(count),
         ConditionalAggregateFunction::SumIf => total,
+        ConditionalAggregateFunction::Lookup => CalculationValue::Integer(0),
     })
+}
+
+// {
+//   責務: [lookup: key範囲で検索値と完全一致するcellを1つだけ探し、同じ位置のresult範囲のcellを返す]
+//   処理: [一致の判定は#292の等価比較。0件はLookupNotFound、2件以上はLookupDuplicate（先頭を暗黙採用しない）]
+//   戻り値: [Result<CalculationValue, CalculationFailure>: result範囲のcellの文字列]
+// }
+fn lookup(
+    spec: &ConditionalSpec<'_>,
+    criterion: &CalculationValue,
+    key_cells: &[CellRef],
+    result_cells: &[CellRef],
+    read_cell: &mut impl FnMut(CellRef) -> Result<CalculationValue, CalculationFailure>,
+) -> Result<CalculationValue, CalculationFailure> {
+    let mut found: Option<usize> = None;
+    for (index, cell) in key_cells.iter().enumerate() {
+        let text = read_cell(*cell)?.into_text();
+        let matched = call_compare_function(
+            spec.comparison,
+            vec![CalculationValue::Text(text), criterion.clone()],
+        )?;
+        if matched != CalculationValue::Boolean(true) {
+            continue;
+        }
+        if found.replace(index).is_some() {
+            return Err(CalculationFailure::LookupDuplicate);
+        }
+    }
+    let index = found.ok_or(CalculationFailure::LookupNotFound)?;
+    let result_cell = result_cells
+        .get(index)
+        .ok_or(CalculationFailure::RangeShapeMismatch)?;
+    Ok(CalculationValue::Text(read_cell(*result_cell)?.into_text()))
 }

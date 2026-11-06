@@ -203,6 +203,14 @@ File I/Oやscript callを含めません。
 
 重複match時に先頭を暗黙採用せず、規則で明示するかerrorにします。
 
+### Lookupの規則（#294）
+
+- DSLでは`Lookup(CellRange("A2:A9"), "=", CellValue("D2"), CellRange("B2:B9"))`と書く。key範囲の中で検索値と完全一致するcellを探し、同じ位置のresult範囲のcellの文字列を返す。記号は`=`だけで、近似一致や昇順前提の二分探索は1.0では提供しない。
+- 一致は`Equals`と同じ規則（#292）。両方が数値として読めれば数値として、そうでなければ文字列として等しいかを見る。空keyは空文字として扱う。検索値は1回だけ評価する。
+- 一致が0件ならLookupNotFound、2件以上ならLookupDuplicate。先頭を暗黙に採用しない。重複を許す方針（先頭・最後・全件）を明示する拡張は、別の関数または引数として追加する。
+- key範囲とresult範囲は同じ大きさでなければならず、宣言時にparse errorにする（構造編集後の不一致はRangeShapeMismatch）。result省略は不可。各rangeはMAX_RANGE_CELLS以下。
+- key範囲・result範囲・検索値が読むcellのどれが変わっても再評価の対象になる。構造編集の追従、Fill、DSL往復は`SumIf`・`CountIf`と同じ。
+
 ## 相対参照
 
 range binding / fill bindingで相対参照を移動できます。

@@ -8,6 +8,9 @@ use std::{
 #[path = "project_session/configuration.rs"]
 mod configuration;
 #[cfg(test)]
+#[path = "project_session/tests_aggregation_views.rs"]
+mod tests_aggregation_views;
+#[cfg(test)]
 #[path = "project_session/tests_staging.rs"]
 mod tests_staging;
 

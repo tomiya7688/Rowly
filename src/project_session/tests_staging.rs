@@ -17,7 +17,7 @@ use crate::{
 //   引数: [],
 //   戻り値: [(TempDir, PathBuf): directoryとmanifest path。fixture作成に失敗した場合はtestを失敗させる。]
 // }
-fn create_project() -> (TempDir, PathBuf) {
+pub(super) fn create_project() -> (TempDir, PathBuf) {
     let directory = tempdir().unwrap();
     let root = directory.path();
     fs::create_dir_all(root.join("scripts/macros")).unwrap();
@@ -64,7 +64,7 @@ fn create_project() -> (TempDir, PathBuf) {
 //   引数: [manifest: fixtureのmanifest path。],
 //   戻り値: [PathBuf: generated scriptのpath。]
 // }
-fn generated_path(manifest: &Path) -> PathBuf {
+pub(super) fn generated_path(manifest: &Path) -> PathBuf {
     manifest.parent().unwrap().join("scripts/generated.rly")
 }
 

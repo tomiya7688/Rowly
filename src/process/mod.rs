@@ -12,6 +12,7 @@
 //! ```
 mod address;
 pub mod aggregation;
+pub mod aggregation_definition;
 pub mod calculation;
 mod clipboard;
 mod column;

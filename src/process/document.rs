@@ -18,6 +18,9 @@ use super::{
     metadata::{ColumnMetadata, sidecar_path},
 };
 
+/// 新規tableに作れるcell数の上限。存在しない大量のcellを仮想的に作らない。
+const MAX_NEW_TABLE_CELLS: usize = 100_000;
+
 #[derive(Debug)]
 /// ```text
 /// 責務: [
@@ -38,7 +41,7 @@ use super::{
 /// ]
 /// ```
 pub struct CsvDocument {
-    path: PathBuf,
+    path: Option<PathBuf>,
     source_encoding: SourceEncoding,
     table: Table,
     baseline: Table,
@@ -138,7 +141,7 @@ impl CsvDocument {
         let mut history = EditHistory::default();
         history.mark_saved();
         Ok(Self {
-            path,
+            path: Some(path),
             source_encoding: SourceEncoding::Utf8,
             baseline: table.clone(),
             table,
@@ -150,6 +153,80 @@ impl CsvDocument {
             disk_fingerprint,
             external_conflicts: Vec::new(),
         })
+    }
+
+    /// ```text
+    /// 責務: [
+    /// new_unassigned: 保存先未割当（Unassigned backing）の新規documentを作る。diskにはfileを作らない
+    /// ]
+    /// 引数: [
+    /// rows: 初期内容
+    /// ]
+    /// 戻り値: [
+    /// Self: 編集・Undoできる未保存のdocument。`save`はpathが無いためerrorになり、`save_as`で初めてbackingが決まる
+    /// ]
+    /// ```
+    pub fn new_unassigned(rows: Vec<Vec<String>>) -> Self {
+        let table = Table::new(rows);
+        let mut history = EditHistory::default();
+        history.mark_saved();
+        Self {
+            path: None,
+            source_encoding: SourceEncoding::Utf8,
+            baseline: table.clone(),
+            table,
+            history,
+            validation_rules: BTreeMap::new(),
+            metadata: ColumnMetadata::default(),
+            metadata_error: None,
+            save_metadata_sidecar: true,
+            disk_fingerprint: ContentFingerprint::empty(),
+            external_conflicts: Vec::new(),
+        }
+    }
+
+    /// ```text
+    /// 責務: [
+    /// new_blank: 行数・列数を明示した有限の空tableで、保存先未割当のdocumentを作る
+    /// ]
+    /// 引数: [
+    /// data_rows: 見出し行を除くデータ行数
+    /// columns: 列数
+    /// headers: 見出し行。Noneなら見出し行を作らない。列数と同じ個数が必要
+    /// ]
+    /// 戻り値: [
+    /// Result<Self, DocumentError>: 空cellだけの有限table。0行0列も可
+    /// ]
+    /// エラー: [
+    /// DocumentError: 見出しの個数が列数と違う、またはcell総数が上限（100000）を超える場合
+    /// ]
+    /// 補足: [
+    /// 存在しない大量のcellを仮想的に作らない。大きな表は「行/列を追加」で育てる
+    /// ]
+    /// ```
+    pub fn new_blank(
+        data_rows: usize,
+        columns: usize,
+        headers: Option<Vec<String>>,
+    ) -> Result<Self, DocumentError> {
+        if let Some(headers) = &headers
+            && headers.len() != columns
+        {
+            return Err(DocumentError::Edit(format!(
+                "header count {} does not match column count {columns}",
+                headers.len()
+            )));
+        }
+        let total_rows = data_rows.saturating_add(usize::from(headers.is_some()));
+        if total_rows.saturating_mul(columns) > MAX_NEW_TABLE_CELLS {
+            return Err(DocumentError::Edit(format!(
+                "a new table may have at most {MAX_NEW_TABLE_CELLS} cells"
+            )));
+        }
+        let mut rows = Vec::with_capacity(total_rows);
+        rows.extend(headers);
+        rows.extend((0..data_rows).map(|_| vec![String::new(); columns]));
+        Ok(Self::new_unassigned(rows))
     }
 
     /// ```text
@@ -221,7 +298,7 @@ impl CsvDocument {
 
         let baseline = loaded.table.clone();
         Ok(Self {
-            path,
+            path: Some(path),
             source_encoding: loaded.encoding,
             table: loaded.table,
             baseline,
@@ -246,7 +323,34 @@ impl CsvDocument {
     /// ]
     /// ```
     pub fn path(&self) -> &Path {
-        &self.path
+        self.path.as_deref().unwrap_or_else(|| Path::new(""))
+    }
+
+    /// ```text
+    /// 責務: [
+    /// backing_path: 現在のbacking file（保存先）のpathを返す
+    /// ]
+    /// 戻り値: [
+    /// Option<&Path>: File backingならSome、保存先未割当（Unassigned）ならNone
+    /// ]
+    /// 補足: [
+    /// `path`は保存先未割当のとき空のpathを返す。保存先の有無はこの関数か`is_unassigned`で確かめる
+    /// ]
+    /// ```
+    pub fn backing_path(&self) -> Option<&Path> {
+        self.path.as_deref()
+    }
+
+    /// ```text
+    /// 責務: [
+    /// is_unassigned: 保存先がまだ決まっていない（初回Saveにpathが必要な）documentか返す
+    /// ]
+    /// 戻り値: [
+    /// bool: Unassigned backingならtrue。`save_as`が成功するとfalseになる
+    /// ]
+    /// ```
+    pub fn is_unassigned(&self) -> bool {
+        self.path.is_none()
     }
 
     /// ```text
@@ -449,7 +553,7 @@ impl CsvDocument {
     /// ]
     /// ```
     pub fn metadata_path(&self) -> PathBuf {
-        sidecar_path(&self.path)
+        self.path.as_deref().map(sidecar_path).unwrap_or_default()
     }
 
     /// ```text
@@ -567,8 +671,12 @@ impl CsvDocument {
         if !self.save_metadata_sidecar {
             return Ok(());
         }
+        let path = self
+            .path
+            .as_deref()
+            .ok_or(DocumentError::SaveRequiresPath)?;
         self.metadata
-            .save(&self.path)
+            .save(path)
             .map_err(|error| DocumentError::Metadata(error.to_string()))?;
         self.metadata_error = None;
         Ok(())
@@ -1475,11 +1583,12 @@ impl CsvDocument {
     /// ```
     pub fn save(&mut self) -> Result<(), DocumentError> {
         self.ensure_no_transaction("save")?;
-        let current =
-            fingerprint_file(&self.path).map_err(|error| DocumentError::ExternalCheck {
-                path: self.path.display().to_string(),
-                message: error.to_string(),
-            })?;
+        // 保存先未割当のdocumentは、pathを決めるsave_asが先に必要（対話なしでは自動で決めない）。
+        let path = self.path.clone().ok_or(DocumentError::SaveRequiresPath)?;
+        let current = fingerprint_file(&path).map_err(|error| DocumentError::ExternalCheck {
+            path: path.display().to_string(),
+            message: error.to_string(),
+        })?;
         if current != self.disk_fingerprint {
             self.merge_external_disk()?;
             if !self.is_dirty() && self.source_encoding == SourceEncoding::Utf8 {
@@ -1490,21 +1599,20 @@ impl CsvDocument {
             return Ok(());
         }
         self.disk_fingerprint =
-            match write_csv_utf8_if_unchanged(&self.path, &self.table, Some(self.disk_fingerprint))
-            {
+            match write_csv_utf8_if_unchanged(&path, &self.table, Some(self.disk_fingerprint)) {
                 Ok(fingerprint) => fingerprint,
                 Err(crate::data::CsvIoError::ExternalModification) => {
                     self.merge_external_disk()?;
                     if self.is_dirty() {
                         return Err(DocumentError::ExternalModification {
-                            path: self.path.display().to_string(),
+                            path: path.display().to_string(),
                         });
                     }
                     return Ok(());
                 }
                 Err(error) => {
                     return Err(DocumentError::Save {
-                        path: self.path.display().to_string(),
+                        path: path.display().to_string(),
                         message: error.to_string(),
                     });
                 }
@@ -1542,7 +1650,7 @@ impl CsvDocument {
                 message: error.to_string(),
             })?;
 
-        self.path = path;
+        self.path = Some(path);
         self.source_encoding = SourceEncoding::Utf8;
         self.baseline = self.table.clone();
         self.history.mark_saved();
@@ -1566,8 +1674,12 @@ impl CsvDocument {
     // ]
     // }
     fn merge_external_disk(&mut self) -> Result<bool, DocumentError> {
-        let loaded = read_csv(&self.path).map_err(|error| DocumentError::ExternalCheck {
-            path: self.path.display().to_string(),
+        // 保存先未割当のdocumentにはdisk上の相手がいないので、外部変更も無い。
+        let Some(path) = self.path.clone() else {
+            return Ok(false);
+        };
+        let loaded = read_csv(&path).map_err(|error| DocumentError::ExternalCheck {
+            path: path.display().to_string(),
             message: error.to_string(),
         })?;
         if loaded.fingerprint == self.disk_fingerprint {
@@ -2511,6 +2623,9 @@ pub enum DocumentError {
 
     #[error("failed to edit CSV: {0}")]
     Edit(String),
+
+    #[error("the document has no file yet; choose a path with save_as before saving")]
+    SaveRequiresPath,
 
     #[error("invalid CSV text: {0}")]
     Csv(String),

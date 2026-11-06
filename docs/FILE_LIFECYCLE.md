@@ -107,3 +107,13 @@ file.save_copy
 - unsaved work中NewでTransition Guard
 
 この日本語版をファイルライフサイクルの正本とします。
+
+## 保存先未割当documentの実装契約（#332）
+
+状態: 実装済み（`CsvDocument::new_unassigned` / `new_blank` / `backing_path` / `is_unassigned`）。確認日: 2026-11-06。
+
+- 新規documentはBacking `Unassigned`で作り、diskにfileも一時fileも作らない。編集・Undo・Redo・検証は保存先があるdocumentと同じに動く。
+- `new_blank(data_rows, columns, headers)`は行数・列数を明示した有限の空tableを作る。見出し行は任意で、個数は列数と同じでなければerror。0行0列も可。cell総数は100,000以下に限り、存在しない大量のcellを仮想的に作らない。
+- `save` / `save_metadata`は保存先が無いと`DocumentError::SaveRequiresPath`で拒否する（対話なしでpathを自動で決めない）。拒否してもfileは作られず、編集内容とdirty状態は失われない。外部変更の確認は対象外（`refresh_if_external_change`は`false`）。
+- `save_as(path)`で初めてbackingが決まり、canonical contentを書いてcleanになる。以後の`save`は新しいbackingへ書く。`path()`は保存先未割当のとき空のpathを返すので、保存先の有無は`backing_path()`（`None`なら未割当）または`is_unassigned()`で確かめる。
+- 対象外: GUIの`file.new_csv`・path選択UI、Transition Guard、`file.save_copy`、既存の保存先を上書きする確認、New Project（後続Issue）。

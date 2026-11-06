@@ -48,6 +48,18 @@ pub(crate) struct ContentFingerprint {
 impl ContentFingerprint {
     // {
     //   責務: [
+    //     empty: 空のcontentのfingerprintを返す。まだfileが無い保存先未割当documentの初期値に使う
+    //   ]
+    //   戻り値: [
+    //     Self: 空contentの比較用fingerprint
+    //   ]
+    // }
+    pub(crate) fn empty() -> Self {
+        Self::from_bytes(&[])
+    }
+
+    // {
+    //   責務: [
     //     from_bytes: bytesから長さと独立seedのhashを持つfingerprintを作る
     //   ]
     //   引数: [

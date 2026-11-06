@@ -32,7 +32,6 @@ pub(super) fn evaluate_conditional(
     depth: usize,
     read_cell: &mut impl FnMut(CellRef) -> Result<CalculationValue, CalculationFailure>,
 ) -> Result<CalculationValue, CalculationFailure> {
-    let criterion = evaluate_expression(spec.value, depth + 1, read_cell)?;
     let criteria_cells = spec.criteria_range.cells();
     let sum_cells = match spec.sum_range {
         Some(range) if range.dimensions() != spec.criteria_range.dimensions() => {
@@ -41,6 +40,8 @@ pub(super) fn evaluate_conditional(
         Some(range) => range.cells(),
         None => criteria_cells.clone(),
     };
+
+    let criterion = evaluate_expression(spec.value, depth + 1, read_cell)?;
 
     let mut count = 0_i64;
     let mut total = CalculationValue::Integer(0);

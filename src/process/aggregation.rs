@@ -3,7 +3,7 @@
 //! 処理: [1: 入力rowをgroup keyのraw値でまとめる 2: 集計はCalculation標準関数と同じ規則で評価する 3: group毎に元rowの参照とfreshness診断を保つ]
 //! 補足: [入力rowの範囲（all canonical rows / View filter後 / selection）は呼び出し側が選ぶ。このmoduleは入力を読むだけで書き換えない]
 //! ```
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::process::CsvDocument;
 use crate::process::calculation::{
@@ -141,7 +141,7 @@ pub enum AggregationError {
 //   責務: [rows_from_document: CsvDocumentの指定rowを読み取り専用で集計入力へ変換する]
 //   処理: [cellはすべてFreshのraw文字列として読むだけで、documentは変更しない]
 //   引数: [document: 読むdocument, source: source名, row_indices: 対象row（canonical全rowまたはView filter後・selectionを呼び出し側が選ぶ）]
-//   戻り値: [Vec<InputRow>: 集計入力。範囲外のrowは含めない]
+//   戻り値: [Vec<InputRow>: 集計入力。範囲外のrowと重複したrow indexは含めない（二重計上を防ぐ）]
 // }
 pub fn rows_from_document(
     document: &CsvDocument,
@@ -149,9 +149,10 @@ pub fn rows_from_document(
     row_indices: impl IntoIterator<Item = usize>,
 ) -> Vec<InputRow> {
     let width = document.column_count();
+    let mut seen = HashSet::new();
     row_indices
         .into_iter()
-        .filter(|row| *row < document.row_count())
+        .filter(|row| *row < document.row_count() && seen.insert(*row))
         .map(|row| InputRow {
             source_row: SourceRowRef {
                 source: source.to_owned(),
@@ -249,6 +250,8 @@ fn build_group(
     positions: &[usize],
 ) -> GroupRow {
     let mut diagnostics = FreshnessDiagnostics::default();
+    // 同じcellを複数の集計列が参照しても、診断には1回だけ数える。
+    let mut counted: HashSet<(usize, usize)> = HashSet::new();
     let values = request
         .aggregates
         .iter()
@@ -257,12 +260,12 @@ fn build_group(
                 .map(CalculationValue::Integer)
                 .map_err(|_| CalculationFailure::ArithmeticOverflow),
             AggregateSpec::Column { function, column } => {
-                let texts = fresh_texts(rows, positions, *column, &mut diagnostics);
+                let texts = fresh_texts(rows, positions, *column, &mut diagnostics, &mut counted);
                 aggregate_texts(*function, texts)
             }
             AggregateSpec::DistinctCount { column } => {
                 let distinct: BTreeSet<String> =
-                    fresh_texts(rows, positions, *column, &mut diagnostics)
+                    fresh_texts(rows, positions, *column, &mut diagnostics, &mut counted)
                         .into_iter()
                         .filter(|text| !text.is_empty())
                         .collect();
@@ -293,12 +296,14 @@ fn fresh_texts(
     positions: &[usize],
     column: usize,
     diagnostics: &mut FreshnessDiagnostics,
+    counted: &mut HashSet<(usize, usize)>,
 ) -> Vec<String> {
     let mut texts = Vec::new();
     for position in positions {
         let cell = &rows[*position].cells[column];
         match cell.freshness {
             CellFreshness::Fresh => texts.push(cell.text.clone()),
+            _ if !counted.insert((*position, column)) => {}
             CellFreshness::Stale => diagnostics.stale += 1,
             CellFreshness::Error => diagnostics.error += 1,
             CellFreshness::Pending => diagnostics.pending += 1,

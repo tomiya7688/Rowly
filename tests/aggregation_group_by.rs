@@ -237,3 +237,44 @@ fn errors_stay_inside_their_aggregate_and_bad_columns_are_rejected() {
     );
     assert!(group_by(&[], &request).unwrap().groups.is_empty());
 }
+
+#[test]
+// {
+//   責務: [shared_cells_are_counted_once_and_duplicate_row_indices_are_ignored: 同じnon-fresh cellを複数の集計列が参照しても診断は1回だけ数え、重複したrow indexは二重計上しないことを検証する。],
+//   戻り値: [(): 全assertion成功時に完了する。]
+// }
+fn shared_cells_are_counted_once_and_duplicate_row_indices_are_ignored() {
+    let rows = vec![InputRow {
+        source_row: SourceRowRef {
+            source: "d".into(),
+            row: 0,
+        },
+        cells: vec![
+            InputCell::fresh("a"),
+            InputCell {
+                text: "9".to_owned(),
+                freshness: CellFreshness::Stale,
+            },
+        ],
+    }];
+    let request = GroupByRequest {
+        key_columns: vec![0],
+        aggregates: vec![
+            AggregateSpec::Column {
+                function: AggregateFunction::CountA,
+                column: 1,
+            },
+            AggregateSpec::Column {
+                function: AggregateFunction::Count,
+                column: 1,
+            },
+            AggregateSpec::DistinctCount { column: 1 },
+        ],
+    };
+    let result = group_by(&rows, &request).unwrap();
+    assert_eq!(result.groups[0].diagnostics.stale, 1);
+
+    let (_directory, document) = document(&DATA);
+    let rows = rows_from_document(&document, "g.csv", [1, 1, 3, 1, 99]);
+    assert_eq!(rows.len(), 2);
+}

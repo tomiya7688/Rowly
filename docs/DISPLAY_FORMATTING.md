@@ -201,3 +201,16 @@ XLSX / PDF / displayed View exportでは、対応可能なstyleだけを明示�
 - `style_for`は1 cellあたり有効なruleの数に比例する計算量なので、大きな表では表示するcellだけを解決して呼ぶ（全cellを走査しない）。範囲に同じ見出しが重複しても、解決後の列位置は1回だけ持つ。
 - 行高は行位置をキーにした正で有限（上限1,000mm）の値で、CSV構造に影響しない。`add_rule`は空のtargetや逆の行範囲を、`set_row_height`は不正な行高を拒否する。
 - 対象外: 表示書式の適用（#284）、条件付き書式（#286）、Projectへの保存（#287）、GUI・Command登録（#288）、描画。
+
+## 条件付き書式rule engineの実装契約（#286）
+
+状態: 実装済み（`src/process/conditional_format.rs`）。確認日: 2026-11-07。
+
+- `ConditionalFormat{rules}`は、条件に合うcellへ表示styleを重ねるView設定で、`CsvDocument`を受け取らずCSVには触れない。評価（`ResolvedConditional::evaluate`）は純粋な関数で、File I/Oなどの副作用を持たず、同じ入力から常に同じ結果になる。
+- ruleは`ConditionalRule{target, source, predicate, style, stop_if_true}`。targetはView style（#285）と同じ`StyleTarget`で、同じ規則で見出しとCSVの行位置へ引き直す（`resolve_target`を共有）。見出しが無い・重複するruleだけが休眠し、他は有効のまま。休眠したruleは捨てず、戻れば再び有効になる。
+- 値の取り方（`ValueSource`）: `Raw`（raw文字列。比較は辞書順で、"10"は"9"より小さい）、`Number`・`Date`（rawを正規形の数値・`YYYY-MM-DD`の日付として明示的に解釈）、`DerivedText`・`DerivedNumber`（freshな計算結果）。数値は10進の桁のまま正確に比べる（浮動小数点で区別できない桁も）。右辺の型が値の取り方に合わないruleは、`add_rule`で拒否する。
+- 条件（`Predicate`）: 比較（=・≠・<・≤・>・≥）、範囲（両端を含む）、含む・始まる（文字列の値だけ）、空・空でない、And・Or・Not。空の組み合わせや空の検索語は拒否する。
+- 評価できない場合は合ったことにせず、理由を`Diagnostic`として返す。数値・日付として読めない値（「abc」「1,234」「1e3」「存在しない日」）は`NotANumber`・`NotADate`で、0や空として扱わない。空のcellは数値・日付の比較に合わず、診断も出さない。
+- stale / error / pendingの計算結果、計算結果が無いcellは、通常の値として評価せず（条件に合う値でも）、`DerivedStale`・`DerivedError`・`DerivedPending`・`DerivedMissing`の診断にする。freshな計算結果だけが評価される。
+- 優先順位はruleの順序: 先のruleから評価し、合ったruleのstyleをView styleと同じ規則（項目ごとに後の明示値が勝つ）で重ねる。`stop_if_true`のruleが合ったら、後のruleは評価しない。順序を入れ替えれば結果が変わる。
+- 対象外: Projectへの保存（#287）、GUI・Command登録（#288）、色の自動配色（色階調・データバー）。

@@ -151,3 +151,14 @@ source freshnessを引き継ぎます。
 - 該当rowが無いbucketは`None`（空）で、0や空文字にしない。Rows・Columnsが空なら全体を1行・1列として1つのcellにする。filterの後に残るrowが1つも無ければ、Rows・Columnsが空でもkeyは作らず、格子は空（row_keys・column_keys・cellsが空）になる。keyは実在するrowからだけ作る。
 - 各`PivotCell`は集計値・`source_rows`（drill down用）・`FreshnessDiagnostics`を持つ。元データは複製せず、CSVの元cellへ書き込まない。
 - 総計・小計、列の動的な展開上限、Viewへの保存は対象外（Viewへの保存は#299）。
+
+## 定義の保存・復元の実装契約（#299）
+
+状態: 実装済み（`src/process/aggregation_definition.rs`、`src/project_init/aggregation_views.rs`）。確認日: 2026-11-06。
+
+- Group By / Pivot定義は`AggregationDefinition{name, scope, kind}`で、列は列indexでなく見出し名で持つ。入力範囲は`AllRows` / `ViewFiltered` / `Selection`。実際のrow選択は呼び出し側が行う。
+- projectでは`generated.rly`へ1定義1行で保存する: `SET This.Project.Source("id").Worksheet.Aggregation("name").Definition = GroupBy(Scope(..), Keys([..]), Aggregates([..]))`（Pivotは`Rows` / `Columns` / `Values` / `Filters`）。`ProjectSession::save_generated_aggregation_views`で他の設定と同じstagingに載り、`save`で確定する。保存に失敗してもstagingは残り、再試行できる。
+- `user.rly`は読むだけで書き換えない。同じsource・同じ名前の定義が`user.rly`にあれば、それを優先し、generatedには書かない。
+- 再openは`ProjectSession::aggregation_views`で名前順に読む。壊れた宣言は黙って捨てず、行番号つきのerrorにする。
+- 休眠: `AggregationDefinition::resolve(headers)`が見出しを現在の列へ解決する。見出しが無い、または複数ある定義だけが`DormantReason{missing, ambiguous}`を返して休眠し、他の定義は影響を受けない。休眠した定義は破棄せず保存され、列が戻れば再び有効になる。
+- bare CSVにはprojectが無いため保存しない（session内だけ）。ProjectSessionのAPIはproject内のsourceにだけ使える。

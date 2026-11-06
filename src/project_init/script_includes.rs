@@ -51,6 +51,7 @@ pub(super) fn read_safe_init_config(
         } else {
             config.column_types.extend(parsed.column_types);
             config.validation_rules.extend(parsed.validation_rules);
+            config.aggregation_views.extend(parsed.aggregation_views);
             config
                 .calculation_bindings
                 .extend(parsed.calculation_bindings);

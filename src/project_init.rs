@@ -5,6 +5,7 @@ use std::{fs, io, path::Path};
 use thiserror::Error;
 
 use crate::{
+    process::aggregation_definition::AggregationDefinition,
     process::calculation::{CalculationEngine, CalculationTarget, CalculationTrigger},
     process::{CellRef, CsvDocument},
     project::{ProjectError, RowlyProject, write_project_file_atomic},
@@ -60,13 +61,14 @@ struct ProjectInitFileSnapshot {
 
 // {
 //   責務: [ProjectInitUpdate: ひとつのgenerated設定カテゴリでsession configを更新する]
-//   選択肢: [ColumnTypes: 列型, ValidationRules: validation, CalculationBindings: Calculation Binding]
+//   選択肢: [ColumnTypes: 列型, ValidationRules: validation, CalculationBindings: Calculation Binding, AggregationViews: Group By / Pivot定義]
 // }
 #[derive(Clone, Copy)]
 enum ProjectInitUpdate<'a> {
-    ColumnTypes,
-    ValidationRules,
+    ColumnTypes(&'a CsvDocument),
+    ValidationRules(&'a CsvDocument),
     CalculationBindings(&'a CalculationEngine),
+    AggregationViews(&'a [AggregationDefinition]),
 }
 
 impl ProjectInitSnapshot {
@@ -169,6 +171,15 @@ impl StagedProjectInit {
         config.apply_source(source_id, document)
     }
 
+    pub(crate) fn aggregation_views(
+        &self,
+        source_id: &str,
+    ) -> Result<Vec<AggregationDefinition>, ProjectInitError> {
+        let mut config = self.config.clone();
+        config.apply_user_overrides(read_optional_config(&self.user_path)?);
+        Ok(config.source_aggregation_views(source_id))
+    }
+
     pub(crate) fn apply_calculation_bindings(
         &self,
         source_id: &str,
@@ -190,6 +201,12 @@ mod script_includes;
 use script_includes::{
     InitInclude, is_rem_comment, parse_column_type_declaration, parse_init_includes, parse_quoted,
     quote, read_safe_init_config, strip_prefix_ci,
+};
+
+#[path = "project_init/aggregation_views.rs"]
+mod aggregation_views;
+use aggregation_views::{
+    AggregationViews, is_aggregation_declaration, parse_aggregation_declaration,
 };
 
 #[path = "project_init/calculation_bindings.rs"]
@@ -248,9 +265,8 @@ pub(crate) fn stage_generated_column_types(
         project,
         manifest_path,
         source_id,
-        document,
         staged,
-        ProjectInitUpdate::ColumnTypes,
+        ProjectInitUpdate::ColumnTypes(document),
     )
 }
 
@@ -265,9 +281,8 @@ pub(crate) fn stage_generated_validation_rules(
         project,
         manifest_path,
         source_id,
-        document,
         staged,
-        ProjectInitUpdate::ValidationRules,
+        ProjectInitUpdate::ValidationRules(document),
     )
 }
 
@@ -275,7 +290,7 @@ pub(crate) fn stage_generated_calculation_bindings(
     project: &RowlyProject,
     manifest_path: &Path,
     source_id: &str,
-    document: &CsvDocument,
+    _document: &CsvDocument,
     engine: &CalculationEngine,
     staged: Option<&StagedProjectInit>,
 ) -> Result<StagedProjectInit, ProjectInitError> {
@@ -283,17 +298,51 @@ pub(crate) fn stage_generated_calculation_bindings(
         project,
         manifest_path,
         source_id,
-        document,
         staged,
         ProjectInitUpdate::CalculationBindings(engine),
     )
+}
+
+// {
+//   責務: [stage_generated_aggregation_views: sourceのGroup By / Pivot定義をgenerated設定へstagingする]
+//   処理: [渡された定義の集合でsourceのgenerated定義を置き換える。user.rlyは読むだけで書かない。列が欠けていても定義は保存し、休眠の判断は解決時に行う]
+//   引数: [project/manifest_path: 対象project, source_id: 対象source, definitions: 保存する全定義, staged: 既存のstaging]
+//   戻り値: [Result<StagedProjectInit, ProjectInitError>: 新しいstaging、または名前の不備・script検証の失敗]
+// }
+pub(crate) fn stage_generated_aggregation_views(
+    project: &RowlyProject,
+    manifest_path: &Path,
+    source_id: &str,
+    definitions: &[AggregationDefinition],
+    staged: Option<&StagedProjectInit>,
+) -> Result<StagedProjectInit, ProjectInitError> {
+    stage_generated_configuration(
+        project,
+        manifest_path,
+        source_id,
+        staged,
+        ProjectInitUpdate::AggregationViews(definitions),
+    )
+}
+
+// {
+//   責務: [load_aggregation_views: 保存済みのGroup By / Pivot定義をgenerated + user.rlyから読む]
+//   処理: [safe initのincludeに従い、user.rlyの同名定義をgeneratedより優先して名前順に返す]
+//   戻り値: [Result<Vec<AggregationDefinition>, ProjectInitError>: sourceの定義。未保存なら空]
+// }
+pub(crate) fn load_aggregation_views(
+    project: &RowlyProject,
+    manifest_path: &Path,
+    source_id: &str,
+) -> Result<Vec<AggregationDefinition>, ProjectInitError> {
+    Ok(read_safe_init_config(project, manifest_path, source_id)?
+        .source_aggregation_views(source_id))
 }
 
 fn stage_generated_configuration(
     project: &RowlyProject,
     manifest_path: &Path,
     source_id: &str,
-    document: &CsvDocument,
     staged: Option<&StagedProjectInit>,
     update: ProjectInitUpdate<'_>,
 ) -> Result<StagedProjectInit, ProjectInitError> {
@@ -328,11 +377,14 @@ fn stage_generated_configuration(
     };
     let user_config = read_optional_config(&user_path)?;
     match update {
-        ProjectInitUpdate::ColumnTypes => {
+        ProjectInitUpdate::ColumnTypes(document) => {
             config.update_column_types(source_id, document, &user_config);
         }
-        ProjectInitUpdate::ValidationRules => {
+        ProjectInitUpdate::ValidationRules(document) => {
             config.update_validation_rules(source_id, document, &user_config)?;
+        }
+        ProjectInitUpdate::AggregationViews(definitions) => {
+            config.update_aggregation_views(source_id, definitions, &user_config)?;
         }
         ProjectInitUpdate::CalculationBindings(engine) => {
             config.update_calculation_bindings(source_id, engine, &user_config)?;
@@ -450,6 +502,8 @@ pub enum ProjectInitError {
     MissingCalculationTarget(CellRef),
     #[error("calculation target `{0}` has a trigger but no expression")]
     MissingCalculationExpression(String),
+    #[error("invalid aggregation definition: {0}")]
+    InvalidAggregationDefinition(String),
     #[error(transparent)]
     Dsl(#[from] crate::rowly_dsl::DslError),
     #[error(transparent)]

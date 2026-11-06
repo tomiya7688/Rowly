@@ -9,8 +9,9 @@ use crate::process::{
 };
 
 use super::{
-    ProjectCalculationBinding, ProjectInitError, is_project_calculation_declaration,
-    is_rem_comment, parse_column_type_declaration, parse_project_calculation_declaration,
+    AggregationViews, ProjectCalculationBinding, ProjectInitError, is_aggregation_declaration,
+    is_project_calculation_declaration, is_rem_comment, parse_aggregation_declaration,
+    parse_column_type_declaration, parse_project_calculation_declaration,
     parse_project_validation_declaration, quote, serialize_calculation_target,
     serialize_validation_expression, validation_statement_needs_continuation,
 };
@@ -21,12 +22,14 @@ pub(super) struct ProjectInitConfig {
     pub(super) validation_rules: BTreeMap<(String, String), ValidationRule>,
     pub(super) calculation_bindings:
         BTreeMap<(String, CalculationTarget), ProjectCalculationBinding>,
+    pub(super) aggregation_views: AggregationViews,
 }
 
 impl ProjectInitConfig {
     pub(super) fn apply_user_overrides(&mut self, user_config: Self) {
         self.column_types.extend(user_config.column_types);
         self.validation_rules.extend(user_config.validation_rules);
+        self.aggregation_views.extend(user_config.aggregation_views);
 
         let user_ranges = user_config
             .calculation_bindings
@@ -64,6 +67,22 @@ impl ProjectInitConfig {
                     (declaration.source_id, declaration.header),
                     declaration.column_type,
                 );
+                index += 1;
+                continue;
+            }
+
+            if is_aggregation_declaration(line) {
+                let (source_id, definition) =
+                    parse_aggregation_declaration(line).map_err(|message| {
+                        ProjectInitError::InvalidConfig {
+                            path: path.display().to_string(),
+                            line: index + 1,
+                            message,
+                        }
+                    })?;
+                config
+                    .aggregation_views
+                    .insert((source_id, definition.name.clone()), definition);
                 index += 1;
                 continue;
             }
@@ -212,6 +231,7 @@ impl ProjectInitConfig {
             );
             output.push('\n');
         }
+        self.serialize_aggregation_views(&mut output);
         output
     }
 

@@ -1,6 +1,7 @@
 use crate::{
     process::{
         CsvDocument,
+        aggregation_definition::AggregationDefinition,
         calculation::{CalculationEngine, CalculationTarget},
     },
     project::{SourceKind, resolve_project_reference},
@@ -137,6 +138,67 @@ impl ProjectSession {
         self.staged_init = Some(staged);
         self.mark_structure_or_config_dirty();
         Ok(())
+    }
+
+    /// ```text
+    /// 責務: [save_generated_aggregation_views: sourceのGroup By / Pivot定義をgenerated init DSLへstagingする]
+    /// 処理: [source idを確認し、渡された定義の全集合でsourceのgenerated定義を置き換えてsession内へ保持する。bare CSVにはprojectが無いのでこのAPIは使えず、定義はsession内だけに留まる]
+    /// 引数: [source_id: project source id, definitions: 保存する全定義]
+    /// 戻り値: [Result<(), ProjectSessionError>: staging成功または設定error]
+    /// 副作用: [generated設定をsession内へ保持しproject config dirtyを立てる。user.rlyは書き換えない]
+    /// エラー: [ProjectSessionError: source、定義の名前、script検証の失敗]
+    /// ```
+    pub fn save_generated_aggregation_views(
+        &mut self,
+        source_id: &str,
+        definitions: &[AggregationDefinition],
+    ) -> Result<(), ProjectSessionError> {
+        self.require_source(source_id)?;
+        let staged = project_init::stage_generated_aggregation_views(
+            &self.project,
+            self.manifest_path(),
+            source_id,
+            definitions,
+            self.staged_init.as_ref(),
+        )?;
+        self.staged_init = Some(staged);
+        self.mark_structure_or_config_dirty();
+        Ok(())
+    }
+
+    /// ```text
+    /// 責務: [aggregation_views: sourceのGroup By / Pivot定義を読む]
+    /// 処理: [staged configがあればuser overrideを重ね、なければproject DSLから読む。列の有無は見ない（休眠の判断はresolveで行う）]
+    /// 引数: [source_id: project source id]
+    /// 戻り値: [Result<Vec<AggregationDefinition>, ProjectSessionError>: 名前順の定義。未保存なら空]
+    /// ```
+    pub fn aggregation_views(
+        &self,
+        source_id: &str,
+    ) -> Result<Vec<AggregationDefinition>, ProjectSessionError> {
+        self.require_source(source_id)?;
+        if let Some(staged_init) = &self.staged_init {
+            Ok(staged_init.aggregation_views(source_id)?)
+        } else {
+            Ok(project_init::load_aggregation_views(
+                &self.project,
+                self.manifest_path(),
+                source_id,
+            )?)
+        }
+    }
+
+    fn require_source(&self, source_id: &str) -> Result<(), ProjectSessionError> {
+        if self
+            .project
+            .sources
+            .iter()
+            .any(|source| source.id == source_id)
+        {
+            Ok(())
+        } else {
+            Err(ProjectSessionError::SourceNotFound(source_id.to_owned()))
+        }
     }
 
     /// ```text

@@ -116,3 +116,14 @@ Chartだけで意味を伝えません。
 - 各点は`provenance`（元row参照）を持つ。aggregateの点はgroup / bucketに入った全rowで、drill downに使える。Pivotの空のbucketは元row参照が空の欠損になる。
 - 円グラフはseriesが1つ。散布図はcategory列を数値のxに使い、共通のxに複数のy seriesを置ける。xは実在してfreshな数値のcellだけで、cellが無い行を行番号で代用しない。診断の件数はseries毎の点を数える。点の来歴は値のcell自身のものだけで、値の無い点に別cellの来歴を貸さない。seriesが無い、円グラフに複数series、散布図にx列が無い定義は`InvalidDefinition`。
 - 解決はCSVに触れず、source表を変えてもCSVは変わらない。対象外: 描画（#303）、Projectへの保存（#304）、GUI（#305）。
+
+## Chart定義の保存・復元の実装契約（#304）
+
+状態: 実装済み（`src/project_init/chart_views.rs`、`ProjectSession::save_generated_chart_views` / `chart_views`）。確認日: 2026-11-06。
+
+- projectでは`generated.rly`へ1定義1行で保存する: `SET This.Project.Source("id").Worksheet.Chart("name").Definition = Column(Source("data"), Category("month"), Series([Series("sales", "Sales")]))`。外側の`Source("id")`はChartの元になるprojectのsourceで、`Source(..)`引数が`ChartDefinition.source_id`（解決時に引くdata source）である。種類はLine / Bar / Column / Area / Scatter / Pie。
+- `ProjectSession::save_generated_chart_views`で他の設定と同じstagingに載り、`save`で確定する。保存に失敗してもstagingは残り、再試行できる。再openは`chart_views`で名前順に読む。壊れた宣言は黙って捨てず、行番号つきのerrorにする。
+- `user.rly`は読むだけで書き換えない。同じsource・同じ名前の定義が`user.rly`にあれば、それを優先し、generatedには書かない。
+- 保存時にdata sourceや列が存在するかは検証しない。sourceや列が欠けても定義は消えず、`chart::resolve`が`Unresolved`を返すだけ（休眠）。戻れば再び解決できる。名前の空・重複、data source idの空は保存時にerror。
+- `ChartDefinition.source_id`は物理source、named View、Group By / Pivot結果などを区別する文字列で、そのまま保存し、意味は解決する側（`SourceTable`のid）が決める。たとえばnamed Viewなら呼び出し側が`view:<名前>`のような安定したidで`SourceTable`を作る。
+- bare CSVにはprojectが無いため保存しない（session内だけ）。保存するのは定義だけで、描画結果やCSV値は保存しない。

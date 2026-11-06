@@ -21,7 +21,7 @@ const DEFINITION: &str = ").Definition =";
 
 /// DSLの値。文字列・リスト・名前付き呼び出しだけを持つ。
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Value {
+pub(super) enum Value {
     Text(String),
     List(Vec<Value>),
     Call(String, Vec<Value>),
@@ -128,7 +128,7 @@ pub(super) fn parse_aggregation_declaration(
     Ok((source_id, interpret(name, &value)?))
 }
 
-fn parse_value(input: &str) -> Result<(Value, &str), String> {
+pub(super) fn parse_value(input: &str) -> Result<(Value, &str), String> {
     let input = input.trim_start();
     if input.starts_with('"') {
         let (text, rest) = parse_quoted(input).ok_or("unterminated string")?;
@@ -176,7 +176,7 @@ fn parse_sequence(mut input: &str, close: char) -> Result<(Vec<Value>, &str), St
 }
 
 /// 名前付き引数を1つだけ取り出す。
-fn argument<'a>(arguments: &'a [Value], name: &str) -> Result<&'a [Value], String> {
+pub(super) fn argument<'a>(arguments: &'a [Value], name: &str) -> Result<&'a [Value], String> {
     let mut found = arguments.iter().filter_map(|value| match value {
         Value::Call(call, inner) if call.eq_ignore_ascii_case(name) => Some(inner.as_slice()),
         _ => None,
@@ -190,7 +190,10 @@ fn argument<'a>(arguments: &'a [Value], name: &str) -> Result<&'a [Value], Strin
     Ok(first)
 }
 
-fn optional_argument<'a>(arguments: &'a [Value], name: &str) -> Result<&'a [Value], String> {
+pub(super) fn optional_argument<'a>(
+    arguments: &'a [Value],
+    name: &str,
+) -> Result<&'a [Value], String> {
     if arguments
         .iter()
         .any(|value| matches!(value, Value::Call(call, _) if call.eq_ignore_ascii_case(name)))
@@ -201,7 +204,7 @@ fn optional_argument<'a>(arguments: &'a [Value], name: &str) -> Result<&'a [Valu
     }
 }
 
-fn text_list(inner: &[Value]) -> Result<Vec<String>, String> {
+pub(super) fn text_list(inner: &[Value]) -> Result<Vec<String>, String> {
     match inner {
         [Value::List(items)] => items
             .iter()
@@ -214,7 +217,7 @@ fn text_list(inner: &[Value]) -> Result<Vec<String>, String> {
     }
 }
 
-fn single_text(inner: &[Value]) -> Result<String, String> {
+pub(super) fn single_text(inner: &[Value]) -> Result<String, String> {
     match inner {
         [Value::Text(text)] => Ok(text.clone()),
         _ => Err("expected one quoted string".to_owned()),
@@ -378,3 +381,6 @@ fn serialize_definition(definition: &AggregationDefinition) -> String {
 
 /// 集計定義のmap型。
 pub(super) type AggregationViews = BTreeMap<(String, String), AggregationDefinition>;
+
+/// Chart定義のmap型（project source id, 名前）→定義。
+pub(super) type ChartViews = BTreeMap<(String, String), crate::process::chart::ChartDefinition>;

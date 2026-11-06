@@ -140,3 +140,14 @@ source freshnessを引き継ぎます。
 - COUNT(*)はgroupのrow数。DISTINCT COUNTは空でないraw文字列の種類数（"1"と"1.0"は別）。COUNT・COUNTA・SUM・AVERAGE・MIN・MAXはCalculationと同じ`aggregate_texts`を共有する。
 - 集計のerror（ExpectedNumber・EmptyAggregate等）はそのaggregateの結果だけに閉じ、他の集計やgroupへ波及しない。列範囲外の要求は`AggregationError::ColumnOutOfRange`。
 - 各groupは`source_rows`を持ち、drill downに使える。CSVの元cellへ書き込まない。
+
+## Pivotコアの実装契約（#298）
+
+状態: 実装済み（`src/process/pivot.rs`）。確認日: 2026-11-06。
+
+- 要求は`PivotRequest{row_columns, column_columns, values, filters}`。集計とkey・non-freshの扱いはGroup Byコア（#297）をそのまま使い、(row key, column key)をgroup keyにして格子へ並べる。
+- 入力filterは集計前に適用する。`PivotFilter{column, allowed}`はfilter指定順にraw値で判定し、すべてに一致したrowだけを残す。不一致のrowは黙って除き、`excluded_rows`には入れない。non-freshなfilter cellのrowは判定できないため`excluded_rows`に残す。
+- row keyとcolumn keyは入力での初出順に並べる。同じ入力なら常に同じ結果になる。表示Sortはこのcoreの外のDerived Viewで行い、元CSV順は変えない。
+- 該当rowが無いbucketは`None`（空）で、0や空文字にしない。Rows・Columnsが空なら全体を1行・1列として1つのcellにする。
+- 各`PivotCell`は集計値・`source_rows`（drill down用）・`FreshnessDiagnostics`を持つ。元データは複製せず、CSVの元cellへ書き込まない。
+- 総計・小計、列の動的な展開上限、Viewへの保存は対象外（Viewへの保存は#299）。

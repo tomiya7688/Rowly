@@ -322,3 +322,45 @@ fn formatting_never_changes_the_csv() {
     );
     assert_eq!(shown("00123", &DisplayFormat::Text), "00123");
 }
+
+#[test]
+// {
+//   責務: [decimal_and_percent_rounding_matches_an_integer_reference: 小数3桁の値を全て走査し、Decimal・Percentの丸めが整数演算の基準実装(絶対値で5以上は切り上げ)と一致することを検証する。桁の補完・桁上がり・負の値・places 0..=4を含む。],
+//   戻り値: [(): 全assertion成功時に完了する。]
+// }
+fn decimal_and_percent_rounding_matches_an_integer_reference() {
+    // 基準: 値を10^3倍した整数nを、10^(3-places)単位で四捨五入(絶対値)する。
+    let reference = |n: i64, places: u32, scale: i64| -> String {
+        let magnitude = n.abs();
+        let unit_digits = 3_u32.saturating_sub(places);
+        let unit = 10_i64.pow(unit_digits);
+        let rounded = (magnitude + unit / 2) / unit; // places桁までの整数
+        let extra = places.saturating_sub(3); // 3桁より多い場合は0を補う
+        let rounded = rounded * 10_i64.pow(extra);
+        let divisor = 10_i64.pow(places);
+        let (integer, fraction) = (rounded / divisor, rounded % divisor);
+        let sign = if n < 0 && rounded != 0 { "-" } else { "" };
+        let _ = scale;
+        if places == 0 {
+            format!("{sign}{integer}")
+        } else {
+            format!(
+                "{sign}{integer}.{fraction:0width$}",
+                width = places as usize
+            )
+        }
+    };
+    for n in -12_345_i64..=12_345 {
+        let raw = {
+            let sign = if n < 0 { "-" } else { "" };
+            format!("{sign}{}.{:03}", n.abs() / 1000, n.abs() % 1000)
+        };
+        for places in 0..=4_u32 {
+            assert_eq!(
+                shown(&raw, &decimal(places as u8)),
+                reference(n, places, 1),
+                "raw={raw} places={places}"
+            );
+        }
+    }
+}

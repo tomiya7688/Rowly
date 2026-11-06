@@ -53,6 +53,7 @@ pub(super) fn read_safe_init_config(
             config.validation_rules.extend(parsed.validation_rules);
             config.aggregation_views.extend(parsed.aggregation_views);
             config.chart_views.extend(parsed.chart_views);
+            config.display.extend(parsed.display);
             config
                 .calculation_bindings
                 .extend(parsed.calculation_bindings);

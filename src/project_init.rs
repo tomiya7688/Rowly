@@ -7,8 +7,8 @@ use thiserror::Error;
 use crate::{
     process::aggregation_definition::AggregationDefinition,
     process::calculation::{CalculationEngine, CalculationTarget, CalculationTrigger},
-    process::chart::ChartDefinition,
     process::{CellRef, CsvDocument},
+    process::{chart::ChartDefinition, display_settings::DisplaySettings},
     project::{ProjectError, RowlyProject, write_project_file_atomic},
 };
 
@@ -71,6 +71,7 @@ enum ProjectInitUpdate<'a> {
     CalculationBindings(&'a CalculationEngine),
     AggregationViews(&'a [AggregationDefinition]),
     ChartViews(&'a [ChartDefinition]),
+    DisplaySettings(&'a DisplaySettings),
 }
 
 impl ProjectInitSnapshot {
@@ -223,6 +224,11 @@ use aggregation_views::{
 #[path = "project_init/chart_views.rs"]
 mod chart_views;
 use chart_views::{is_chart_declaration, parse_chart_declaration};
+
+#[path = "project_init/display_views.rs"]
+mod display_views;
+use display_views::{DisplayStore, is_display_declaration, parse_display_declaration};
+pub(crate) use display_views::{load_display_settings, stage_generated_display_settings};
 
 #[path = "project_init/calculation_bindings.rs"]
 mod calculation_bindings;
@@ -436,6 +442,11 @@ fn stage_generated_configuration(
         ProjectInitUpdate::ChartViews(definitions) => {
             config.update_chart_views(source_id, definitions, &user_config)?;
         }
+        ProjectInitUpdate::DisplaySettings(settings) => {
+            config
+                .display
+                .update(source_id, settings, &user_config.display)?;
+        }
         ProjectInitUpdate::CalculationBindings(engine) => {
             config.update_calculation_bindings(source_id, engine, &user_config)?;
         }
@@ -556,6 +567,8 @@ pub enum ProjectInitError {
     InvalidAggregationDefinition(String),
     #[error("invalid chart definition: {0}")]
     InvalidChartDefinition(String),
+    #[error("invalid display settings: {0}")]
+    InvalidDisplaySettings(String),
     #[error(transparent)]
     Dsl(#[from] crate::rowly_dsl::DslError),
     #[error(transparent)]

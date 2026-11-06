@@ -9,12 +9,13 @@ use crate::process::{
 };
 
 use super::{
-    AggregationViews, ChartViews, ProjectCalculationBinding, ProjectInitError,
-    is_aggregation_declaration, is_chart_declaration, is_project_calculation_declaration,
-    is_rem_comment, parse_aggregation_declaration, parse_chart_declaration,
-    parse_column_type_declaration, parse_project_calculation_declaration,
-    parse_project_validation_declaration, quote, serialize_calculation_target,
-    serialize_validation_expression, validation_statement_needs_continuation,
+    AggregationViews, ChartViews, DisplayStore, ProjectCalculationBinding, ProjectInitError,
+    is_aggregation_declaration, is_chart_declaration, is_display_declaration,
+    is_project_calculation_declaration, is_rem_comment, parse_aggregation_declaration,
+    parse_chart_declaration, parse_column_type_declaration, parse_display_declaration,
+    parse_project_calculation_declaration, parse_project_validation_declaration, quote,
+    serialize_calculation_target, serialize_validation_expression,
+    validation_statement_needs_continuation,
 };
 
 #[derive(Debug, Default, Clone)]
@@ -25,6 +26,7 @@ pub(super) struct ProjectInitConfig {
         BTreeMap<(String, CalculationTarget), ProjectCalculationBinding>,
     pub(super) aggregation_views: AggregationViews,
     pub(super) chart_views: ChartViews,
+    pub(super) display: DisplayStore,
 }
 
 impl ProjectInitConfig {
@@ -33,6 +35,7 @@ impl ProjectInitConfig {
         self.validation_rules.extend(user_config.validation_rules);
         self.aggregation_views.extend(user_config.aggregation_views);
         self.chart_views.extend(user_config.chart_views);
+        self.display.apply_user_overrides(user_config.display);
 
         let user_ranges = user_config
             .calculation_bindings
@@ -70,6 +73,25 @@ impl ProjectInitConfig {
                     (declaration.source_id, declaration.header),
                     declaration.column_type,
                 );
+                index += 1;
+                continue;
+            }
+
+            if is_display_declaration(line) {
+                let (source_id, item) = parse_display_declaration(line).map_err(|message| {
+                    ProjectInitError::InvalidConfig {
+                        path: path.display().to_string(),
+                        line: index + 1,
+                        message,
+                    }
+                })?;
+                config.display.insert(source_id, item).map_err(|message| {
+                    ProjectInitError::InvalidConfig {
+                        path: path.display().to_string(),
+                        line: index + 1,
+                        message,
+                    }
+                })?;
                 index += 1;
                 continue;
             }
@@ -251,6 +273,7 @@ impl ProjectInitConfig {
         }
         self.serialize_aggregation_views(&mut output);
         self.serialize_chart_views(&mut output);
+        self.display.serialize(&mut output);
         output
     }
 

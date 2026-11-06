@@ -14,6 +14,9 @@ mod tests_aggregation_views;
 #[path = "project_session/tests_chart_views.rs"]
 mod tests_chart_views;
 #[cfg(test)]
+#[path = "project_session/tests_display_settings.rs"]
+mod tests_display_settings;
+#[cfg(test)]
 #[path = "project_session/tests_staging.rs"]
 mod tests_staging;
 

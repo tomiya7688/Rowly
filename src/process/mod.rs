@@ -19,6 +19,7 @@ mod clipboard;
 mod column;
 pub mod conditional_format;
 pub mod display_format;
+pub mod display_settings;
 mod document;
 mod history;
 mod metadata;

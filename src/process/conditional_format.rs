@@ -77,9 +77,9 @@ pub enum Predicate {
     IsEmpty,
     /// 空でない。
     IsNotEmpty,
-    /// すべてに合う。
+    /// すべてに合う。どれか1つでも評価できなければ（どの位置でも）評価できない。短絡しないので、子の並びで結果が変わらない。
     And(Vec<Predicate>),
-    /// どれかに合う。
+    /// どれかに合う。どれか1つでも評価できなければ（どの位置でも）評価できない。短絡しないので、子の並びで結果が変わらない。
     Or(Vec<Predicate>),
     /// 合わない。
     Not(Box<Predicate>),
@@ -152,7 +152,7 @@ pub struct CellInput<'a> {
 /// 条件付き書式。ruleの順序が優先順位になる。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ConditionalFormat {
-    /// rule。先のruleから評価する。
+    /// rule。先のruleから評価する。`add_rule`で検証して加える。直接組み立てた未検証のruleは、型の合わない比較を「合わない」ものとして扱い、panicしない。
     pub rules: Vec<ConditionalRule>,
 }
 

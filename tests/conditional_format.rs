@@ -453,3 +453,62 @@ fn evaluation_has_no_side_effects_and_leaves_the_csv_unchanged() {
     }
     assert!(!document.is_dirty());
 }
+
+#[test]
+// {
+//   責務: [compound_predicates_do_not_depend_on_child_order_and_zero_forms_are_equal: And/Orが子の並びに依らず、どれか1つでも評価できなければ評価できないことと、-0・00・0.00が0と等しいことを検証する。],
+//   戻り値: [(): 全assertion成功時に完了する。]
+// }
+fn compound_predicates_do_not_depend_on_child_order_and_zero_forms_are_equal() {
+    let false_then_error = Predicate::And(vec![
+        Predicate::IsEmpty,
+        compare(CompareOp::Gt, number("1")),
+    ]);
+    let error_then_false = Predicate::And(vec![
+        compare(CompareOp::Gt, number("1")),
+        Predicate::IsEmpty,
+    ]);
+    for predicate in [false_then_error, error_then_false] {
+        let resolved = format_of(vec![rule(
+            "price",
+            ValueSource::Number,
+            predicate,
+            CellStyle::default(),
+        )])
+        .resolve(&headers());
+        // "abc"は空でなく(IsEmptyは偽)、数値にも読めない。どちらの並びでも評価できない。
+        let result = resolved.evaluate(0, 1, &raw("abc"));
+        assert!(result.matched.is_empty());
+        assert_eq!(
+            result.diagnostics,
+            [(0, Diagnostic::NotANumber("abc".into()))]
+        );
+    }
+    let any_order_or = format_of(vec![rule(
+        "price",
+        ValueSource::Number,
+        Predicate::Or(vec![
+            compare(CompareOp::Gt, number("1")),
+            Predicate::IsNotEmpty,
+        ]),
+        CellStyle::default(),
+    )])
+    .resolve(&headers());
+    assert_eq!(
+        any_order_or.evaluate(0, 1, &raw("abc")).diagnostics.len(),
+        1
+    );
+
+    let zero = format_of(vec![rule(
+        "price",
+        ValueSource::Number,
+        compare(CompareOp::Eq, number("0")),
+        CellStyle::default(),
+    )])
+    .resolve(&headers());
+    for text in ["0", "-0", "00", "0.00", "-0.000", "+0"] {
+        assert_eq!(zero.evaluate(0, 1, &raw(text)).matched, [0], "{text}");
+    }
+    assert!(zero.evaluate(0, 1, &raw("0.001")).matched.is_empty());
+    assert!(zero.evaluate(0, 1, &raw("-0.001")).matched.is_empty());
+}

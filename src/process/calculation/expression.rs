@@ -7,6 +7,7 @@ use super::types::{
 use crate::process::CellRef;
 
 mod aggregate;
+pub use aggregate::aggregate_texts;
 mod conditional;
 mod numeric;
 use numeric::NumericValue;

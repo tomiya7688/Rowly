@@ -128,3 +128,15 @@ source freshnessを引き継ぎます。
 - stale derivedを0扱いしない
 
 この日本語版をGroup By・Pivotの正本とします。
+
+## Group Byコアの実装契約（#297）
+
+状態: 実装済み（`src/process/aggregation.rs`）。確認日: 2026-11-06。
+
+- 入力は`InputRow`（元rowへの`SourceRowRef{source,row}`とcell列）。`rows_from_document`はCsvDocumentを読むだけで変更しない。入力範囲（canonical全row・View filter後・selection）は呼び出し側が選ぶ。
+- group keyはraw文字列で比較する。表示formatが同じでもrawが違えば別groupにする。groupは最初に現れた順に並べる。key列が空なら全rowを1 groupにする。
+- key cellがstale・error・pendingのrowはどのgroupにも入れず`excluded_rows`に残す。
+- 値cellがnon-freshなら集計から除き、groupごとに`FreshnessDiagnostics{stale,error,pending}`へ数える。0として扱わない。
+- COUNT(*)はgroupのrow数。DISTINCT COUNTは空でないraw文字列の種類数（"1"と"1.0"は別）。COUNT・COUNTA・SUM・AVERAGE・MIN・MAXはCalculationと同じ`aggregate_texts`を共有する。
+- 集計のerror（ExpectedNumber・EmptyAggregate等）はそのaggregateの結果だけに閉じ、他の集計やgroupへ波及しない。列範囲外の要求は`AggregationError::ColumnOutOfRange`。
+- 各groupは`source_rows`を持ち、drill downに使える。CSVの元cellへ書き込まない。

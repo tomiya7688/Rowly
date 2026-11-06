@@ -99,7 +99,7 @@ pub struct ResolvedSeries {
     pub points: Vec<ChartPoint>,
 }
 
-/// 描かなかった点の件数。黙って0や正常な値にしない。
+/// 描かなかった点の件数（series毎の点を数える。複数seriesでは同じ行が系列の数だけ数えられる）。黙って0や正常な値にしない。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ChartDiagnostics {
     /// staleのため描かなかった点。
@@ -257,23 +257,27 @@ pub fn resolve(
             .unwrap_or_else(|| (row_index + 1).to_string());
         let category_fresh =
             category_cell.is_none_or(|cell| cell.freshness == CellFreshness::Fresh);
-        let x = (definition.kind == ChartKind::Scatter && category_fresh)
-            .then(|| parse_number(&category))
-            .flatten();
+        // 散布図のxは、実在してfreshなcategory cellが数値のときだけ。行番号で代用しない。
+        let x = category_cell
+            .filter(|cell| {
+                definition.kind == ChartKind::Scatter && cell.freshness == CellFreshness::Fresh
+            })
+            .and_then(|cell| parse_number(&cell.text));
         categories.push(category.clone());
         for (output, column_index) in series.iter_mut().zip(&series_columns) {
             let cell = column_index.and_then(|index| row.cells.get(index));
             let value = point_value(
                 definition.kind,
                 cell,
-                (category_fresh, &category, x),
+                (
+                    category_fresh,
+                    category_cell.map(|cell| cell.text.as_str()),
+                    x,
+                ),
                 &mut diagnostics,
             );
-            let provenance = cell
-                .filter(|cell| !cell.provenance.is_empty())
-                .or(category_cell)
-                .map(|cell| cell.provenance.clone())
-                .unwrap_or_default();
+            // 点の来歴は値のcell自身のものだけ。値の無い点にcategoryなど別cellの来歴を貸さない。
+            let provenance = cell.map(|cell| cell.provenance.clone()).unwrap_or_default();
             output.points.push(ChartPoint {
                 row: row_index,
                 category: category.clone(),
@@ -297,13 +301,26 @@ pub fn resolve(
 fn point_value(
     kind: ChartKind,
     cell: Option<&ChartCell>,
-    (category_fresh, category, x): (bool, &str, Option<f64>),
+    (category_fresh, category_text, x): (bool, Option<&str>, Option<f64>),
     diagnostics: &mut ChartDiagnostics,
 ) -> PointValue {
     let missing = PointValue::Missing;
     if !category_fresh {
         diagnostics.category_not_fresh += 1;
         return missing(MissingReason::CategoryNotFresh);
+    }
+    // 散布図は、xを決められない点を描けない（値のcellの有無より先に判定する）。
+    if kind == ChartKind::Scatter && x.is_none() {
+        return match category_text {
+            Some(text) => {
+                diagnostics.non_numeric += 1;
+                missing(MissingReason::NotNumeric(text.to_owned()))
+            }
+            None => {
+                diagnostics.empty += 1;
+                missing(MissingReason::Empty)
+            }
+        };
     }
     let Some(cell) = cell else {
         diagnostics.empty += 1;
@@ -317,10 +334,6 @@ fn point_value(
     }
     if cell.freshness != CellFreshness::Fresh {
         return missing(MissingReason::NotFresh(cell.freshness));
-    }
-    if kind == ChartKind::Scatter && x.is_none() {
-        diagnostics.non_numeric += 1;
-        return missing(MissingReason::NotNumeric(category.to_owned()));
     }
     if cell.text.trim().is_empty() {
         diagnostics.empty += 1;

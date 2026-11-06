@@ -328,6 +328,8 @@ fn pivot_source_gives_one_series_per_column_key_with_cell_provenance() {
         .map(|row| row.row)
         .collect();
     assert_eq!(drill, [1]);
+    // 空のbucketの点は、同じ行の別bucketやrow keyの来歴を借りない。
+    assert!(chart.series[1].points[1].provenance.is_empty());
 }
 
 #[test]
@@ -396,4 +398,23 @@ fn invalid_definitions_and_kind_rules() {
     let chart = resolve(&definition(ChartKind::Scatter), &[table]).unwrap();
     assert_eq!(chart.series[0].points[0].x, Some(1.0));
     assert_eq!(chart.series[0].points[0].value, number(10.0));
+}
+
+#[test]
+// {
+//   責務: [scatter_x_needs_a_real_fresh_numeric_category_cell: 散布図のxが、cellの無い行では行番号で代用されず欠損になることを検証する。],
+//   戻り値: [(): 全assertion成功時に完了する。]
+// }
+fn scatter_x_needs_a_real_fresh_numeric_category_cell() {
+    let (_directory, document) = document();
+    let mut table = raw_table(&document);
+    // 1行目のcategory cell(month)とsales cellを削って、短い行にする。
+    table.rows[0].cells.truncate(1);
+    let chart = resolve(&definition(ChartKind::Scatter), &[table]).unwrap();
+    let first = &chart.series[0].points[0];
+    assert_eq!(first.x, None);
+    // category cellが無いので、行番号で代用せず「空」の欠損にする。
+    assert_eq!(first.value, PointValue::Missing(MissingReason::Empty));
+    // 他の行は通常どおり。
+    assert_eq!(chart.series[0].points[1].x, Some(1.0));
 }

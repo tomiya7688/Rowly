@@ -114,5 +114,5 @@ Chartだけで意味を伝えません。
 - `resolve(definition, tables)`は現在のsourceへ引き直す。source idや見出しが無い・複数ある場合は、欠けたものを全部まとめて`ChartError::Unresolved`で返す。定義は捨てられず、sourceや列が戻れば再び解決できる。列の並びが変わっても結果は変わらない。
 - stale・error・pendingのcellは通常のseriesとして描かない。空、数値でない値、categoryがfreshでない点、円グラフの負の値も欠損にし、理由（`MissingReason`）を点に残して件数を`ChartDiagnostics`に数える。`stale_indicator()`で古い値を含むことを示せる。
 - 各点は`provenance`（元row参照）を持つ。aggregateの点はgroup / bucketに入った全rowで、drill downに使える。Pivotの空のbucketは元row参照が空の欠損になる。
-- 円グラフはseriesが1つ、散布図はcategory列を数値のxに使う。seriesが無い、円グラフに複数series、散布図にx列が無い定義は`InvalidDefinition`。
+- 円グラフはseriesが1つ。散布図はcategory列を数値のxに使い、共通のxに複数のy seriesを置ける。xは実在してfreshな数値のcellだけで、cellが無い行を行番号で代用しない。診断の件数はseries毎の点を数える。点の来歴は値のcell自身のものだけで、値の無い点に別cellの来歴を貸さない。seriesが無い、円グラフに複数series、散布図にx列が無い定義は`InvalidDefinition`。
 - 解決はCSVに触れず、source表を変えてもCSVは変わらない。対象外: 描画（#303）、Projectへの保存（#304）、GUI（#305）。

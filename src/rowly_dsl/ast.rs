@@ -499,6 +499,15 @@ pub(in crate::rowly_dsl) fn conditional_call<'a>(
             ConditionalAggregateFunction::SumIf,
             [criteria, Expression::Literal(symbol), value, sum_range],
         ) => (criteria, symbol, value, Some(cell_range_text(sum_range)?)),
+        (
+            ConditionalAggregateFunction::Lookup,
+            [criteria, Expression::Literal(symbol), value, result_range],
+        ) if symbol == "=" => (
+            criteria,
+            symbol,
+            value,
+            Some(cell_range_text(result_range)?),
+        ),
         _ => return None,
     };
     Some(ConditionalCall {

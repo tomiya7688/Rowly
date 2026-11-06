@@ -208,6 +208,10 @@ pub enum CalculationFailure {
     IncomparableValues,
     /// 条件範囲と合計範囲の大きさが異なる。
     RangeShapeMismatch,
+    /// Lookupの検索値に一致するcellが無い。
+    LookupNotFound,
+    /// Lookupの検索値に一致するcellが複数ある（先頭を暗黙採用しない）。
+    LookupDuplicate,
     /// 除数が0だった。
     DivisionByZero,
     /// checked arithmeticまたはfinite値検証でoverflowした。
@@ -314,6 +318,8 @@ impl std::fmt::Display for CalculationFailure {
             Self::RangeShapeMismatch => {
                 formatter.write_str("criteria range and sum range have different sizes")
             }
+            Self::LookupNotFound => formatter.write_str("lookup key was not found"),
+            Self::LookupDuplicate => formatter.write_str("lookup key matches more than one cell"),
             Self::DivisionByZero => formatter.write_str("division by zero"),
             Self::ArithmeticOverflow => formatter.write_str("calculation overflowed"),
             Self::PrecisionLoss => formatter.write_str("calculation would lose integer precision"),

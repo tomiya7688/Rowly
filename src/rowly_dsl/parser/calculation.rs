@@ -236,7 +236,7 @@ pub(super) fn validate_calculation_expression(
         _ => {
             return Err(parse_error(
                 line,
-                "calculation expression allows only literals, CellValue, arithmetic, Sum/Count/CountA/Average/Min/Max over CellRange, SumIf/CountIf, Abs, Min, Max, Round, Floor, Ceil, Mod, Len, Concat, Left, Right, Mid, Trim, Upper, Lower, Date, Year, Month, Day, If, And, Or, Not, Boolean, Equals, NotEquals, Less, LessOrEqual, Greater, and GreaterOrEqual",
+                "calculation expression allows only literals, CellValue, arithmetic, Sum/Count/CountA/Average/Min/Max over CellRange, SumIf/CountIf/Lookup, Abs, Min, Max, Round, Floor, Ceil, Mod, Len, Concat, Left, Right, Mid, Trim, Upper, Lower, Date, Year, Month, Day, If, And, Or, Not, Boolean, Equals, NotEquals, Less, LessOrEqual, Greater, and GreaterOrEqual",
             ));
         }
     }

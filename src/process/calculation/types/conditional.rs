@@ -11,6 +11,8 @@ pub enum ConditionalAggregateFunction {
     SumIf,
     /// 条件に合うcellの個数を数える。
     CountIf,
+    /// 完全一致する1件のresult_rangeのcellを返す。0件・複数件はerror。
+    Lookup,
 }
 
 impl ConditionalAggregateFunction {
@@ -22,6 +24,7 @@ impl ConditionalAggregateFunction {
         match self {
             Self::SumIf => "SumIf",
             Self::CountIf => "CountIf",
+            Self::Lookup => "Lookup",
         }
     }
 
@@ -34,6 +37,7 @@ impl ConditionalAggregateFunction {
         match name.to_ascii_lowercase().as_str() {
             "sumif" => Some(Self::SumIf),
             "countif" => Some(Self::CountIf),
+            "lookup" => Some(Self::Lookup),
             _ => None,
         }
     }

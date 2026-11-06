@@ -5,7 +5,12 @@
 //! ```
 use crate::process::aggregation::{CellFreshness, SourceRowRef};
 
+mod render;
 mod source;
+pub use render::{
+    ChartStyle, MAX_CATEGORIES, MAX_POINTS_PER_SERIES, NumberFormat, RenderError, RenderedChart,
+    render_svg,
+};
 pub use source::{ChartCell, ChartRow, SourceTable};
 
 /// 基本Chartの種類。

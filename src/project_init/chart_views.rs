@@ -6,7 +6,10 @@
 use crate::process::chart::{ChartDefinition, ChartKind, SeriesDefinition};
 
 use super::aggregation_views::{Value, argument, optional_argument, parse_value, single_text};
-use super::{ProjectInitConfig, ProjectInitError, parse_quoted, quote, strip_prefix_ci};
+use super::{
+    ProjectInitConfig, ProjectInitError, declaration_continues_with, parse_quoted, quote,
+    strip_prefix_ci,
+};
 
 const PREFIX: &str = "SET This.Project.Source(";
 const MIDDLE: &str = ").Worksheet.Chart(";
@@ -87,9 +90,7 @@ impl ProjectInitConfig {
 
 /// 行がChart定義の宣言か判定する。
 pub(super) fn is_chart_declaration(line: &str) -> bool {
-    let lower = line.to_ascii_lowercase();
-    lower.starts_with(&format!("{}\"", PREFIX.to_ascii_lowercase()))
-        && lower.contains(".worksheet.chart(")
+    declaration_continues_with(line, PREFIX, MIDDLE)
 }
 
 // {

@@ -14,8 +14,9 @@ use crate::process::{
 
 use super::aggregation_views::{Value, parse_value, single_text};
 use super::{
-    ProjectInitError, ProjectInitUpdate, StagedProjectInit, parse_quoted, quote,
-    read_optional_config, read_safe_init_config, stage_generated_configuration, strip_prefix_ci,
+    ProjectInitError, ProjectInitUpdate, StagedProjectInit, declaration_continues_with,
+    parse_quoted, quote, read_optional_config, read_safe_init_config,
+    stage_generated_configuration, strip_prefix_ci,
 };
 use crate::project::RowlyProject;
 use std::path::Path;
@@ -294,9 +295,7 @@ fn line(output: &mut String, source_id: &str, kind: &str, key: &str, body: &str)
 
 /// 行が表示設定の宣言か判定する。
 pub(super) fn is_display_declaration(line: &str) -> bool {
-    let lower = line.to_ascii_lowercase();
-    lower.starts_with(&format!("{}\"", PREFIX.to_ascii_lowercase()))
-        && lower.contains(&MIDDLE.to_ascii_lowercase())
+    declaration_continues_with(line, PREFIX, MIDDLE)
 }
 
 // {

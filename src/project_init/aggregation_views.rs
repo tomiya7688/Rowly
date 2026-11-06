@@ -12,7 +12,10 @@ use crate::process::{
     calculation::AggregateFunction,
 };
 
-use super::{ProjectInitConfig, ProjectInitError, parse_quoted, quote, strip_prefix_ci};
+use super::{
+    ProjectInitConfig, ProjectInitError, declaration_continues_with, parse_quoted, quote,
+    strip_prefix_ci,
+};
 
 /// 宣言の文法。
 const PREFIX: &str = "SET This.Project.Source(";
@@ -96,11 +99,7 @@ impl ProjectInitConfig {
 
 /// 行が集計定義の宣言か判定する。
 pub(super) fn is_aggregation_declaration(line: &str) -> bool {
-    line.to_ascii_lowercase()
-        .starts_with(&format!("{}\"", PREFIX.to_ascii_lowercase()))
-        && line
-            .to_ascii_lowercase()
-            .contains(".worksheet.aggregation(")
+    declaration_continues_with(line, PREFIX, MIDDLE)
 }
 
 // {

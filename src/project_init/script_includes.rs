@@ -201,3 +201,15 @@ pub(super) fn is_rem_comment(line: &str) -> bool {
     line.get(..4)
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case("REM "))
 }
+
+// {
+//   責務: [declaration_continues_with: 行が`prefix` + 引用符つきsource id + `middle`で始まる宣言か判定する]
+//   処理: [source idを引用文字列として読み取った直後だけで`middle`を照合する。chart名や許可値などの引用文字列の中身に`middle`が含まれていても、別の種類の宣言として扱わない]
+//   引数: [line: 1行, prefix: 宣言の先頭（source idの引用符の直前まで）, middle: source idの直後に続く文字列]
+//   戻り値: [bool: 該当すればtrue]
+// }
+pub(super) fn declaration_continues_with(line: &str, prefix: &str, middle: &str) -> bool {
+    strip_prefix_ci(line, prefix)
+        .and_then(parse_quoted)
+        .is_some_and(|(_, rest)| strip_prefix_ci(rest, middle).is_some())
+}

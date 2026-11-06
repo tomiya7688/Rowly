@@ -85,7 +85,13 @@ impl ProjectInitConfig {
                         message,
                     }
                 })?;
-                config.display.insert(source_id, item);
+                config.display.insert(source_id, item).map_err(|message| {
+                    ProjectInitError::InvalidConfig {
+                        path: path.display().to_string(),
+                        line: index + 1,
+                        message,
+                    }
+                })?;
                 index += 1;
                 continue;
             }

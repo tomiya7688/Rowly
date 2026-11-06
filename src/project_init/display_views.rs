@@ -55,23 +55,34 @@ pub(super) struct DisplayStore {
 
 impl DisplayStore {
     // {
-    //   責務: [insert: 読み戻した1行をsourceの設定へ入れる。同じキーは後の行が勝つ]
+    //   責務: [insert: 読み戻した1行をsourceの設定へ入れる]
+    //   処理: [同じfile内で同じキー（同じ見出し・行位置・通し番号）が2回出たら、どちらかを黙って捨てずにerrorにする]
+    //   戻り値: [Result<(), String>: 成功、またはキー重複のerror]
     // }
-    pub(super) fn insert(&mut self, source_id: String, item: DisplayItem) {
-        match item {
-            DisplayItem::Format { column, format } => {
-                self.formats.insert((source_id, column), format);
-            }
-            DisplayItem::Height { row, millimeters } => {
-                self.heights.insert((source_id, row), millimeters);
-            }
-            DisplayItem::Style { index, rule } => {
-                self.styles.insert((source_id, index), rule);
-            }
-            DisplayItem::Conditional { index, rule } => {
-                self.conditionals.insert((source_id, index), rule);
-            }
-        }
+    pub(super) fn insert(&mut self, source_id: String, item: DisplayItem) -> Result<(), String> {
+        let duplicated = match item {
+            DisplayItem::Format { column, format } => self
+                .formats
+                .insert((source_id, column.clone()), format)
+                .is_some()
+                .then(|| format!("column `{column}` has more than one display format")),
+            DisplayItem::Height { row, millimeters } => self
+                .heights
+                .insert((source_id, row), millimeters)
+                .is_some()
+                .then(|| format!("row {row} has more than one row height")),
+            DisplayItem::Style { index, rule } => self
+                .styles
+                .insert((source_id, index), rule)
+                .is_some()
+                .then(|| format!("style rule number {index} appears more than once")),
+            DisplayItem::Conditional { index, rule } => self
+                .conditionals
+                .insert((source_id, index), rule)
+                .is_some()
+                .then(|| format!("conditional rule number {index} appears more than once")),
+        };
+        duplicated.map_or(Ok(()), Err)
     }
 
     // {

@@ -395,6 +395,43 @@ fn bad_settings_are_rejected_and_save_failure_keeps_staging() {
 
 #[test]
 // {
+//   責務: [duplicate_keys_in_one_file_are_reported_with_the_second_line: 同じfile内で同じキーが2回出た宣言を、どちらかを黙って捨てずに2行目のerrorにすることを検証する。],
+//   戻り値: [(): 全assertion成功時に完了する。]
+// }
+fn duplicate_keys_in_one_file_are_reported_with_the_second_line() {
+    let prefix = "SET This.Project.Source(\"data\").Worksheet.Display.";
+    for (first, second) in [
+        (
+            "Format(\"Score\") = Text()",
+            "Format(\"Score\") = Integer(Thousands(\"true\"))",
+        ),
+        (
+            "RowHeight(\"1\") = Millimeters(\"5\")",
+            "RowHeight(\"1\") = Millimeters(\"6\")",
+        ),
+        (
+            "Style(\"0\") = Rule(Target(Column(\"A\")), Style())",
+            "Style(\"0\") = Rule(Target(Column(\"B\")), Style())",
+        ),
+        (
+            "Conditional(\"2\") = Rule(Target(Column(\"A\")), Source(\"Raw\"), When(IsEmpty()), Style())",
+            "Conditional(\"2\") = Rule(Target(Column(\"B\")), Source(\"Raw\"), When(IsEmpty()), Style())",
+        ),
+    ] {
+        let (_directory, manifest) = create_project();
+        fs::write(
+            generated_path(&manifest),
+            format!("{prefix}{first}\n{prefix}{second}\n"),
+        )
+        .unwrap();
+        let session = ProjectSession::open(&manifest).unwrap();
+        let error = session.display_settings("data").unwrap_err().to_string();
+        assert!(error.contains("line 2"), "{first}: {error}");
+    }
+}
+
+#[test]
+// {
 //   責務: [malformed_display_declarations_are_reported_instead_of_ignored: 壊れた表示設定の宣言を黙って捨てず、行番号つきのerrorにすることを検証する。],
 //   戻り値: [(): 全assertion成功時に完了する。]
 // }

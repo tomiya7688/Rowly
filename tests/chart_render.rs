@@ -281,3 +281,76 @@ fn invalid_settings_are_rejected_and_empty_charts_render() {
         );
     }
 }
+
+// 5,000点を2,000点へ間引くときに残る位置(render側のdecimateと同じ式)。
+fn kept_by_decimation(len: usize, max: usize) -> Vec<usize> {
+    (0..max).map(|step| step * (len - 1) / (max - 1)).collect()
+}
+
+#[test]
+// {
+//   責務: [decimation_keeps_gaps_and_the_true_axis_range: 間引きで欠損点や極値の点が落ちても、折れ線が欠損をまたいでつながらず、軸が実際の最大値を示すことを検証する。],
+//   戻り値: [(): 全assertion成功時に完了する。]
+// }
+fn decimation_keeps_gaps_and_the_true_axis_range() {
+    let kept = kept_by_decimation(5_000, 2_000);
+    let dropped = (2_500..4_999).find(|index| !kept.contains(index)).unwrap();
+    // 間引きで落ちる位置に、staleの点と極端に大きい値を置く。
+    let stale_at = dropped;
+    let spike_at = (dropped + 500..4_999)
+        .find(|index| !kept.contains(index))
+        .unwrap();
+    let rows: Vec<(String, InputCell)> = (0..5_000)
+        .map(|index| {
+            let cell = if index == stale_at {
+                InputCell {
+                    text: "5".into(),
+                    freshness: CellFreshness::Stale,
+                }
+            } else if index == spike_at {
+                fresh("1000")
+            } else {
+                fresh("1")
+            };
+            (index.to_string(), cell)
+        })
+        .collect();
+    let borrowed: Vec<(&str, InputCell)> = rows
+        .iter()
+        .map(|(category, value)| (category.as_str(), value.clone()))
+        .collect();
+    let rendered = render_svg(
+        &chart(ChartKind::Line, &table(&borrowed)),
+        &ChartStyle::default(),
+    )
+    .unwrap();
+    // staleの点は落ちても、前後の区間は別の折れ線に分かれる(つながらない)。
+    assert_eq!(rendered.svg.matches("<polyline").count(), 2);
+    // 極値の点が間引かれても、軸は実際の最大値まで伸びる。
+    assert!(rendered.svg.contains(">1000<"));
+}
+
+#[test]
+// {
+//   責務: [extreme_values_do_not_produce_non_finite_output: 極端に大きい有限の値でも、SVGにNaNや無限大を書かずpanicしないことを検証する。],
+//   戻り値: [(): 全assertion成功時に完了する。]
+// }
+fn extreme_values_do_not_produce_non_finite_output() {
+    let table = table(&[
+        ("1", fresh("-1.7e308")),
+        ("2", fresh("1.7e308")),
+        ("3", fresh("0")),
+    ]);
+    for kind in [
+        ChartKind::Line,
+        ChartKind::Area,
+        ChartKind::Column,
+        ChartKind::Bar,
+        ChartKind::Scatter,
+    ] {
+        let svg = render_svg(&chart(kind, &table), &ChartStyle::default())
+            .unwrap()
+            .svg;
+        assert!(!svg.contains("NaN") && !svg.contains("inf"), "{kind:?}");
+    }
+}

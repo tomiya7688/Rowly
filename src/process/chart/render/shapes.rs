@@ -29,6 +29,10 @@ fn decimate(len: usize, max: usize) -> Vec<usize> {
 //   戻り値: [(f64, f64, f64): 目盛りの下端・上端・刻み]
 // }
 fn nice_scale(min: f64, max: f64) -> (f64, f64, f64) {
+    // 範囲が有限でない（極端な値でoverflowした）ときは、目盛りを作れないので既定の範囲にする。
+    if !min.is_finite() || !max.is_finite() || !(max - min).is_finite() {
+        return (0.0, 1.0, 0.25);
+    }
     let (min, max) = if (max - min).abs() < f64::EPSILON {
         (min - 1.0, max + 1.0)
     } else {
@@ -61,19 +65,27 @@ fn nice_scale(min: f64, max: f64) -> (f64, f64, f64) {
 }
 
 /// 値の列のうち描けるもの。
-fn numbers(series: &ResolvedSeries, indices: &[usize]) -> impl Iterator<Item = f64> {
+fn numbers(series: &ResolvedSeries, indices: &[usize]) -> Vec<f64> {
     indices
         .iter()
         .filter_map(|&index| match series.points[index].value {
             PointValue::Number(number) => Some(number),
             PointValue::Missing(_) => None,
         })
-        .collect::<Vec<_>>()
-        .into_iter()
+        .collect()
 }
 
+// {
+//   責務: [map_value: 値を描画領域の座標へ写す。範囲を大きく外れる値・有限でない比は、描画領域のすぐ外へ丸めて、座標にNaNや無限大を書かない]
+// }
 fn map_value(value: f64, low: f64, high: f64, start: f64, length: f64) -> f64 {
-    start + (value - low) / (high - low) * length
+    let ratio = (value - low) / (high - low);
+    let ratio = if ratio.is_nan() {
+        0.0
+    } else {
+        ratio.clamp(-0.05, 1.05)
+    };
+    start + ratio * length
 }
 
 // {
@@ -112,11 +124,15 @@ pub(super) fn draw_cartesian(
         .zip(&indices)
         .map(|(series, kept)| series.points.len() - kept.len())
         .sum();
+    // 軸の範囲は間引く前の全データから決める（間引きで極値が消えても、軸は実際の範囲を示す）。棒は描くcategoryだけ。
     let mut values: Vec<f64> = chart
         .series
         .iter()
         .zip(&indices)
-        .flat_map(|(series, kept)| numbers(series, kept))
+        .flat_map(|(series, kept)| {
+            let all: Vec<usize> = (0..series.points.len()).collect();
+            numbers(series, if bars { kept } else { &all })
+        })
         .collect();
     if matches!(kind, ChartKind::Area | ChartKind::Column | ChartKind::Bar) {
         values.push(0.0);
@@ -131,7 +147,7 @@ pub(super) fn draw_cartesian(
 
     let horizontal = kind == ChartKind::Bar;
     // 値軸の目盛りとgrid。
-    let ticks = ((high - low) / step).round() as usize;
+    let ticks = (((high - low) / step).round() as usize).min(100);
     for tick in 0..=ticks {
         let value = low + step * tick as f64;
         if horizontal {
@@ -168,8 +184,7 @@ pub(super) fn draw_cartesian(
         let xs: Vec<f64> = chart
             .series
             .iter()
-            .zip(&indices)
-            .flat_map(|(series, kept)| kept.iter().filter_map(|&i| series.points[i].x))
+            .flat_map(|series| series.points.iter().filter_map(|point| point.x))
             .collect();
         match (
             xs.iter().copied().reduce(f64::min),
@@ -264,11 +279,28 @@ pub(super) fn draw_cartesian(
             }
             run.clear();
         };
+        // 欠損点の累計。間引きで欠損点が落ちても、その区間をまたいで折れ線をつながないために使う。
+        let missing_prefix: Vec<usize> = std::iter::once(0)
+            .chain(series.points.iter().scan(0, |count, point| {
+                if matches!(point.value, PointValue::Missing(_)) {
+                    *count += 1;
+                }
+                Some(*count)
+            }))
+            .collect();
+        let mut previous: Option<usize> = None;
         for &index in kept {
             let point = &series.points[index];
             let position = category_position(index, point);
             match &point.value {
+                PointValue::Number(_) if kind == ChartKind::Scatter && point.x.is_none() => {}
                 PointValue::Number(value) => {
+                    if let Some(prev) = previous
+                        && missing_prefix[index] > missing_prefix[prev + 1]
+                    {
+                        flush(&mut run, out);
+                    }
+                    previous = Some(index);
                     plotted += 1;
                     let y = value_px(*value);
                     match kind {
@@ -310,6 +342,7 @@ pub(super) fn draw_cartesian(
                 }
                 PointValue::Missing(reason) => {
                     flush(&mut run, out);
+                    previous = None;
                     if kind == ChartKind::Scatter && point.x.is_none() {
                         continue;
                     }

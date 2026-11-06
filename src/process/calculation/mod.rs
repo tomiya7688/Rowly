@@ -13,6 +13,7 @@ mod structure;
 mod types;
 
 pub use engine::CalculationEngine;
+pub use expression::aggregate_texts;
 pub use materialize::{CalculationMaterialization, CalculationMaterializationError};
 pub use structure::{StructureEdit, StructureEditReport};
 pub use types::{

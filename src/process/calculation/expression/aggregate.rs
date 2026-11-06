@@ -18,11 +18,27 @@ pub(super) fn evaluate_aggregate(
     range: CalculationRangeReference,
     read_cell: &mut impl FnMut(CellRef) -> Result<CalculationValue, CalculationFailure>,
 ) -> Result<CalculationValue, CalculationFailure> {
+    let mut texts = Vec::new();
+    for cell in range.cells() {
+        texts.push(read_cell(cell)?.into_text());
+    }
+    aggregate_texts(function, texts)
+}
+
+// {
+//   責務: [aggregate_texts: 文字列のcell値を集計関数で評価する。range集計とGroup Byが同じ規則を共有する]
+//   処理: [空白だけの値を数値集計から除き、数値でないTextは暗黙に0へ変換せずerrorにする。合計と平均は既存の算術規則でInteger精度契約を保つ]
+//   引数: [function: 集計関数, texts: 集計対象のcell文字列]
+//   戻り値: [Result<CalculationValue, CalculationFailure>: 集計値、またはExpectedNumber・EmptyAggregate等]
+// }
+pub fn aggregate_texts(
+    function: AggregateFunction,
+    texts: impl IntoIterator<Item = String>,
+) -> Result<CalculationValue, CalculationFailure> {
     let mut non_empty = 0_i64;
     let mut numeric_count = 0_i64;
     let mut numbers = Vec::new();
-    for cell in range.cells() {
-        let text = read_cell(cell)?.into_text();
+    for text in texts {
         if !text.is_empty() {
             non_empty += 1;
         }

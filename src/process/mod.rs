@@ -11,6 +11,7 @@
 //! ]
 //! ```
 mod address;
+pub mod aggregation;
 pub mod calculation;
 mod clipboard;
 mod column;

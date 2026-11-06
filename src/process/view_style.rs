@@ -239,17 +239,7 @@ impl ViewStyle {
     //   責務: [add_rule: ruleを末尾へ加える。targetが空・逆の範囲ならerror]
     // }
     pub fn add_rule(&mut self, rule: StyleRule) -> Result<(), ViewStyleError> {
-        let valid = match &rule.target {
-            StyleTarget::Column(header) | StyleTarget::Cell { column: header, .. } => {
-                !header.is_empty()
-            }
-            StyleTarget::Range {
-                columns,
-                first_row,
-                last_row,
-            } => !columns.is_empty() && first_row <= last_row,
-        };
-        if !valid {
+        if !target_is_valid(&rule.target) {
             return Err(ViewStyleError::InvalidTarget);
         }
         self.rules.push(rule);
@@ -277,53 +267,18 @@ impl ViewStyle {
         let mut active = Vec::new();
         let mut dormant = Vec::new();
         for (index, rule) in self.rules.iter().enumerate() {
-            let names: Vec<&String> = match &rule.target {
-                StyleTarget::Column(header) | StyleTarget::Cell { column: header, .. } => {
-                    vec![header]
-                }
-                StyleTarget::Range { columns, .. } => columns.iter().collect(),
-            };
-            let mut columns = Vec::new();
-            let mut missing = Vec::new();
-            let mut ambiguous = Vec::new();
-            for name in names {
-                let mut found = headers
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, header)| *header == name);
-                match (found.next(), found.next()) {
-                    (Some((column, _)), None) => {
-                        // 範囲に同じ見出しが2回あっても、列位置は1回だけ持つ。
-                        if !columns.contains(&column) {
-                            columns.push(column);
-                        }
-                    }
-                    (None, _) => push_unique(&mut missing, name),
-                    (Some(_), Some(_)) => push_unique(&mut ambiguous, name),
-                }
-            }
-            if missing.is_empty() && ambiguous.is_empty() {
-                let rows = match &rule.target {
-                    StyleTarget::Column(_) => None,
-                    StyleTarget::Cell { row, .. } => Some((*row, *row)),
-                    StyleTarget::Range {
-                        first_row,
-                        last_row,
-                        ..
-                    } => Some((*first_row, *last_row)),
-                };
-                active.push(ResolvedRule {
+            match resolve_target(&rule.target, headers) {
+                Ok(target) => active.push(ResolvedRule {
                     index,
-                    columns,
-                    rows,
+                    columns: target.columns,
+                    rows: target.rows,
                     style: rule.style.clone(),
-                });
-            } else {
-                dormant.push(DormantRule {
+                }),
+                Err(unresolved) => dormant.push(DormantRule {
                     index,
-                    missing,
-                    ambiguous,
-                });
+                    missing: unresolved.missing,
+                    ambiguous: unresolved.ambiguous,
+                }),
             }
         }
         ResolvedStyle {
@@ -334,6 +289,85 @@ impl ViewStyle {
     }
 }
 
+// {
+//   責務: [target_is_valid: targetが使えるか判定する。見出しが空でなく、範囲の列が空でなく行の範囲が逆でないこと。View styleと条件付き書式が同じ規則で検証する]
+// }
+pub(crate) fn target_is_valid(target: &StyleTarget) -> bool {
+    match target {
+        StyleTarget::Column(header) | StyleTarget::Cell { column: header, .. } => {
+            !header.is_empty()
+        }
+        StyleTarget::Range {
+            columns,
+            first_row,
+            last_row,
+        } => !columns.is_empty() && first_row <= last_row,
+    }
+}
+
+/// 現在の列・行へ解決できたtarget。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ResolvedTarget {
+    /// 対象の列位置（重複なし、指定順）。
+    pub(crate) columns: Vec<usize>,
+    /// 対象の行（両端を含む）。Noneなら全行。
+    pub(crate) rows: Option<(usize, usize)>,
+}
+
+/// 解決できなかったtargetの理由。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct UnresolvedTarget {
+    /// 現在のCSVに無い見出し。
+    pub(crate) missing: Vec<String>,
+    /// 現在のCSVに複数ある見出し。
+    pub(crate) ambiguous: Vec<String>,
+}
+
+// {
+//   責務: [resolve_target: targetの見出しを現在の列位置へ引き直す。View styleと条件付き書式が同じ規則で対象を決める]
+//   処理: [見出しが1つでも無い・複数あるとErr（休眠の理由）。範囲に同じ見出しが重複しても、列位置は1回だけ持つ]
+//   戻り値: [Result<ResolvedTarget, UnresolvedTarget>: 解決結果]
+// }
+pub(crate) fn resolve_target(
+    target: &StyleTarget,
+    headers: &[String],
+) -> Result<ResolvedTarget, UnresolvedTarget> {
+    let names: Vec<&String> = match target {
+        StyleTarget::Column(header) | StyleTarget::Cell { column: header, .. } => vec![header],
+        StyleTarget::Range { columns, .. } => columns.iter().collect(),
+    };
+    let mut columns = Vec::new();
+    let mut missing = Vec::new();
+    let mut ambiguous = Vec::new();
+    for name in names {
+        let mut found = headers
+            .iter()
+            .enumerate()
+            .filter(|(_, header)| *header == name);
+        match (found.next(), found.next()) {
+            (Some((column, _)), None) => {
+                if !columns.contains(&column) {
+                    columns.push(column);
+                }
+            }
+            (None, _) => push_unique(&mut missing, name),
+            (Some(_), Some(_)) => push_unique(&mut ambiguous, name),
+        }
+    }
+    if !missing.is_empty() || !ambiguous.is_empty() {
+        return Err(UnresolvedTarget { missing, ambiguous });
+    }
+    let rows = match target {
+        StyleTarget::Column(_) => None,
+        StyleTarget::Cell { row, .. } => Some((*row, *row)),
+        StyleTarget::Range {
+            first_row,
+            last_row,
+            ..
+        } => Some((*first_row, *last_row)),
+    };
+    Ok(ResolvedTarget { columns, rows })
+}
 fn push_unique(list: &mut Vec<String>, name: &str) {
     if !list.iter().any(|existing| existing == name) {
         list.push(name.to_owned());

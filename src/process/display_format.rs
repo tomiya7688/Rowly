@@ -416,3 +416,38 @@ fn format_date_time(
     };
     Ok(format!("{} {clock}", render_date(date, style)))
 }
+
+// {
+//   責務: [parse_iso_date: `YYYY-MM-DD`を検証して(年, 月, 日)にする。存在しない日・桁違いはNone。条件付き書式などが同じ日付規則を共有する]
+// }
+pub(crate) fn parse_iso_date(text: &str) -> Option<(u32, u32, u32)> {
+    parse_date(text.trim())
+}
+
+// {
+//   責務: [compare_canonical_decimals: 2つの正規形の10進文字列を、桁のまま正確に比較する。どちらかが正規形でなければNone（0として扱わない）]
+//   処理: [符号が違えば符号で決め、同じなら整数部の桁数、整数部、小数部（短い方を0で補う）の順に比べる。負の数は大小を反転し、-0と0は等しい]
+// }
+pub(crate) fn compare_canonical_decimals(left: &str, right: &str) -> Option<std::cmp::Ordering> {
+    use std::cmp::Ordering;
+    let (left, right) = (parse_decimal(left)?, parse_decimal(right)?);
+    let is_zero = |d: &Decimal| d.integer == "0" && d.fraction.bytes().all(|b| b == b'0');
+    let negative = |d: &Decimal| d.negative && !is_zero(d);
+    let magnitude = |a: &Decimal, b: &Decimal| {
+        a.integer
+            .len()
+            .cmp(&b.integer.len())
+            .then_with(|| a.integer.cmp(&b.integer))
+            .then_with(|| {
+                let width = a.fraction.len().max(b.fraction.len());
+                let pad = |d: &Decimal| format!("{:0<width$}", d.fraction);
+                pad(a).cmp(&pad(b))
+            })
+    };
+    Some(match (negative(&left), negative(&right)) {
+        (false, true) => Ordering::Greater,
+        (true, false) => Ordering::Less,
+        (false, false) => magnitude(&left, &right),
+        (true, true) => magnitude(&right, &left),
+    })
+}

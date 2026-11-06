@@ -314,7 +314,7 @@ impl CsvDocument {
 
     /// ```text
     /// 責務: [
-    /// path: 操作対象CSVのパスを返す
+    /// path: 操作対象CSVのパスを返す。保存先未割当（Unassigned）のdocumentでは空のpathを返すので、ファイル操作に使う前に`backing_path`または`is_unassigned`で保存先の有無を確かめる
     /// ]
     /// 引数: [
     /// ]
@@ -544,7 +544,7 @@ impl CsvDocument {
 
     /// ```text
     /// 責務: [
-    /// metadata_path: CSVに隣接するメタデータファイルのパスを返す
+    /// metadata_path: CSVに隣接するメタデータファイルのパスを返す。保存先未割当（Unassigned）のdocumentでは空のpathを返す
     /// ]
     /// 引数: [
     /// ]
@@ -1626,6 +1626,38 @@ impl CsvDocument {
 
     /// ```text
     /// 責務: [
+    /// save_first: 保存先未割当のdocumentを、まだ存在しない新しいfileへ初めて保存して、そのpathをbackingにする
+    /// ]
+    /// 引数: [
+    /// path: 新しい保存先。既に何かある（dangling symlinkを含む）pathは使えない
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// エラー: [
+    /// DocumentError: 既にbackingがある、保存先が既に存在する（DestinationExists）、transaction中、または書き込みに失敗した場合
+    /// ]
+    /// 補足: [
+    /// 初回Saveで既存のCSVを黙って上書きしない。存在確認と書き込みの間に別processが同じpathを作る競合は防げないので、既存fileを上書きしてよい場合は、利用者の確認を得た呼び出し側が`save_as`を使う
+    /// ]
+    /// ```
+    pub fn save_first(&mut self, path: impl AsRef<Path>) -> Result<(), DocumentError> {
+        if self.path.is_some() {
+            return Err(DocumentError::Edit(
+                "the document already has a file; use save or save_as".to_owned(),
+            ));
+        }
+        let path = path.as_ref();
+        if std::fs::symlink_metadata(path).is_ok() {
+            return Err(DocumentError::DestinationExists {
+                path: path.display().to_string(),
+            });
+        }
+        self.save_as(path)
+    }
+
+    /// ```text
+    /// 責務: [
     /// save_as: 現在のCSVを指定先へUTF-8で保存する
     /// ]
     /// 引数: [
@@ -2624,8 +2656,11 @@ pub enum DocumentError {
     #[error("failed to edit CSV: {0}")]
     Edit(String),
 
-    #[error("the document has no file yet; choose a path with save_as before saving")]
+    #[error("the document has no file yet; choose a path with save_first or save_as before saving")]
     SaveRequiresPath,
+
+    #[error("`{path}` already exists; the first save does not overwrite an existing file")]
+    DestinationExists { path: String },
 
     #[error("invalid CSV text: {0}")]
     Csv(String),

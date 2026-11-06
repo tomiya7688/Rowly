@@ -68,8 +68,24 @@ fn first_save_without_a_path_is_refused_and_save_as_assigns_the_backing() {
     assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 0);
     assert!(!document.refresh_if_external_change().unwrap());
 
+    // 初回Saveは既存のfileを黙って上書きしない。
+    let existing = directory.path().join("existing.csv");
+    fs::write(&existing, "keep,me\n").unwrap();
+    assert!(matches!(
+        document.save_first(&existing),
+        Err(DocumentError::DestinationExists { .. })
+    ));
+    assert_eq!(fs::read_to_string(&existing).unwrap(), "keep,me\n");
+    assert!(document.is_unassigned() && document.is_dirty());
+
     let path = directory.path().join("first.csv");
-    document.save_as(&path).unwrap();
+    document.save_first(&path).unwrap();
+    // 既にbackingがあるdocumentにsave_firstは使えない。
+    assert!(
+        document
+            .save_first(directory.path().join("second.csv"))
+            .is_err()
+    );
     assert!(!document.is_unassigned());
     assert_eq!(document.backing_path(), Some(path.as_path()));
     assert!(!document.is_dirty());

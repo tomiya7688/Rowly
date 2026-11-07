@@ -25,6 +25,7 @@ mod history;
 mod metadata;
 pub mod pivot;
 pub mod print_layout;
+pub mod remove_duplicates;
 pub mod text_transform;
 mod validation;
 pub mod view_style;
@@ -40,6 +41,7 @@ pub use document::{
     CsvDocument, DocumentError, ExternalCellConflict, ExternalConflictDraft,
     ExternalStructureConflict,
 };
+pub use remove_duplicates::{DuplicatePlan, KeepPolicy, RemovedRow};
 pub use text_transform::{
     CaseMode, PlannedChange, TextTransform, TextTransformPlan, TransformTarget, TrimMode,
     apply_text_transform,

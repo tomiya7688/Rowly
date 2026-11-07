@@ -159,7 +159,7 @@ impl CsvDocument {
 
         // keyごとに、現時点で残す行の番号を持つ。欠けたcellは空文字と区別するためNoneにする
         let mut kept: HashMap<Vec<Option<&str>>, usize> = HashMap::new();
-        let mut removed = Vec::new();
+        let mut removed: Vec<(RemovedRow, Vec<Option<&str>>)> = Vec::new();
         for row in 1..self.row_count() {
             let key: Vec<Option<&str>> = columns.iter().map(|c| self.cell(row, *c)).collect();
             match kept.get(&key).copied() {
@@ -167,14 +167,22 @@ impl CsvDocument {
                     kept.insert(key, row);
                 }
                 Some(existing) => match policy {
-                    KeepPolicy::First => removed.push(self.removed_row(row, existing)),
+                    KeepPolicy::First => removed.push((self.removed_row(row, existing), key)),
                     KeepPolicy::Last => {
-                        removed.push(self.removed_row(existing, row));
+                        removed.push((self.removed_row(existing, row), key.clone()));
                         kept.insert(key, row);
                     }
                 },
             }
         }
+        // Lastでは同じkeyが3行以上あると途中のkept_rowが古くなるため、最終的に残る行へそろえる
+        let mut removed: Vec<RemovedRow> = removed
+            .into_iter()
+            .map(|(mut entry, key)| {
+                entry.kept_row = kept[&key];
+                entry
+            })
+            .collect();
         removed.sort_by_key(|entry| entry.row);
         Ok(DuplicatePlan {
             key_columns: columns,
@@ -241,8 +249,13 @@ impl CsvDocument {
         self.begin_transaction()?;
         for entry in plan.removed.iter().rev() {
             if let Err(error) = self.delete_rows(entry.row, 1) {
-                self.rollback_transaction()?;
-                return Err(error);
+                // rollbackも失敗した場合は、元の削除エラーを失わずに両方を伝える
+                return Err(match self.rollback_transaction() {
+                    Ok(()) => error,
+                    Err(rollback) => {
+                        DocumentError::Edit(format!("{error}; rollback also failed: {rollback}"))
+                    }
+                });
             }
         }
         self.commit_transaction()?;

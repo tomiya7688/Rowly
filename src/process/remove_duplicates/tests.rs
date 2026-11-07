@@ -167,3 +167,12 @@ fn validation_rules_do_not_block_row_removal() -> TestResult {
     assert_eq!(doc.remove_duplicates(&[0], KeepPolicy::First)?, 1);
     Ok(())
 }
+
+#[test]
+fn keep_last_reports_the_final_kept_row_for_every_removed_row() -> TestResult {
+    let (_d, doc) = document(&[&["k"], &["1"], &["1"], &["1"]])?;
+    let plan = doc.plan_remove_duplicates(&[0], KeepPolicy::Last)?;
+    assert_eq!(plan.removed_count(), 2);
+    assert!(plan.removed().iter().all(|entry| entry.kept_row == 3));
+    Ok(())
+}

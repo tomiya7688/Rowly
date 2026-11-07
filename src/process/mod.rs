@@ -17,6 +17,7 @@ pub mod calculation;
 pub mod chart;
 mod clipboard;
 mod column;
+pub mod column_reshape;
 pub mod conditional_format;
 pub mod display_format;
 pub mod display_settings;
@@ -37,6 +38,7 @@ pub use address::{CellRange, CellRef, ReferenceError};
 pub use column::{
     ColumnCell, ColumnError, ColumnType, ColumnTypeReport, JapaneseCheckReport, contains_japanese,
 };
+pub use column_reshape::{CombinePlan, SplitPlan};
 pub use document::{
     CsvDocument, DocumentError, ExternalCellConflict, ExternalConflictDraft,
     ExternalStructureConflict,

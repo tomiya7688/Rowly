@@ -164,3 +164,18 @@ GUI専用にしません。
 - 削除0件なら履歴もdirtyも変えません。
 - 1つの `CsvDocument` は1つのphysical sourceです。複数sourceを跨ぐ重複除去は、source別または明示policyが必要なため扱いません。
 - Calculation Bindingの追従は #343 の範囲です。
+
+## Split Column / Combine Columnsの実装契約（#314）
+
+実装は `src/process/column_reshape.rs` です。最終確認日: 2026-11-07。
+
+- Splitは `plan_split_column(列, 区切り, 新header列, 元列を残すか)` で計画し、`apply_split_plan` で適用します。区切りは空でない文字列で、出力列数は新headerの個数です。
+- 各データ行の値は区切りで最大「出力列数」個に分けます。足りない分は空文字、余りは最後の列へ区切りごと入れます。新しい列は元列の直後に入ります。
+- Combineは `plan_combine_columns(列群, separator, 新header, 元列を残すか)` で計画し、`apply_combine_plan` で適用します。列は2個以上で重複不可、結合は指定した列順です。空cellも飛ばさずseparatorで結びます。新しい列は最も右の元列の直後に入ります。元列を削除すると、残る列の相対順は変わりません。
+- 比較・結合はraw文字列だけです。header行（0行目）は分割・結合せず、新しい列のheaderに指定したheaderを書きます。
+- 新headerは空文字不可で、新header同士、および適用後に残る既存headerと重複できません（削除する元列のheaderは再利用できます）。
+- 計画は適用時に作り直して比較し、計画後にcellが変わっていれば拒否します。対象列が範囲外、またはその列を持たない行がある場合も拒否します。
+- 列追加・値設定・元列削除を1つのtransactionにまとめ、Undoは1回です。途中で失敗した場合はrollbackし、documentは変更されません。
+- 検証ruleのtarget indexは `insert_columns`/`delete_columns` と同じ規則で追従します。新しい値が規則に反する場合は全体を拒否します。
+- View設定・Calculation Bindingのidentity再解決は構造変更通知（#343）の範囲です。ここでは扱いません。
+- 1つの `CsvDocument` は1つのphysical sourceです。source間の列結合は扱いません。

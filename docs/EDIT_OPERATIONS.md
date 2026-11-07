@@ -164,3 +164,15 @@ calculation.fill.bindings.right
 - 1 Undoで全体復元
 
 この日本語版をFill / Series / Paste Specialの正本とします。
+
+## Fill Values / Series Generateの実装契約（#279）
+
+実装は `src/process/fill.rs` です。最終確認日: 2026-11-08。
+
+- `plan_fill_values(範囲, 方向, pattern_len)` は、範囲の上端（Down）または左端（Right）の `pattern_len` 個を元cellとし、残りへraw文字列を繰り返し複製します。複数の元cellは繰り返しpatternで、数値系列へ推測しません。
+- `plan_series(範囲, 方向, generator)` は単一の列（Down）または行（Right）へ、明示した `SeriesGenerator` の値を先頭から順に割り当てます。長さは範囲の長さです。
+- 組み込みのgeneratorは `IntegerSeries`（小数点なし）と `DecimalSeries` です。小数は浮動小数点を使わず10進の整数演算で計算し、開始値と増分の大きい方の桁数で出力します（開始1・増分0.5なら1.0, 1.5, 2.0）。指数表記・空白・空の整数部/小数部・30桁超・overflowは拒否します。
+- Date seriesは `SeriesGenerator` を実装する明示format/parserで追加します。文字列から日付を推測しません。
+- 範囲が既存table外に出る場合は拒否します（tableを自動拡張しません）。
+- `apply_fill_plan` は、元cellと対象cellが計画時から変わっていれば拒否します。値が変わるcellだけを `set_cell_values` で全件検証して書き込み、違反が1件でもあれば何も変更しません。Undoは1回で、変更0件なら履歴もdirtyも変えません。
+- Calculation Bindingは複製も変更もしません。GUI・Paste Specialは対象外です。

@@ -22,6 +22,7 @@ pub mod conditional_format;
 pub mod display_format;
 pub mod display_settings;
 mod document;
+pub mod fill;
 mod history;
 mod metadata;
 pub mod pivot;
@@ -43,6 +44,7 @@ pub use document::{
     CsvDocument, DocumentError, ExternalCellConflict, ExternalConflictDraft,
     ExternalStructureConflict,
 };
+pub use fill::{DecimalSeries, FillDirection, FillPlan, IntegerSeries, SeriesGenerator};
 pub use remove_duplicates::{DuplicatePlan, KeepPolicy, RemovedRow};
 pub use text_transform::{
     CaseMode, PlannedChange, TextTransform, TextTransformPlan, TransformTarget, TrimMode,

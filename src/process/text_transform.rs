@@ -104,12 +104,16 @@ pub struct PlannedChange {
 /// TextTransformPlan: 変換で変わるcellと走査件数を保持し、適用前に確認できるようにする
 /// ]
 /// フィールド: [
+/// target: 計画作成時の対象
+/// transform: 計画作成時の変換
 /// scanned: 走査したcell数
 /// changes: 値が変わるcellの一覧
 /// ]
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TextTransformPlan {
+    target: TransformTarget,
+    transform: TextTransform,
     scanned: usize,
     changes: Vec<PlannedChange>,
 }
@@ -212,8 +216,17 @@ impl CsvDocument {
         target: TransformTarget,
         transform: TextTransform,
     ) -> Result<TextTransformPlan, DocumentError> {
-        let references: Vec<CellRef> = match target {
-            TransformTarget::Range(range) => range.iter().collect(),
+        // 巨大な範囲を展開する前に、範囲がtable内かを確認する
+        let (first_row, last_row, first_column, last_column) = match target {
+            TransformTarget::Range(range) => {
+                let (start, end) = (range.start(), range.end());
+                if end.row() >= self.row_count() || end.column() >= self.column_count() {
+                    return Err(DocumentError::Edit(format!(
+                        "range `{range}` is outside the existing CSV table"
+                    )));
+                }
+                (start.row(), end.row(), start.column(), end.column())
+            }
             TransformTarget::Column(column) => {
                 if column >= self.column_count() {
                     return Err(DocumentError::Edit(format!(
@@ -221,30 +234,36 @@ impl CsvDocument {
                     )));
                 }
                 // header行は列identityなので、列指定では変更しない
-                (1..self.row_count())
-                    .map(|row| CellRef::new(row, column))
-                    .collect()
+                (1, self.row_count().saturating_sub(1), column, column)
             }
         };
 
         let mut changes = Vec::new();
-        for reference in &references {
-            let before = self.cell_ref(*reference).ok_or_else(|| {
-                DocumentError::Edit(format!(
-                    "cell `{reference}` is outside the existing CSV table"
-                ))
-            })?;
-            let after = apply_text_transform(transform, before);
-            if after != before {
-                changes.push(PlannedChange {
-                    reference: *reference,
-                    before: before.to_owned(),
-                    after,
-                });
+        let mut scanned = 0;
+        // 列指定でheaderのみの場合は first_row > last_row となり走査しない
+        for row in first_row..=last_row {
+            for column in first_column..=last_column {
+                scanned += 1;
+                let reference = CellRef::new(row, column);
+                let before = self.cell_ref(reference).ok_or_else(|| {
+                    DocumentError::Edit(format!(
+                        "cell `{reference}` is outside the existing CSV table"
+                    ))
+                })?;
+                let after = apply_text_transform(transform, before);
+                if after != before {
+                    changes.push(PlannedChange {
+                        reference,
+                        before: before.to_owned(),
+                        after,
+                    });
+                }
             }
         }
         Ok(TextTransformPlan {
-            scanned: references.len(),
+            target,
+            transform,
+            scanned,
             changes,
         })
     }
@@ -274,13 +293,12 @@ impl CsvDocument {
         &mut self,
         plan: &TextTransformPlan,
     ) -> Result<usize, DocumentError> {
-        for change in &plan.changes {
-            if self.cell_ref(change.reference) != Some(change.before.as_str()) {
-                return Err(DocumentError::Edit(format!(
-                    "cell `{}` changed after the transform was planned; plan again",
-                    change.reference
-                )));
-            }
+        // 対象全体を再計算し、計画時と同じ変更になるか確認する（変更なしだったcellの後からの変化も検出する）
+        let current = self.plan_text_transform(plan.target, plan.transform)?;
+        if current.changes != plan.changes {
+            return Err(DocumentError::Edit(
+                "target cells changed after the transform was planned; plan again".into(),
+            ));
         }
         self.set_cell_values(
             plan.changes

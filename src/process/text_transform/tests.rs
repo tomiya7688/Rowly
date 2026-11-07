@@ -211,3 +211,32 @@ fn duplicate_cell_references_are_rejected_without_change() -> TestResult {
     assert!(!doc.is_dirty());
     Ok(())
 }
+
+#[test]
+fn plan_is_rejected_when_an_unchanged_target_cell_became_eligible() -> TestResult {
+    let (_dir, mut doc) = document(&[&["h"], &["a"], &[" b "]])?;
+    let plan = doc.plan_text_transform(
+        TransformTarget::Column(0),
+        TextTransform::Trim(TrimMode::Both),
+    )?;
+    // 計画時は変更なしだったA2が、後から変換対象になる
+    doc.set_cell_a1("A2", " a ")?;
+    let before = doc.csv_text()?;
+    assert!(doc.apply_text_transform_plan(&plan).is_err());
+    assert_eq!(doc.csv_text()?, before);
+    Ok(())
+}
+
+#[test]
+fn oversized_range_is_rejected_before_expansion() -> TestResult {
+    let (_dir, doc) = document(&[&["h"], &["a"]])?;
+    let huge = CellRange::new(CellRef::new(0, 0), CellRef::new(usize::MAX / 2, 0));
+    assert!(
+        doc.plan_text_transform(
+            TransformTarget::Range(huge),
+            TextTransform::Trim(TrimMode::Both)
+        )
+        .is_err()
+    );
+    Ok(())
+}

@@ -2028,7 +2028,7 @@ impl CsvDocument {
     /// 変更があった場合だけ履歴とdirty状態が更新される。全cellが現在値と同じなら何も記録しない
     /// ]
     /// エラー: [
-    /// DocumentError: cellが存在しない、または値が検証規則に反する場合
+    /// DocumentError: cellが存在しない、同じcellが重複している、または値が検証規則に反する場合
     /// ]
     /// ```
     pub fn set_cell_values(
@@ -2038,7 +2038,14 @@ impl CsvDocument {
         let mut changes = Vec::new();
         let mut violations = Vec::new();
 
+        let mut seen = std::collections::HashSet::new();
         for (reference, value) in values {
+            // 同じcellを二重に指定すると履歴のbeforeが食い違うため拒否する
+            if !seen.insert(reference) {
+                return Err(DocumentError::Edit(format!(
+                    "cell `{reference}` is specified more than once"
+                )));
+            }
             let before = self.cell_ref(reference).ok_or_else(|| {
                 DocumentError::Edit(format!(
                     "cell `{reference}` is outside the existing CSV table"

@@ -197,3 +197,17 @@ fn missing_column_or_cell_is_an_error() -> TestResult {
     assert!(!doc.is_dirty());
     Ok(())
 }
+
+#[test]
+fn duplicate_cell_references_are_rejected_without_change() -> TestResult {
+    let (_dir, mut doc) = document(&[&["h"], &["a"]])?;
+    let cell = CellRef::new(1, 0);
+    let before = doc.csv_text()?;
+    assert!(
+        doc.set_cell_values([(cell, "x".to_owned()), (cell, "y".to_owned())])
+            .is_err()
+    );
+    assert_eq!(doc.csv_text()?, before);
+    assert!(!doc.is_dirty());
+    Ok(())
+}

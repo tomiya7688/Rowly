@@ -461,10 +461,17 @@ impl CsvDocument {
         values: Vec<(CellRef, String)>,
         deletes: &[usize],
     ) -> Result<(), DocumentError> {
+        // Header対象のruleは名前で列を引くため、header再利用で新しい列へ移った違反を適用後に検出する
+        let violations_before = self.validation_report().violations.len();
         self.insert_columns(index, count)?;
         self.set_cell_values(values)?;
         for column in deletes {
             self.delete_columns(*column, 1)?;
+        }
+        if self.validation_report().violations.len() > violations_before {
+            return Err(DocumentError::Edit(
+                "the reshaped table would violate a validation rule".into(),
+            ));
         }
         Ok(())
     }

@@ -232,3 +232,20 @@ fn combine_keeps_validation_rule_of_the_surviving_column() -> TestResult {
     assert!(doc.set_cell(1, 1, "no").is_err());
     Ok(())
 }
+
+#[test]
+fn reused_header_with_a_header_rule_is_validated_and_rolled_back() -> TestResult {
+    let (_d, mut doc) = document(&[&["p"], &["a b"]])?;
+    doc.set_validation_rule(
+        ValidationTarget::Header("p".to_owned()),
+        ValidationRule::AllowedValues(vec!["a b".to_owned()]),
+    )?;
+    let before = doc.csv_text()?;
+    // 新しいp列へ"a"が入るとruleに反するため、全体を取り消す
+    assert!(
+        doc.split_column(0, " ", &names(&["p", "q"]), false)
+            .is_err()
+    );
+    assert_eq!(doc.csv_text()?, before);
+    Ok(())
+}

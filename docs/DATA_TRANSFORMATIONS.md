@@ -149,3 +149,18 @@ GUI専用にしません。
 - 変更は `CsvDocument::set_cell_values` で1件の履歴操作として記録するため、Undoは1回です。
 - 変更が0件ならば履歴もdirtyも変えません。
 - raw値だけを変更します。View設定・表示書式は変更しません。
+
+
+## Remove Duplicatesの実装契約（#315）
+
+実装は `src/process/remove_duplicates.rs` です。最終確認日: 2026-11-07。
+
+- key列は1列以上を明示します。重複指定は1列として扱い、table外の列は拒否します。
+- 比較はraw文字列の完全一致だけです。`1`と`1.0`、`A`と`a`、前後の空白違いは別の値です。表示書式・型解釈は使いません。
+- 残す方針は `First`（最初の行）か `Last`（最後の行）です。残る行の順序は変えません。
+- header行は比較にも削除にも含めません。
+- `plan_remove_duplicates` が削除予定の行（各行と、同じkeyで残る行の対応つき）を返します。documentは変更しません。
+- `apply_duplicate_plan` は、計画し直した結果が計画と一致しない場合（計画後にrowが変わった場合）は拒否します。削除は1つのtransactionにまとめ、Undoは1回です。transactionが既に開始されている場合は拒否します。
+- 削除0件なら履歴もdirtyも変えません。
+- 1つの `CsvDocument` は1つのphysical sourceです。複数sourceを跨ぐ重複除去は、source別または明示policyが必要なため扱いません。
+- Calculation Bindingの追従は #343 の範囲です。

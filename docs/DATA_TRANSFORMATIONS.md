@@ -135,3 +135,17 @@ GUI専用にしません。
 - multi-sourceを暗黙redistributeしない
 
 この日本語版を明示データ変換の正本とします。
+
+## Trim / Caseの実装契約（#313）
+
+実装は `src/process/text_transform.rs` です。最終確認日: 2026-11-07。
+
+- 対象は `TransformTarget::Range`（指定どおりのcell範囲。headerを含めれば変更する）か `Column`（データ行のみ。header行は列identityなので変更しない）です。
+- Trimの空白はUnicodeのWhite_Space属性（`str::trim`）です。ゼロ幅スペースは空白として扱いません。
+- Caseはロケールに依存しないUnicode既定変換です。`ß`は大文字で`SS`、語末の`Σ`は小文字で`ς`、`İ`は`i`と結合ドットになります。
+- `plan_text_transform` が変更cell数と変更前後を返します。documentは変更しません。
+- `apply_text_transform_plan` は、計画後にcellが変わっていれば拒否します（古い計画は確定しません）。
+- 変換後の値が検証規則に反する場合は、全cellを変更せず `ValidationRejected` を返します。
+- 変更は `CsvDocument::set_cell_values` で1件の履歴操作として記録するため、Undoは1回です。
+- 変更が0件ならば履歴もdirtyも変えません。
+- raw値だけを変更します。View設定・表示書式は変更しません。

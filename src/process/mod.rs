@@ -25,6 +25,7 @@ mod history;
 mod metadata;
 pub mod pivot;
 pub mod print_layout;
+pub mod text_transform;
 mod validation;
 pub mod view_style;
 #[cfg(feature = "gui")]
@@ -38,6 +39,10 @@ pub use column::{
 pub use document::{
     CsvDocument, DocumentError, ExternalCellConflict, ExternalConflictDraft,
     ExternalStructureConflict,
+};
+pub use text_transform::{
+    CaseMode, PlannedChange, TextTransform, TextTransformPlan, TransformTarget, TrimMode,
+    apply_text_transform,
 };
 pub use validation::{
     ValidationComparisonOperator, ValidationExpression, ValidationOperand, ValidationReport,

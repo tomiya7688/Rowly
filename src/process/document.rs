@@ -1984,7 +1984,7 @@ impl CsvDocument {
 
     // {
     // 責務: [
-    // set_references_value: 複数cellを事前検証して一括更新し履歴へ記録する
+    // set_references_value: 複数cellへ同じ値を事前検証して一括更新し履歴へ記録する
     // ]
     // 引数: [
     // references: impl IntoIterator<Item = CellRef>
@@ -1994,7 +1994,7 @@ impl CsvDocument {
     // (): 成功時に値を返さない
     // ]
     // 補足: [
-    // 全対象と検証規則を先に確認してから一括変更する
+    // 各cellへ同じ値を割り当てて set_cell_values へ委譲する
     // ]
     // }
     fn set_references_value(
@@ -2002,10 +2002,50 @@ impl CsvDocument {
         references: impl IntoIterator<Item = CellRef>,
         value: String,
     ) -> Result<(), DocumentError> {
+        self.set_cell_values(
+            references
+                .into_iter()
+                .map(|reference| (reference, value.clone())),
+        )
+    }
+
+    /// ```text
+    /// 責務: [
+    /// set_cell_values: cellごとに異なる値を事前検証して一括更新し、1回のUndoにまとめる
+    /// ]
+    /// 処理: [
+    /// 1: 全cellの存在と、値が変わるcellの検証規則を先に確認する
+    /// 2: 一つでも違反があれば何も変更せず拒否する
+    /// 3: 変更があるcellだけを書き込み、1件の履歴操作として記録する
+    /// ]
+    /// 引数: [
+    /// values: impl IntoIterator<Item = (CellRef, String)>
+    /// ]
+    /// 戻り値: [
+    /// (): 成功時に値を返さない
+    /// ]
+    /// 副作用: [
+    /// 変更があった場合だけ履歴とdirty状態が更新される。全cellが現在値と同じなら何も記録しない
+    /// ]
+    /// エラー: [
+    /// DocumentError: cellが存在しない、同じcellが重複している、または値が検証規則に反する場合
+    /// ]
+    /// ```
+    pub fn set_cell_values(
+        &mut self,
+        values: impl IntoIterator<Item = (CellRef, String)>,
+    ) -> Result<(), DocumentError> {
         let mut changes = Vec::new();
         let mut violations = Vec::new();
 
-        for reference in references {
+        let mut seen = std::collections::HashSet::new();
+        for (reference, value) in values {
+            // 同じcellを二重に指定すると履歴のbeforeが食い違うため拒否する
+            if !seen.insert(reference) {
+                return Err(DocumentError::Edit(format!(
+                    "cell `{reference}` is specified more than once"
+                )));
+            }
             let before = self.cell_ref(reference).ok_or_else(|| {
                 DocumentError::Edit(format!(
                     "cell `{reference}` is outside the existing CSV table"
@@ -2030,7 +2070,7 @@ impl CsvDocument {
                 changes.push(CellChange {
                     reference,
                     before: before.to_owned(),
-                    after: value.clone(),
+                    after: value,
                 });
             }
         }
@@ -2052,7 +2092,6 @@ impl CsvDocument {
         self.history.record(EditOperation::Cells(changes));
         Ok(())
     }
-
     // {
     // 責務: [
     // apply_command: 編集commandを指定方向へ適用する

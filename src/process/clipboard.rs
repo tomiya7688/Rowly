@@ -73,7 +73,7 @@ impl CsvDocument {
 //   引数: [text: clipboardのTSV文字列。],
 //   戻り値: [Result<Vec<Vec<String>>, DocumentError>: 解析した行、またはTSV解析エラー。]
 // }
-fn parse_clipboard_tsv(text: &str) -> Result<Vec<Vec<String>>, DocumentError> {
+pub(super) fn parse_clipboard_tsv(text: &str) -> Result<Vec<Vec<String>>, DocumentError> {
     ReaderBuilder::new()
         .delimiter(b'\t')
         .has_headers(false)
@@ -135,4 +135,43 @@ fn collect_clipboard_changes(
         }
     }
     Ok(changes)
+}
+
+// {
+//   責務: [parse_clipboard_tsv_keeping_blank_rows: TSVを解析し、途中の空行を空cell1つの行として保持する。],
+//   処理: [recordの間のbyte範囲にある改行を数えて、読み飛ばされた空行を復元する。],
+//   引数: [text: clipboardのTSV文字列。],
+//   戻り値: [Result<Vec<Vec<String>>, DocumentError>: 解析した行、またはTSV解析エラー。],
+//   補足: [末尾の空行は貼り付け元の終端改行とみなして保持しない。1列を外部アプリからcopyした空cellを後続の行がずれないようにする。]
+// }
+pub(super) fn parse_clipboard_tsv_keeping_blank_rows(
+    text: &str,
+) -> Result<Vec<Vec<String>>, DocumentError> {
+    let mut reader = ReaderBuilder::new()
+        .delimiter(b'\t')
+        .has_headers(false)
+        .flexible(true)
+        .from_reader(text.as_bytes());
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    // 直前のrecordが終わったbyte位置。次のrecordの開始までの改行数が読み飛ばされた空行の数になる
+    let bytes = text.as_bytes();
+    let mut previous_end = 0_usize;
+    let mut record = csv::StringRecord::new();
+    while reader
+        .read_record(&mut record)
+        .map_err(|error| DocumentError::Csv(error.to_string()))?
+    {
+        // csvはrecordの前の空行を読み飛ばすため、前回の終端から続く改行・復帰だけの部分を空行として数える
+        let blank_lines = bytes
+            .get(previous_end..)
+            .unwrap_or_default()
+            .iter()
+            .take_while(|b| **b == b'\n' || **b == b'\r')
+            .filter(|b| **b == b'\n')
+            .count();
+        rows.extend((0..blank_lines).map(|_| vec![String::new()]));
+        previous_end = usize::try_from(reader.position().byte()).unwrap_or(previous_end);
+        rows.push(record.iter().map(str::to_owned).collect());
+    }
+    Ok(rows)
 }

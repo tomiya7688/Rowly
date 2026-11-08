@@ -19,6 +19,7 @@ mod clipboard;
 mod column;
 pub mod column_reshape;
 pub mod conditional_format;
+pub mod diff;
 pub mod display_format;
 pub mod display_settings;
 mod document;
@@ -43,6 +44,10 @@ pub use column::{
     ColumnCell, ColumnError, ColumnType, ColumnTypeReport, JapaneseCheckReport, contains_japanese,
 };
 pub use column_reshape::{CombinePlan, SplitPlan};
+pub use diff::{
+    Alignment, CellMerge, DiffChange, DiffKind, MergeKind, MergeSide, TableDiff, ThreeWayDiff,
+    diff_tables, diff_three_way,
+};
 pub use document::{
     CsvDocument, DocumentError, ExternalCellConflict, ExternalConflictDraft,
     ExternalStructureConflict,

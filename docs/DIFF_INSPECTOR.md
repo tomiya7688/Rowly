@@ -157,3 +157,39 @@ conflict.keep_current
 - Code invalid時にcell diffを捏造しない
 
 この日本語版を差分・競合インスペクタの正本とします。
+
+## pure diff coreの実装契約（#269）
+
+最終確認日: 2026-11-08。実装は `src/process/diff.rs` と `src/process/diff/three_way.rs` です。GUI・競合解決・Code spanは含みません。
+
+### 2-way差分
+
+`diff_tables(source_id, before, after)` は共有参照だけを受け取り、tableを変更しません。
+
+1. header行（0行目）を列位置ごとに比較します。違う列は `HeaderChanged`、列数が違えば `StructureChanged` も出します。
+2. データ行は先頭・末尾の一致を除き、残りを最長共通部分列で対応付けます。
+3. 一致しない区間は、行数が同じなら位置で対にして `CellChanged` にします。1行対1行は `Anchored`、複数行は仮定として `Positional` を付けます。
+4. 行数が違う区間は `RowDeleted` と `RowInserted` にします。
+5. 同じ内容の行が削除側と挿入側の両方にある場合は、移動と断定せず `RowMovedOrAmbiguous` にまとめます。重複行は、片側にだけ複数ある場合も全出現位置をまとめて曖昧にします。
+
+比較はraw文字列です。行が短い場合、存在しないcellは `None` で、空文字列と区別します。各差分は `source_id` を持ち、sourceが違えば同じA2でも別cellです。行数の積が4,000,000を超える場合は対応付けを省略し、`alignment_skipped` を立てます。
+
+### 3-way差分
+
+`diff_three_way(source_id, base, local, other)` はBaseとLocal、BaseとOtherの2-way差分を、Base上のcell位置で突き合わせます。
+
+| 分類 | 条件 |
+| --- | --- |
+| LocalOnly / OtherOnly | 片側だけが変更した |
+| BothSame | 両側が同じ値へ変更した |
+| Conflict | 違う値へ変更した、または片側の変更と他方の行削除が衝突した |
+
+競合はBase・Local・Otherの値を同時に保持します。いずれかの側の対応が `Positional` なら `ambiguous` を立てます。cell以外の変更は、競合を断定せず側ごとの一覧で返します。
+
+### 未実装
+
+- Code Draftのtext spanへの対応（#265）
+- stale previewの判定（呼出し側がStateStampで行う）
+- 列の挿入・削除の位置ずれを考慮した列対応
+- 行数が違う不一致区間で、片側の行削除と他方の同じ行の編集が重なる場合の競合検出（現状は行の挿入・削除としてだけ返し、cellの競合にはしません）
+- 位置で対にした行のうち、変更のないcellの曖昧さ表示（`ambiguous` は変更されたcellだけに付きます）

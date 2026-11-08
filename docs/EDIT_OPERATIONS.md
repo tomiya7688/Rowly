@@ -176,3 +176,16 @@ calculation.fill.bindings.right
 - 範囲が既存table外に出る場合は拒否します（tableを自動拡張しません）。
 - `apply_fill_plan` は、元cellと対象cellが計画時から変わっていれば拒否します。値が変わるcellだけを `set_cell_values` で全件検証して書き込み、違反が1件でもあれば何も変更しません。Undoは1回で、変更0件なら履歴もdirtyも変えません。
 - Calculation Bindingは複製も変更もしません。GUI・Paste Specialは対象外です。
+
+
+## Paste Specialの実装契約（#281）
+
+実装は `src/process/paste_special.rs` です。最終確認日: 2026-11-08。
+
+- 貼り付ける値は `ClipboardGrid`（長方形のraw文字列）です。TSVからは `ClipboardGrid::from_tsv` で作り、引用されたタブ・改行はraw値として保持します。
+- 方式は `PasteMode::Values`（選択範囲の左上から貼る）、`Transpose`（行と列を入れ替えて左上から貼る。2x3は3x2になる）、`Repeat`（選択範囲全体へタイル状に繰り返す）です。
+- 行ごとに列数が違う（ragged）clipboardは `RaggedPolicy::Reject` が既定で拒否します。`PadEmpty` を明示した場合だけ、短い行の右を空文字で埋めます。空のclipboardは拒否します。
+- `Repeat` の選択範囲はclipboardの大きさの整数倍に限ります。端数のtileは黙って切り捨てず拒否します。
+- 書込み先が既存table外に出る場合は拒否します（行・列を自動で追加しません）。
+- 計画は `FillPlan` で、適用は `apply_fill_plan` です。対象cellが計画時から変わっていれば拒否し、全件を検証してから1回のUndoで書き込みます。違反が1件でもあれば何も変更せず、変更0件なら履歴もdirtyも変えません。
+- raw文字列だけを貼り付け、Calculation BindingとView styleは複製しません。

@@ -73,7 +73,7 @@ impl CsvDocument {
 //   引数: [text: clipboardのTSV文字列。],
 //   戻り値: [Result<Vec<Vec<String>>, DocumentError>: 解析した行、またはTSV解析エラー。]
 // }
-fn parse_clipboard_tsv(text: &str) -> Result<Vec<Vec<String>>, DocumentError> {
+pub(super) fn parse_clipboard_tsv(text: &str) -> Result<Vec<Vec<String>>, DocumentError> {
     ReaderBuilder::new()
         .delimiter(b'\t')
         .has_headers(false)

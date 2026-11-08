@@ -79,7 +79,7 @@ impl CsvDocument {
     // Result<(), DocumentError>: table外に出る場合はエラー
     // ]
     // }
-    fn require_range_in_table(&self, range: CellRange) -> Result<(), DocumentError> {
+    pub(super) fn require_range_in_table(&self, range: CellRange) -> Result<(), DocumentError> {
         let end = range.end();
         if end.row() >= self.row_count() || end.column() >= self.column_count() {
             return Err(DocumentError::Edit(format!(
@@ -103,7 +103,7 @@ impl CsvDocument {
     // Result<Vec<PlannedChange>, DocumentError>: 範囲内の全cell
     // ]
     // }
-    fn planned_cells(
+    pub(super) fn planned_cells(
         &self,
         range: CellRange,
         mut value_for: impl FnMut(CellRef) -> Result<String, DocumentError>,

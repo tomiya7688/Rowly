@@ -25,6 +25,7 @@ mod document;
 pub mod fill;
 mod history;
 mod metadata;
+pub mod paste_special;
 pub mod pivot;
 pub mod print_layout;
 pub mod remove_duplicates;
@@ -45,6 +46,7 @@ pub use document::{
     ExternalStructureConflict,
 };
 pub use fill::{DecimalSeries, FillDirection, FillPlan, IntegerSeries, SeriesGenerator};
+pub use paste_special::{ClipboardGrid, PasteMode, RaggedPolicy};
 pub use remove_duplicates::{DuplicatePlan, KeepPolicy, RemovedRow};
 pub use text_transform::{
     CaseMode, PlannedChange, TextTransform, TextTransformPlan, TransformTarget, TrimMode,

@@ -231,3 +231,28 @@ fn stale_plan_is_rejected() -> TestResult {
     assert!(doc.apply_fill_plan(&plan).is_err());
     Ok(())
 }
+
+#[test]
+fn blank_lines_in_a_single_column_stay_empty_cells() -> TestResult {
+    let clip = grid("a\n\nc\n");
+    assert_eq!((clip.height(), clip.width()), (3, 1));
+    let (_d, mut doc) = document(&[&["x"], &["y"], &["z"], &["w"]])?;
+    doc.paste_special(cell(0, 0), &clip, PasteMode::Values)?;
+    assert_eq!(doc.cell(0, 0), Some("a"));
+    assert_eq!(doc.cell(1, 0), Some(""));
+    assert_eq!(doc.cell(2, 0), Some("c"));
+    assert_eq!(doc.cell(3, 0), Some("w"));
+    Ok(())
+}
+
+#[test]
+fn blank_line_after_a_quoted_multiline_cell_is_counted_correctly() -> TestResult {
+    let clip = grid("\"p\nq\"\n\nr\n");
+    assert_eq!(clip.height(), 3);
+    let (_d, mut doc) = blank_document(3, 1)?;
+    doc.paste_special(cell(0, 0), &clip, PasteMode::Values)?;
+    assert_eq!(doc.cell(0, 0), Some("p\nq"));
+    assert_eq!(doc.cell(1, 0), Some(""));
+    assert_eq!(doc.cell(2, 0), Some("r"));
+    Ok(())
+}

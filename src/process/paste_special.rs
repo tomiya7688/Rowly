@@ -13,7 +13,7 @@
 //! Repeatは選択範囲がclipboardの大きさの整数倍のときだけ許可し、端数のtileを黙って切り捨てない
 //! ]
 //! ```
-use super::clipboard::parse_clipboard_tsv;
+use super::clipboard::parse_clipboard_tsv_keeping_blank_rows;
 use super::{CellRange, CellRef, CsvDocument, DocumentError, FillPlan};
 
 /// ```text
@@ -112,7 +112,7 @@ impl ClipboardGrid {
     /// ]
     /// ```
     pub fn from_tsv(text: &str, ragged: RaggedPolicy) -> Result<Self, DocumentError> {
-        Self::new(parse_clipboard_tsv(text)?, ragged)
+        Self::new(parse_clipboard_tsv_keeping_blank_rows(text)?, ragged)
     }
 
     /// ```text

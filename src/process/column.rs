@@ -84,7 +84,7 @@ impl ColumnType {
     // bool: 列型に適合する場合true
     // ]
     // ```
-    fn matches(self, value: &str) -> bool {
+    pub(super) fn matches(self, value: &str) -> bool {
         match self {
             Self::String => true,
             Self::Integer => value.parse::<i64>().is_ok(),

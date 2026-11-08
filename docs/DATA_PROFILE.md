@@ -156,3 +156,18 @@ profile.value.search
 - source別 / logical全体scope
 
 この日本語版をデータプロファイルの正本とします。
+
+## 列profile coreの実装契約（#273）
+
+実装は `src/process/profile.rs` と `src/process/profile/accumulator.rs` です。最終確認日: 2026-11-08。
+
+- `CsvDocument::profile_column(列, &ProfileOptions)` が `ColumnProfile` を返します。CSV・列型宣言・入力規則は変更せず、Undo履歴も作りません。
+- scopeは `AllRows`（header以外の全canonical rows）と `Rows(Vec<usize>)`（現在Viewの表示行・selection）です。重複は1回として数え、header行や範囲外の行は拒否します。
+- 値は `ProfileAccumulator::add` で1件ずつ積み上げ、全値のcloneは持ちません。異なる値だけを件数表に保持します。
+- distinct・頻出値はraw値で数えます（`00123` と `123` は別）。duplicateは「既出の値と同じcell数」で、`rows - distinct` です。空文字も1つの値として数えます。
+- 型は呼び出し側が `column_type` で明示した場合だけ使い、値から推論しません。Integer / Decimal / Booleanのときだけ `parse_failures` を数え、Integer・Decimalではmin / maxを元のraw文字列で返します。空欄はparse failureに含めず `empty` だけで数えます。
+- distinctが `distinct_limit`（既定10万）を超えたら、近似せず `distinct` / `duplicate` / `frequent` を `None` / 空にして「計測省略」を明示します。
+- multi-sourceは各sourceの `profile_accumulator` を `merge` して全体統計にします。source別統計はmerge前のaccumulatorから `finish` します。値のprovenanceの保持は呼び出し側のsource別accumulatorで行います。
+- `validation_violations` は既存の `validation_report` のうち、同じ列・同じscopeの違反数です。
+- derived（Calculation）結果のprofileと、stale / error / pending件数は、このcoreの範囲外です。freshな値だけを `add` に渡す前提です。
+- キャッシュ、頻出値からのFilter / Search、GUIは別Issueの範囲です。

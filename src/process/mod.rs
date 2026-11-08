@@ -29,6 +29,7 @@ pub mod paste_special;
 pub mod pivot;
 pub mod print_layout;
 pub mod remove_duplicates;
+pub mod sort_rows;
 pub mod text_transform;
 mod validation;
 pub mod view_style;
@@ -48,6 +49,7 @@ pub use document::{
 pub use fill::{DecimalSeries, FillDirection, FillPlan, IntegerSeries, SeriesGenerator};
 pub use paste_special::{ClipboardGrid, PasteMode, RaggedPolicy};
 pub use remove_duplicates::{DuplicatePlan, KeepPolicy, RemovedRow};
+pub use sort_rows::{RowOrderPlan, SortDirection, SortKey, SortKind, reject_multi_source};
 pub use text_transform::{
     CaseMode, PlannedChange, TextTransform, TextTransformPlan, TransformTarget, TrimMode,
     apply_text_transform,

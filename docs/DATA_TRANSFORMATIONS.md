@@ -179,3 +179,16 @@ GUI専用にしません。
 - 検証ruleのtarget indexは `insert_columns`/`delete_columns` と同じ規則で追従します。新しい値が規則に反する場合は全体を拒否します。
 - View設定・Calculation Bindingのidentity再解決は構造変更通知（#343）の範囲です。ここでは扱いません。
 - 1つの `CsvDocument` は1つのphysical sourceです。source間の列結合は扱いません。
+
+## View Sort順を正本へ反映（#312）
+
+実装は `src/process/sort_rows.rs` です。最終確認日: 2026-11-08。
+
+- Sort keyは `SortKey { column, direction, kind }` で、先頭が最優先です。比較方式は `Raw`（raw文字列のバイト順。暗黙の型推論をしない）と `Number`（明示的に数値として比較）です。
+- `Number` で有限の数値として読めないcell（空・文字・NaN・無限大）は、方向に関係なく末尾の未解決グループへ元の順で置きます。
+- `plan_sort_rows` がdocumentを変更せずに `RowOrderPlan`（新しい行順）を作ります。計画だけではCSVもdirty状態も変わりません。
+- 対象はheader行を除く全データ行です。Filterで隠れた行も並べ替えに含め、行を削除せず、失いません。
+- 同順位は元の行順を保つstable sortです。
+- `apply_row_order_plan` は計画を作り直して一致を確認し、古い計画を拒否します。全行を置き換えて検証し、1回のUndoで記録します。並びが変わらないなら何も記録しません。
+- `CsvDocument` は1つのphysical sourceなので、この反映はsingle sourceだけです。複数sourceにまたがるViewは `reject_multi_source(source_count)` で拒否し、source内の並び替えか、行を明示的に移す別Commandを使います。
+- View Sort設定そのもの（`view.sort.*`）の保存・GUI接続は別Issueの範囲です。ここでは同じkeyを受け取って行順へ反映するcoreだけを提供します。

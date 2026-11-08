@@ -202,11 +202,9 @@ fn three_way_conflicts_when_one_side_deletes_a_row_the_other_edits() {
         .expect("edited cell");
     assert_eq!(cell.kind, MergeKind::Conflict);
     assert_eq!(cell.local, MergeSide::RowDeleted);
-    assert!(
-        merged
-            .local_structure
-            .contains(&DiffKind::RowDeleted { row: 2 })
-    );
+    assert!(merged.local_structure.iter().any(|change| {
+        change.source_id == "s" && change.kind == DiffKind::RowDeleted { row: 2 }
+    }));
 }
 
 #[test]
@@ -225,5 +223,29 @@ fn three_way_marks_positional_alignment_as_ambiguous() {
     let base = table(&[&["h"], &["a"], &["b"], &["keep"]]);
     let local = table(&[&["h"], &["p"], &["q"], &["keep"]]);
     let merged = diff_three_way("s", &base, &local, &base);
+    assert_eq!(merged.cells.len(), 2);
     assert!(merged.cells.iter().all(|cell| cell.ambiguous));
+}
+
+#[test]
+fn single_deleted_duplicate_row_is_ambiguous_not_specific() {
+    let before = table(&[&["h"], &["x"], &["x"], &["y"]]);
+    let after = table(&[&["h"], &["x"], &["y"]]);
+    let diff = diff_tables("s", &before, &after);
+    assert_eq!(
+        kinds(&diff),
+        vec![DiffKind::RowMovedOrAmbiguous {
+            before_rows: vec![1, 2],
+            after_rows: vec![1],
+        }]
+    );
+}
+
+#[test]
+fn one_sided_empty_data_does_not_build_alignment_table() {
+    let header_only = table(&[&["h"]]);
+    let rows = table(&[&["h"], &["a"], &["b"]]);
+    let diff = diff_tables("s", &header_only, &rows);
+    assert!(!diff.alignment_skipped);
+    assert_eq!(diff.changes.len(), 2);
 }

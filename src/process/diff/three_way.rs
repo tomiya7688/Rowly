@@ -16,7 +16,7 @@
 //! ```
 use std::collections::{HashMap, HashSet};
 
-use super::{Alignment, DiffKind, cell_at, diff_tables};
+use super::{Alignment, DiffChange, DiffKind, cell_at, diff_tables};
 use crate::process::CellRef;
 
 /// ```text
@@ -94,8 +94,8 @@ pub struct CellMerge {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThreeWayDiff {
     pub cells: Vec<CellMerge>,
-    pub local_structure: Vec<DiffKind>,
-    pub other_structure: Vec<DiffKind>,
+    pub local_structure: Vec<DiffChange>,
+    pub other_structure: Vec<DiffChange>,
     pub alignment_skipped: bool,
 }
 
@@ -113,7 +113,7 @@ pub struct ThreeWayDiff {
 struct SideChanges {
     cells: HashMap<CellRef, (Option<String>, bool)>,
     deleted_rows: HashSet<usize>,
-    structure: Vec<DiffKind>,
+    structure: Vec<DiffChange>,
 }
 
 // {
@@ -121,16 +121,16 @@ struct SideChanges {
 // collect_side: 2-way差分の一覧を、Base基準のSideChangesへ振り分ける
 // ]
 // 引数: [
-// kinds: impl Iterator<Item = DiffKind>
+// changes: Vec<DiffChange>
 // ]
 // 戻り値: [
 // SideChanges: 振り分けた結果
 // ]
 // }
-fn collect_side(kinds: impl Iterator<Item = DiffKind>) -> SideChanges {
+fn collect_side(changes: Vec<DiffChange>) -> SideChanges {
     let mut side = SideChanges::default();
-    for kind in kinds {
-        match kind {
+    for change in changes {
+        match change.kind {
             DiffKind::CellChanged {
                 before,
                 after_value,
@@ -152,7 +152,10 @@ fn collect_side(kinds: impl Iterator<Item = DiffKind>) -> SideChanges {
                 if let DiffKind::RowDeleted { row } = other {
                     side.deleted_rows.insert(row);
                 }
-                side.structure.push(other);
+                side.structure.push(DiffChange {
+                    source_id: change.source_id,
+                    kind: other,
+                });
             }
         }
     }
@@ -212,8 +215,8 @@ pub fn diff_three_way(
     let local_diff = diff_tables(source_id, base, local);
     let other_diff = diff_tables(source_id, base, other);
     let alignment_skipped = local_diff.alignment_skipped || other_diff.alignment_skipped;
-    let local_side = collect_side(local_diff.changes.into_iter().map(|change| change.kind));
-    let other_side = collect_side(other_diff.changes.into_iter().map(|change| change.kind));
+    let local_side = collect_side(local_diff.changes);
+    let other_side = collect_side(other_diff.changes);
 
     let mut keys: Vec<CellRef> = local_side
         .cells

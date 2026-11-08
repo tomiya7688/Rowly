@@ -146,6 +146,9 @@ pub(super) fn cell_at(row: &[String], column: usize) -> Option<String> {
 // ]
 // }
 fn lcs_pairs(before: &[Vec<String>], after: &[Vec<String>]) -> Option<Vec<(usize, usize)>> {
+    if before.is_empty() || after.is_empty() {
+        return Some(Vec::new());
+    }
     if before.len().saturating_mul(after.len()) > LCS_CELL_LIMIT {
         return None;
     }
@@ -218,7 +221,7 @@ fn push_row_cells(
 // ]
 // 処理: [
 // 1: 削除・挿入された行を内容ごとに集める（添字はデータ行の0始まり）
-// 2: 両側にある内容は、該当する全行を1件のRowMovedOrAmbiguousにまとめる
+// 2: 両側にある内容、または片側に複数ある重複内容は、全出現位置を1件のRowMovedOrAmbiguousにまとめる
 // 3: 片側だけの行はそのまま残す
 // ]
 // 引数: [
@@ -247,6 +250,19 @@ fn merge_ambiguous(
             _ => {}
         }
     }
+    // 差分に現れた内容について、変更されていない行も含む全出現位置を集める。
+    // 重複行は、どの出現がどれに対応するか断定できないため曖昧として扱う。
+    let mut occurrences: HashMap<&Vec<String>, (Vec<usize>, Vec<usize>)> = HashMap::new();
+    for (index, row) in before_rows.iter().enumerate() {
+        if groups.contains_key(row) {
+            occurrences.entry(row).or_default().0.push(index);
+        }
+    }
+    for (index, row) in after_rows.iter().enumerate() {
+        if groups.contains_key(row) {
+            occurrences.entry(row).or_default().1.push(index);
+        }
+    }
     let mut emitted: Vec<&Vec<String>> = Vec::new();
     let mut merged = Vec::new();
     for change in &changes {
@@ -258,17 +274,19 @@ fn merge_ambiguous(
                 continue;
             }
         };
-        match groups.get(content) {
-            Some((deleted, inserted)) if !deleted.is_empty() && !inserted.is_empty() => {
-                if !emitted.contains(&content) {
-                    emitted.push(content);
-                    merged.push(DiffKind::RowMovedOrAmbiguous {
-                        before_rows: deleted.clone(),
-                        after_rows: inserted.clone(),
-                    });
-                }
-            }
-            _ => merged.push(change.clone()),
+        let (deleted, inserted) = &groups[content];
+        let (all_before, all_after) = &occurrences[content];
+        let ambiguous = (!deleted.is_empty() && !inserted.is_empty())
+            || all_before.len() > 1
+            || all_after.len() > 1;
+        if !ambiguous {
+            merged.push(change.clone());
+        } else if !emitted.contains(&content) {
+            emitted.push(content);
+            merged.push(DiffKind::RowMovedOrAmbiguous {
+                before_rows: all_before.clone(),
+                after_rows: all_after.clone(),
+            });
         }
     }
     merged
